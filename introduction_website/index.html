@@ -119,83 +119,95 @@
       100% { transform: translate(-30px, 30px) scale(0.95); }
     }
 
-    /* Install Banner */
+    /* PWA Install Floating Button */
     #pwa-banner {
       display: none;
-      background: rgba(11, 17, 33, 0.95);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-bottom: 1.5px solid var(--border-glow);
-      padding: 14px 24px;
-      position: sticky;
-      top: 0;
-      z-index: 1000;
-      justify-content: space-between;
-      align-items: center;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-      animation: slide-down 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      position: fixed;
+      bottom: 28px;
+      left: 28px;
+      z-index: 9999;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      animation: pwa-pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
-    @keyframes slide-down {
-      from { transform: translateY(-100%); }
-      to { transform: translateY(0); }
+    @keyframes pwa-pop-in {
+      from { opacity: 0; transform: scale(0.5) translateY(20px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
     }
 
-    .banner-text {
-      font-size: 0.95rem;
-      font-weight: 700;
+    .pwa-fab-row {
       display: flex;
       align-items: center;
-      gap: 12px;
-    }
-
-    .banner-text i {
-      color: var(--accent);
-      font-size: 1.25rem;
-      animation: heart-beat 1.2s infinite;
-    }
-
-    @keyframes heart-beat {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.2); }
-      100% { transform: scale(1); }
-    }
-
-    .banner-actions {
-      display: flex;
-      gap: 12px;
-    }
-
-    .banner-actions button {
-      border: none;
-      padding: 8px 18px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: 800;
-      font-size: 0.85rem;
-      transition: var(--transition-base);
+      gap: 10px;
     }
 
     #pwa-install-btn {
-      background-color: var(--primary);
+      border: none;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
       color: white;
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+      font-size: 1.35rem;
+      cursor: pointer;
+      box-shadow: 0 6px 24px rgba(37, 99, 235, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
     }
 
     #pwa-install-btn:hover {
-      background-color: var(--primary-hover);
-      transform: translateY(-1px);
+      transform: scale(1.1);
+      box-shadow: 0 8px 32px rgba(37, 99, 235, 0.7);
+    }
+
+    .pwa-tooltip {
+      background: rgba(11, 17, 33, 0.92);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-glow);
+      color: var(--text-main);
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 8px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateX(-6px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    #pwa-banner:hover .pwa-tooltip {
+      opacity: 1;
+      transform: translateX(0);
     }
 
     #pwa-close-btn {
-      background-color: transparent;
+      border: none;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid var(--border-color);
       color: var(--text-muted);
-      border: 1px solid var(--border-color) !important;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      font-size: 0.65rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      transition: background 0.2s;
     }
 
     #pwa-close-btn:hover {
+      background: rgba(255,255,255,0.15);
       color: var(--text-main);
-      background-color: rgba(255,255,255,0.05);
     }
 
     /* Navigation Bar */
@@ -1717,15 +1729,14 @@
     <div class="light-orb orb-purple"></div>
   </div>
 
-  <!-- PWA Install Banner -->
+  <!-- PWA Install Floating Button -->
   <div id="pwa-banner">
-    <div class="banner-text">
-      <i class="fa-solid fa-cloud-arrow-down"></i>
-      <span>قم بتثبيت التطبيق التعريفي على هاتفك أو حاسوبك للتصفح السريع والدخول دون اتصال بالإنترنت!</span>
-    </div>
-    <div class="banner-actions">
-      <button id="pwa-install-btn">تثبيت التطبيق</button>
-      <button id="pwa-close-btn">إغلاق</button>
+    <div class="pwa-fab-row">
+      <button id="pwa-install-btn" title="تثبيت التطبيق">
+        <i class="fa-solid fa-cloud-arrow-down"></i>
+        <button id="pwa-close-btn" aria-label="إغلاق"><i class="fa-solid fa-xmark"></i></button>
+      </button>
+      <span class="pwa-tooltip">تثبيت التطبيق</span>
     </div>
   </div>
 
@@ -2532,24 +2543,24 @@
       e.preventDefault();
       deferredPrompt = e;
       pwaBanner.style.display = 'flex';
-      document.body.classList.add('has-banner');
     });
 
-    pwaInstallBtn.addEventListener('click', () => {
-      pwaBanner.style.display = 'none';
-      document.body.classList.remove('has-banner');
+    pwaInstallBtn.addEventListener('click', (e) => {
+      // Don't trigger if close button clicked
+      if (e.target.closest('#pwa-close-btn')) return;
+      if (!deferredPrompt) return;
       deferredPrompt.prompt();
       deferredPrompt.userChoice.then((choiceResult) => {
         if (choiceResult.outcome === 'accepted') {
-          console.log('User accepted the install prompt');
+          pwaBanner.style.display = 'none';
         }
         deferredPrompt = null;
       });
     });
 
-    pwaCloseBtn.addEventListener('click', () => {
+    pwaCloseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
       pwaBanner.style.display = 'none';
-      document.body.classList.remove('has-banner');
     });
 
     // 17-Tabs Category Switching Logic
