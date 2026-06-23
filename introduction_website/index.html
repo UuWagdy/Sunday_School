@@ -1,0 +1,2604 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>برنامج مدارس الأحد | النظام المتكامل للخدمة</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="description" content="الموقع الرسمي والتعريفي لبرنامج مدارس الأحد - النظام المتكامل لرصد الحضور، الغياب، السلوك، الطايو، وتصميم الكارنيهات.">
+  <link rel="icon" type="image/x-icon" href="public/favicon.ico">
+  <link rel="apple-touch-icon" href="public/images/icons/apple-touch-icon.png">
+  
+  <!-- Google Fonts - Cairo -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    :root {
+      --bg-dark: #070a13;
+      --bg-card: rgba(17, 24, 43, 0.75);
+      --bg-card-hover: rgba(26, 36, 62, 0.95);
+      --primary: #2563eb;
+      --primary-glow: rgba(37, 99, 235, 0.3);
+      --primary-hover: #1d4ed8;
+      --accent: #f59e0b;
+      --accent-glow: rgba(245, 158, 11, 0.35);
+      --accent-hover: #d97706;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border-color: rgba(255, 255, 255, 0.06);
+      --border-glow: rgba(37, 99, 235, 0.18);
+      --glass-shadow: 0 20px 50px 0 rgba(0, 0, 0, 0.6);
+      --transition-base: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Cairo', sans-serif;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      overflow-x: hidden;
+      line-height: 1.7;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-dark);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1a233d;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--primary);
+    }
+
+    /* Ambient Lighting */
+    .bg-lights {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -2;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .light-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(140px);
+      opacity: 0.14;
+      animation: float-orbs 25s infinite alternate ease-in-out;
+    }
+
+    .orb-blue {
+      top: -15%;
+      left: -15%;
+      width: 55vw;
+      height: 55vw;
+      background: radial-gradient(circle, var(--primary) 0%, rgba(0,0,0,0) 70%);
+    }
+
+    .orb-orange {
+      bottom: -15%;
+      right: -15%;
+      width: 50vw;
+      height: 50vw;
+      background: radial-gradient(circle, var(--accent) 0%, rgba(0,0,0,0) 70%);
+      animation-delay: -6s;
+    }
+
+    .orb-purple {
+      top: 35%;
+      left: 55%;
+      width: 40vw;
+      height: 40vw;
+      background: radial-gradient(circle, #6d28d9 0%, rgba(0,0,0,0) 70%);
+      animation-delay: -12s;
+    }
+
+    @keyframes float-orbs {
+      0% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(40px, -40px) scale(1.1); }
+      100% { transform: translate(-30px, 30px) scale(0.95); }
+    }
+
+    /* Install Banner */
+    #pwa-banner {
+      display: none;
+      background: rgba(11, 17, 33, 0.95);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1.5px solid var(--border-glow);
+      padding: 14px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      animation: slide-down 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slide-down {
+      from { transform: translateY(-100%); }
+      to { transform: translateY(0); }
+    }
+
+    .banner-text {
+      font-size: 0.95rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .banner-text i {
+      color: var(--accent);
+      font-size: 1.25rem;
+      animation: heart-beat 1.2s infinite;
+    }
+
+    @keyframes heart-beat {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+
+    .banner-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .banner-actions button {
+      border: none;
+      padding: 8px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 0.85rem;
+      transition: var(--transition-base);
+    }
+
+    #pwa-install-btn {
+      background-color: var(--primary);
+      color: white;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+    }
+
+    #pwa-install-btn:hover {
+      background-color: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    #pwa-close-btn {
+      background-color: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border-color) !important;
+    }
+
+    #pwa-close-btn:hover {
+      color: var(--text-main);
+      background-color: rgba(255,255,255,0.05);
+    }
+
+    /* Navigation Bar */
+    header {
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      background-color: rgba(7, 10, 19, 0.8);
+      border-bottom: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      z-index: 99;
+    }
+
+    .nav-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      text-decoration: none;
+      color: var(--text-main);
+    }
+
+    .logo-img {
+      height: 48px;
+      width: 48px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      border: 1.5px solid rgba(255,255,255,0.08);
+      transition: var(--transition-base);
+    }
+
+    .logo-area:hover .logo-img {
+      transform: rotate(8deg) scale(1.06);
+      border-color: var(--primary);
+    }
+
+    .logo-text {
+      font-size: 1.5rem;
+      font-weight: 900;
+      background: linear-gradient(135deg, #3b82f6, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    nav ul {
+      display: flex;
+      list-style: none;
+      gap: 30px;
+    }
+
+    nav a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 1rem;
+      transition: var(--transition-base);
+      position: relative;
+      padding: 6px 0;
+    }
+
+    nav a::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 0;
+      height: 2.5px;
+      background-color: var(--primary);
+      transition: var(--transition-base);
+    }
+
+    nav a:hover {
+      color: var(--text-main);
+    }
+
+    nav a:hover::after {
+      width: 100%;
+    }
+
+    .btn-nav-download {
+      background: linear-gradient(135deg, var(--primary), #3b82f6);
+      color: white !important;
+      padding: 10px 22px;
+      border-radius: 10px;
+      font-weight: 800;
+      box-shadow: 0 4px 15px rgba(37,99,235,0.3);
+      transition: var(--transition-base);
+      text-decoration: none;
+    }
+
+    .btn-nav-download:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(37,99,235,0.5);
+    }
+
+    /* Hero Section */
+    .hero {
+      position: relative;
+      padding: 90px 24px;
+      max-width: 1250px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      gap: 50px;
+    }
+
+    .hero-content {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      animation: slide-right-entrance 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes slide-right-entrance {
+      from { opacity: 0; transform: translateX(50px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .hero-tagline {
+      font-size: 0.9rem;
+      background-color: rgba(37, 99, 235, 0.12);
+      color: #93c5fd;
+      padding: 7px 16px;
+      border-radius: 30px;
+      width: max-content;
+      border: 1.5px solid rgba(37, 99, 235, 0.25);
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .hero-tagline i {
+      color: var(--accent);
+      animation: pulse-icon 1.5s infinite alternate;
+    }
+
+    @keyframes pulse-icon {
+      from { transform: scale(1); opacity: 0.8; }
+      to { transform: scale(1.25); opacity: 1; }
+    }
+
+    .hero-title {
+      font-size: 3.3rem;
+      font-weight: 900;
+      line-height: 1.25;
+      letter-spacing: -0.5px;
+    }
+
+    .hero-title span {
+      background: linear-gradient(135deg, var(--accent), #fbbf24);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 600px;
+      line-height: 1.8;
+    }
+
+    .hero-btns {
+      display: flex;
+      gap: 16px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* Program Mockup Desktop Frame (UI/UX Pro-Max Solution) */
+    .hero-mockup-frame {
+      width: 100%;
+      background: rgba(17, 24, 43, 0.7);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1.5px solid rgba(255,255,255,0.08);
+      border-radius: 24px;
+      box-shadow: var(--glass-shadow);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: slide-left-entrance 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards, float-frame 8s ease-in-out infinite;
+      position: relative;
+    }
+
+    @keyframes slide-left-entrance {
+      from { opacity: 0; transform: translateX(-50px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes float-frame {
+      0% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-12px) rotate(0.5deg); }
+      100% { transform: translateY(0px) rotate(0deg); }
+    }
+
+    /* Window Header */
+    .window-header {
+      background: rgba(9, 13, 24, 0.8);
+      border-bottom: 1.5px solid rgba(255,255,255,0.06);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .window-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .window-btn {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: #ef4444;
+    }
+    .window-btn.minimize { background-color: #fbbf24; }
+    .window-btn.maximize { background-color: #10b981; }
+
+    .window-title {
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: var(--text-muted);
+      margin-right: auto;
+    }
+
+    /* Window Body */
+    .window-body {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      min-height: 290px;
+    }
+
+    /* Mock App Sidebar */
+    .mock-sidebar {
+      background: rgba(9, 13, 24, 0.4);
+      border-left: 1.5px solid rgba(255,255,255,0.06);
+      padding: 20px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .mock-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 8px 12px;
+      border-radius: 8px;
+      transition: var(--transition-base);
+    }
+
+    .mock-menu-item.active {
+      background: rgba(37, 99, 235, 0.15);
+      color: var(--text-main);
+      border-right: 3px solid var(--primary);
+    }
+
+    .mock-menu-item i {
+      font-size: 0.95rem;
+    }
+
+    /* Mock Content Panel */
+    .mock-content-panel {
+      padding: 25px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: center;
+    }
+
+    /* Left Side: App Logo Panel */
+    .mock-logo-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      text-align: center;
+    }
+
+    .mock-logo-wrapper {
+      position: relative;
+    }
+
+    .mock-logo-wrapper::before {
+      content: '';
+      position: absolute;
+      inset: -15px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(245, 158, 11, 0.2) 0%, transparent 70%);
+      animation: pulse-glow 3s infinite alternate;
+    }
+
+    @keyframes pulse-glow {
+      from { transform: scale(0.9); opacity: 0.5; }
+      to { transform: scale(1.1); opacity: 1; }
+    }
+
+    .mock-logo {
+      width: 100px;
+      height: 100px;
+      object-fit: contain;
+      border-radius: 16px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+      border: 1.5px solid rgba(255,255,255,0.06);
+      position: relative;
+      z-index: 2;
+    }
+
+    .mock-logo-title {
+      font-size: 1.15rem;
+      font-weight: 900;
+      color: var(--text-main);
+    }
+
+    .mock-logo-subtitle {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    /* Right Side: Form Panel */
+    .mock-form-panel {
+      background: rgba(9, 13, 24, 0.6);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .mock-form-title {
+      font-size: 0.9rem;
+      font-weight: 800;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mock-input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .mock-label {
+      font-size: 0.7rem;
+      font-weight: 800;
+      color: var(--text-muted);
+    }
+
+    .mock-input {
+      background: #090d18;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.8rem;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .mock-input strong {
+      color: var(--accent);
+      background-color: rgba(245, 158, 11, 0.1);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+
+    .mock-input span {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mock-submit-btn {
+      background: linear-gradient(135deg, var(--primary), #3b82f6);
+      color: white;
+      text-align: center;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 800;
+      box-shadow: 0 4px 10px rgba(37,99,235,0.3);
+      cursor: pointer;
+      transition: var(--transition-base);
+    }
+
+    .mock-submit-btn:hover {
+      box-shadow: 0 6px 15px rgba(37,99,235,0.5);
+    }
+
+    /* Category Tabs Explorer Section */
+    .tab-explorer-section {
+      padding: 100px 24px;
+      background: linear-gradient(180deg, rgba(7, 10, 19, 0) 0%, rgba(17, 24, 43, 0.4) 50%, rgba(7, 10, 19, 0) 100%);
+    }
+
+    .explorer-wrapper {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 40px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      padding: 45px;
+      box-shadow: var(--glass-shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .explorer-sidebar {
+      border-left: 1px solid var(--border-color);
+      padding-left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .sidebar-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-title i {
+      color: var(--accent);
+    }
+
+    .category-btn {
+      background-color: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      padding: 16px 20px;
+      border-radius: 12px;
+      cursor: pointer;
+      text-align: right;
+      font-size: 1rem;
+      font-weight: 700;
+      transition: var(--transition-base);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .category-btn i {
+      font-size: 1.1rem;
+      transition: var(--transition-base);
+    }
+
+    .category-btn:hover {
+      color: var(--text-main);
+      background-color: rgba(255,255,255,0.02);
+      border-color: var(--border-color);
+    }
+
+    .category-btn.active {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.04));
+      border: 1.5px solid var(--border-glow);
+      color: var(--text-main);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    .category-btn.active i {
+      transform: translateX(-4px);
+      color: var(--primary);
+    }
+
+    .explorer-content-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 25px;
+      min-height: 480px;
+    }
+
+    .panel-header-info h3 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .panel-header-info p {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    .accordion-container {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .accordion-item {
+      background-color: rgba(9, 13, 24, 0.6);
+      border: 1.5px solid var(--border-color);
+      border-radius: 14px;
+      overflow: hidden;
+      transition: var(--transition-base);
+    }
+
+    .accordion-item:hover {
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    .accordion-item.active {
+      border-color: var(--border-glow);
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.08);
+      background-color: rgba(9, 13, 24, 0.85);
+    }
+
+    .accordion-header {
+      padding: 20px 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      transition: var(--transition-base);
+    }
+
+    .accordion-header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .accordion-icon-box {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      background-color: rgba(37, 99, 235, 0.1);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      transition: var(--transition-base);
+    }
+
+    .accordion-item.active .accordion-icon-box {
+      background-color: var(--primary);
+      color: white;
+      box-shadow: 0 4px 10px rgba(37,99,235,0.4);
+    }
+
+    .accordion-header h4 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .accordion-toggle-arrow {
+      font-size: 1rem;
+      color: var(--text-muted);
+      transition: var(--transition-base);
+    }
+
+    .accordion-item.active .accordion-toggle-arrow {
+      transform: rotate(180deg);
+      color: var(--accent);
+    }
+
+    .accordion-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .accordion-content {
+      padding: 0 24px 24px 24px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      animation: fade-in 0.4s ease-out;
+    }
+
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .accordion-content .feature-badge-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .accordion-content .feature-badge {
+      font-size: 0.75rem;
+      background-color: rgba(255,255,255,0.03);
+      color: var(--text-muted);
+      border: 1px solid var(--border-color);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 700;
+    }
+
+    .accordion-content ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .accordion-content li {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      line-height: 1.6;
+    }
+
+    .accordion-content li i {
+      color: var(--accent);
+      font-size: 0.8rem;
+      margin-top: 6px;
+    }
+
+    /* Key Features Cards Section */
+    .features {
+      padding: 100px 24px;
+      background-color: rgba(17, 24, 43, 0.3);
+      position: relative;
+    }
+
+    .features-grid {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 30px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 35px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      transition: var(--transition-base);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
+      opacity: 0;
+      transition: var(--transition-base);
+    }
+
+    .feature-card:hover {
+      transform: translateY(-8px);
+      border-color: rgba(37, 99, 235, 0.35);
+      box-shadow: var(--glass-shadow);
+      background-color: var(--bg-card-hover);
+    }
+
+    .feature-card:hover::before {
+      opacity: 1;
+    }
+
+    .feature-icon-wrapper {
+      width: 58px;
+      height: 58px;
+      border-radius: 14px;
+      background-color: rgba(37, 99, 235, 0.12);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      transition: var(--transition-base);
+    }
+
+    .feature-card:hover .feature-icon-wrapper {
+      background: linear-gradient(135deg, var(--primary), #3b82f6);
+      color: white;
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+    }
+
+    .feature-card h3 {
+      font-size: 1.3rem;
+      font-weight: 800;
+    }
+
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.65;
+    }
+
+    /* Downloads & Activation Section */
+    .downloads {
+      padding: 100px 24px;
+    }
+
+    .downloads-wrapper {
+      max-width: 1050px;
+      margin: 0 auto;
+      background: linear-gradient(135deg, rgba(17, 24, 43, 0.95), rgba(9, 13, 24, 0.98));
+      border: 1.5px solid var(--border-color);
+      border-radius: 28px;
+      padding: 60px 48px;
+      box-shadow: var(--glass-shadow);
+    }
+
+    /* Accounts Credentials Card */
+    .login-credentials-alert {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(245, 158, 11, 0.04));
+      border: 2px dashed rgba(245, 158, 11, 0.4);
+      border-radius: 18px;
+      padding: 24px;
+      margin-bottom: 45px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 30px;
+    }
+
+    .credentials-info {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .credentials-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background-color: rgba(245, 158, 11, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      color: var(--accent);
+    }
+
+    .credentials-text h4 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 6px;
+    }
+
+    .credentials-text p {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+    }
+
+    .credentials-badge-container {
+      display: flex;
+      gap: 16px;
+    }
+
+    .cred-badge {
+      background-color: rgba(7, 10, 19, 0.85);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 10px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 120px;
+    }
+
+    .cred-badge span {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .cred-badge strong {
+      font-size: 1.15rem;
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    .download-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      margin-bottom: 40px;
+    }
+
+    .download-option-card {
+      background-color: rgba(9, 13, 24, 0.5);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 35px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+      transition: var(--transition-base);
+    }
+
+    .download-option-card:hover {
+      background-color: rgba(9, 13, 24, 0.8);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .card-top i {
+      font-size: 2.4rem;
+      color: var(--primary);
+    }
+
+    .card-top.mobile i {
+      color: #10b981;
+    }
+
+    .card-top h3 {
+      font-size: 1.4rem;
+      font-weight: 800;
+    }
+
+    .download-option-card p {
+      color: var(--text-muted);
+      font-size: 0.98rem;
+      line-height: 1.7;
+      min-height: 50px;
+    }
+
+    .download-option-card .btn-download {
+      margin-top: auto;
+      text-align: center;
+      padding: 14px;
+      border-radius: 10px;
+      font-weight: 800;
+      font-size: 1.05rem;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: var(--transition-base);
+    }
+
+    .btn-download-pc {
+      background: linear-gradient(135deg, var(--primary), #3b82f6);
+      color: white;
+      box-shadow: 0 4px 15px rgba(37,99,235,0.3);
+    }
+
+    .btn-download-pc:hover {
+      background: linear-gradient(135deg, var(--primary-hover), #2563eb);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(37,99,235,0.5);
+    }
+
+    .btn-download-mobile {
+      background: linear-gradient(135deg, #10b981, #34d399);
+      color: white;
+      box-shadow: 0 4px 15px rgba(16,185,129,0.3);
+    }
+
+    .btn-download-mobile:hover {
+      background: linear-gradient(135deg, #059669, #10b981);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(16,185,129,0.5);
+    }
+
+    .dependency-box {
+      background-color: rgba(239, 68, 68, 0.05);
+      border: 1.5px solid rgba(239, 68, 68, 0.25);
+      border-radius: 20px;
+      padding: 30px;
+      display: flex;
+      gap: 25px;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .dependency-box::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 4px;
+      height: 100%;
+      background-color: #ef4444;
+    }
+
+    .dep-icon {
+      font-size: 2.8rem;
+      color: #ef4444;
+    }
+
+    .dep-content {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-grow: 1;
+    }
+
+    .dep-content h4 {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #fca5a5;
+    }
+
+    .dep-content p {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .btn-dep {
+      background-color: #ef4444;
+      color: white;
+      text-decoration: none;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-weight: 800;
+      font-size: 0.95rem;
+      white-space: nowrap;
+      transition: var(--transition-base);
+      box-shadow: 0 4px 12px rgba(239,68,68,0.25);
+    }
+
+    .btn-dep:hover {
+      background-color: #dc2626;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(239,68,68,0.45);
+    }
+
+    /* Developers Section (As requested) */
+    .developers-section {
+      padding: 80px 24px;
+      position: relative;
+      background-color: rgba(9, 13, 24, 0.2);
+    }
+
+    .dev-grid {
+      max-width: 800px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 30px;
+    }
+
+    .dev-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 30px 24px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+      transition: var(--transition-base);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .dev-card:hover {
+      transform: translateY(-6px);
+      border-color: var(--border-glow);
+      box-shadow: var(--glass-shadow);
+      background-color: var(--bg-card-hover);
+    }
+
+    .dev-avatar-wrapper {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.03);
+      border: 2px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2rem;
+      color: var(--primary);
+      transition: var(--transition-base);
+    }
+
+    .dev-card:hover .dev-avatar-wrapper {
+      background-color: var(--primary);
+      color: white;
+      border-color: var(--primary-glow);
+      transform: scale(1.05);
+    }
+
+    .dev-avatar-wrapper img {
+      width: 44px;
+      height: 44px;
+      object-fit: contain;
+    }
+
+    .dev-card h3 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    .dev-card .dev-role {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      font-weight: 700;
+      min-height: 48px;
+    }
+
+    .dev-phone-btn {
+      background-color: rgba(255,255,255,0.03);
+      border: 1px solid var(--border-color);
+      padding: 8px 16px;
+      border-radius: 8px;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: var(--transition-base);
+      margin-top: auto;
+    }
+
+    .dev-phone-btn:hover {
+      background-color: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+    }
+
+    /* Footer */
+    footer {
+      background-color: #04060b;
+      border-top: 1px solid var(--border-color);
+      padding: 50px 24px;
+      text-align: center;
+    }
+
+    .footer-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 25px;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 25px;
+      list-style: none;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.95rem;
+      transition: var(--transition-base);
+    }
+
+    .footer-links a:hover {
+      color: var(--primary);
+    }
+
+    .copyright {
+      font-size: 0.9rem;
+      color: #475569;
+    }
+
+    .heart-icon {
+      color: #ef4444;
+      animation: beat 1s infinite alternate;
+      display: inline-block;
+    }
+
+    @keyframes beat {
+      to { transform: scale(1.2); }
+    }
+
+    /* ============ SECTION HEADER (Global) ============ */
+    .section-header {
+      text-align: center;
+      margin-bottom: 60px;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+      padding: 0 20px;
+    }
+
+    .section-tag {
+      display: inline-block;
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--accent);
+      background-color: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 30px;
+      padding: 6px 18px;
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-size: 2.4rem;
+      font-weight: 900;
+      line-height: 1.25;
+      color: var(--text-main);
+      margin-bottom: 18px;
+    }
+
+    .section-title span {
+      background: linear-gradient(135deg, var(--primary), #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .section-desc {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      line-height: 1.8;
+    }
+
+    /* ============ PRIMARY / SECONDARY BUTTONS ============ */
+    .btn-primary,
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-size: 1.05rem;
+      font-weight: 800;
+      text-decoration: none;
+      transition: var(--transition-base);
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), #3b82f6);
+      color: white;
+      box-shadow: 0 5px 20px rgba(37, 99, 235, 0.35);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 30px rgba(37, 99, 235, 0.55);
+    }
+
+    .btn-secondary {
+      background-color: rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+      border: 1.5px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+    }
+
+    .btn-secondary:hover {
+      background-color: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-3px);
+    }
+
+    /* ============ MOBILE HAMBURGER ============ */
+    .hamburger-btn {
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      gap: 5px;
+      cursor: pointer;
+      padding: 8px;
+      border: none;
+      background: transparent;
+    }
+
+    .hamburger-btn span {
+      display: block;
+      width: 24px;
+      height: 2.5px;
+      background-color: var(--text-main);
+      border-radius: 2px;
+      transition: var(--transition-base);
+    }
+
+    .mobile-menu-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(7, 10, 19, 0.97);
+      z-index: 500;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 35px;
+      animation: fade-in 0.25s ease-out;
+    }
+
+    .mobile-menu-overlay.open {
+      display: flex;
+    }
+
+    .mobile-menu-overlay a {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--text-main);
+      text-decoration: none;
+      transition: var(--transition-base);
+    }
+
+    .mobile-menu-overlay a:hover {
+      color: var(--primary);
+    }
+
+    .mobile-menu-close {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.8rem;
+      cursor: pointer;
+      transition: var(--transition-base);
+    }
+
+    .mobile-menu-close:hover {
+      color: var(--text-main);
+    }
+
+    /* ============ RESPONSIVE ============ */
+    @media (max-width: 992px) {
+      .hero {
+        grid-template-columns: 1fr;
+        text-align: center;
+        padding: 50px 24px;
+      }
+
+      .hero-content {
+        align-items: center;
+      }
+
+      .hero-desc {
+        margin: 0 auto;
+      }
+
+      .hero-btns {
+        justify-content: center;
+      }
+
+      .hero-mockup-frame {
+        max-width: 600px;
+        margin: 20px auto;
+      }
+
+      .explorer-wrapper {
+        grid-template-columns: 1fr;
+        padding: 24px 20px;
+      }
+
+      .explorer-sidebar {
+        border-left: none;
+        border-bottom: 1px solid var(--border-color);
+        padding-left: 0;
+        padding-bottom: 20px;
+        flex-direction: row;
+        overflow-x: auto;
+        white-space: nowrap;
+        gap: 10px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+
+      .explorer-sidebar::-webkit-scrollbar { display: none; }
+
+      .sidebar-title {
+        display: none;
+      }
+
+      .category-btn {
+        padding: 10px 18px;
+        font-size: 0.9rem;
+        flex-shrink: 0;
+      }
+
+      .dev-grid {
+        grid-template-columns: 1fr;
+        max-width: 420px;
+      }
+
+      .section-title {
+        font-size: 2rem;
+      }
+
+      .downloads-wrapper {
+        padding: 40px 30px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      nav {
+        display: none;
+      }
+
+      .btn-nav-download {
+        display: none;
+      }
+
+      .hamburger-btn {
+        display: flex;
+      }
+
+      .hero-title {
+        font-size: 2rem;
+      }
+
+      .hero-desc {
+        font-size: 1rem;
+      }
+
+      .section-title {
+        font-size: 1.7rem;
+      }
+
+      .window-body {
+        grid-template-columns: 1fr;
+      }
+
+      .mock-sidebar {
+        display: none;
+      }
+
+      .mock-content-panel {
+        grid-template-columns: 1fr;
+        padding: 15px;
+      }
+
+      .login-credentials-alert {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .credentials-info {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .credentials-badge-container {
+        justify-content: center;
+        width: 100%;
+      }
+
+      .download-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .dependency-box {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .dependency-box::before {
+        width: 100%;
+        height: 4px;
+        top: 0;
+        right: 0;
+      }
+
+      .btn-dep {
+        width: 100%;
+        text-align: center;
+        justify-content: center;
+      }
+
+      .downloads-wrapper {
+        padding: 30px 18px;
+        border-radius: 18px;
+      }
+
+      .hero-btns {
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .btn-primary,
+      .btn-secondary {
+        width: 100%;
+        justify-content: center;
+        max-width: 320px;
+      }
+
+      .tab-explorer-section {
+        padding: 60px 16px;
+      }
+
+      .explorer-wrapper {
+        padding: 20px 16px;
+        border-radius: 16px;
+      }
+
+      .accordion-header {
+        padding: 16px 16px;
+      }
+
+      .accordion-header h4 {
+        font-size: 1rem;
+      }
+
+      .features {
+        padding: 60px 16px;
+      }
+
+      .downloads {
+        padding: 60px 16px;
+      }
+
+      .developers-section {
+        padding: 60px 16px;
+      }
+
+      .hero {
+        padding: 40px 16px;
+      }
+
+      .footer-links {
+        gap: 15px;
+      }
+
+      .open-source-box {
+        flex-direction: column !important;
+        text-align: center;
+      }
+
+      .open-source-box > div {
+        justify-content: center !important;
+      }
+
+      .open-source-box a {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero-title {
+        font-size: 1.7rem;
+      }
+
+      .section-title {
+        font-size: 1.45rem;
+      }
+
+      .logo-text {
+        font-size: 1.2rem;
+      }
+
+      .cred-badge {
+        min-width: 100px;
+        padding: 8px 14px;
+      }
+
+      .nav-container {
+        padding: 12px 16px;
+      }
+
+      .hero-tagline {
+        font-size: 0.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient lighting background -->
+  <div class="bg-lights">
+    <div class="light-orb orb-blue"></div>
+    <div class="light-orb orb-orange"></div>
+    <div class="light-orb orb-purple"></div>
+  </div>
+
+  <!-- PWA Install Banner -->
+  <div id="pwa-banner">
+    <div class="banner-text">
+      <i class="fa-solid fa-cloud-arrow-down"></i>
+      <span>قم بتثبيت التطبيق التعريفي على هاتفك أو حاسوبك للتصفح السريع والدخول دون اتصال بالإنترنت!</span>
+    </div>
+    <div class="banner-actions">
+      <button id="pwa-install-btn">تثبيت التطبيق</button>
+      <button id="pwa-close-btn">إغلاق</button>
+    </div>
+  </div>
+
+  <!-- Mobile Menu Overlay -->
+  <div class="mobile-menu-overlay" id="mobile-menu">
+    <button class="mobile-menu-close" id="mobile-menu-close" aria-label="إغلاق القائمة">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+    <a href="#features" onclick="closeMobileMenu()">المميزات الأساسية</a>
+    <a href="#explorer" onclick="closeMobileMenu()">دليل التبويبات</a>
+    <a href="#downloads" onclick="closeMobileMenu()">روابط التحميل</a>
+    <a href="#developers" onclick="closeMobileMenu()">فريق العمل</a>
+    <a href="#downloads" class="btn-primary" onclick="closeMobileMenu()" style="font-size:1.1rem;">
+      <i class="fa-solid fa-download"></i>
+      <span>تحميل النظام</span>
+    </a>
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="nav-container">
+      <a href="#" class="logo-area">
+        <img src="public/logo.png" alt="شعار مدارس الأحد" class="logo-img">
+        <span class="logo-text">مدارس الأحد</span>
+      </a>
+      <nav>
+        <ul>
+          <li><a href="#features">المميزات الأساسية</a></li>
+          <li><a href="#explorer">دليل التبويبات (17)</a></li>
+          <li><a href="#downloads">روابط التحميل</a></li>
+          <li><a href="#developers">فريق العمل</a></li>
+        </ul>
+      </nav>
+      <a href="#downloads" class="btn-nav-download">تحميل النظام</a>
+      <button class="hamburger-btn" id="hamburger-btn" aria-label="فتح القائمة">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="hero-tagline">
+        <i class="fa-solid fa-circle-check"></i>
+        <span>أحدث إصدار للكمبيوتر والأندرويد 2026</span>
+      </div>
+      <h1 class="hero-title">النظام البرمجي المتكامل <span>لإدارة مدارس الأحد</span> والخدمة</h1>
+      <p class="hero-desc">
+        منصة واحدة ذكية مصممة خصيصاً للرعاية الكنسية المبتكرة. تسجل الحضور بالـ QR، تنظم نقاط وجوائز الطايو، تسهل رصد السلوك ومتابعة الافتقاد المنزلي، مع طباعة وتصميم كروت الهوية الذكية والتقارير المتقدمة.
+      </p>
+      <div class="hero-btns">
+        <a href="#downloads" class="btn-primary">
+          <i class="fa-solid fa-circle-down"></i>
+          <span>تنزيل للبدء فوراً</span>
+        </a>
+        <a href="#explorer" class="btn-secondary">
+          <i class="fa-solid fa-cubes"></i>
+          <span>استعراض التبويبات الـ 17</span>
+        </a>
+      </div>
+    </div>
+    
+    <!-- Unified desktop frame preview mockup (UI/UX Pro-Max Solution) -->
+    <div class="hero-mockup-frame">
+      <div class="window-header">
+        <div class="window-controls">
+          <div class="window-btn"></div>
+          <div class="window-btn minimize"></div>
+          <div class="window-btn maximize"></div>
+        </div>
+        <span class="window-title">برنامج مدارس الأحد - تسجيل الدخول</span>
+      </div>
+      <div class="window-body">
+        <!-- Sidebar -->
+        <div class="mock-sidebar">
+          <div class="mock-menu-item active">
+            <i class="fa-solid fa-lock"></i>
+            <span>تسجيل الدخول</span>
+          </div>
+          <div class="mock-menu-item">
+            <i class="fa-solid fa-calendar-days"></i>
+            <span>حضور وغياب</span>
+          </div>
+          <div class="mock-menu-item">
+            <i class="fa-solid fa-gift"></i>
+            <span>نقاط الطايو</span>
+          </div>
+          <div class="mock-menu-item">
+            <i class="fa-solid fa-id-card"></i>
+            <span>تصميم كروت</span>
+          </div>
+        </div>
+        
+        <!-- Content Panel -->
+        <div class="mock-content-panel">
+          <!-- Logo Details -->
+          <div class="mock-logo-panel">
+            <div class="mock-logo-wrapper">
+              <img src="public/logo.png" alt="App Logo" class="mock-logo">
+            </div>
+            <div>
+              <h4 class="mock-logo-title">برنامج مدارس الأحد</h4>
+              <p class="mock-logo-subtitle">الإصدار الرقمي المطور 2026</p>
+            </div>
+          </div>
+          
+          <!-- Form Panel -->
+          <div class="mock-form-panel">
+            <div class="mock-form-title">
+              <i class="fa-solid fa-user-shield"></i>
+              <span>حساب المسؤول الافتراضي</span>
+            </div>
+            
+            <div class="mock-input-group">
+              <span class="mock-label">اسم المستخدم (User)</span>
+              <div class="mock-input">
+                <span>admin</span>
+                <i class="fa-solid fa-user-circle" style="color: var(--primary);"></i>
+              </div>
+            </div>
+            
+            <div class="mock-input-group">
+              <span class="mock-label">كلمة المرور (Password)</span>
+              <div class="mock-input">
+                <span>••••</span>
+                <strong>1234</strong>
+              </div>
+            </div>
+            
+            <div class="mock-submit-btn">
+              <span>تسجيل الدخول</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Key Highlights Section -->
+  <section class="features" id="features">
+    <div class="section-header">
+      <span class="section-tag">قوة النظام</span>
+      <h2 class="section-title">باقة مميزات مصممة <span>لرعاية روحية وتنظيمية</span> متكاملة</h2>
+      <p class="section-desc">مجموعة من أقوى الأدوات التي تجعل إدارة الخدمة عملية سلسة وخالية من المتاعب اليدوية.</p>
+    </div>
+
+    <div class="features-grid">
+      <!-- Card 1 -->
+      <div class="feature-card">
+        <div class="feature-icon-wrapper">
+          <i class="fa-solid fa-qrcode"></i>
+        </div>
+        <h3>الحضور الرقمي بالـ QR</h3>
+        <p>مسح ضوئي لحظي لكروت الهوية عبر كاميرا التطبيق أو أجهزة المسح الخارجي لتسجيل الحضور في ثانية واحدة وبدقة متناهية.</p>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="feature-card">
+        <div class="feature-icon-wrapper">
+          <i class="fa-solid fa-palette"></i>
+        </div>
+        <h3>مصمم الكارنيهات الإبداعي</h3>
+        <p>تحكم فائق في شكل كارت العضوية: المقاسات، ألوان النصوص، موضع الباركود والـ QR وحجمه، صورة الخلفية مع ميزة المحاذاة والشفافية.</p>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="feature-card">
+        <div class="feature-icon-wrapper">
+          <i class="fa-solid fa-trophy"></i>
+        </div>
+        <h3>نظام نقاط الطايو التفاعلي</h3>
+        <p>طريقة تربوية جذابة لتشجيع المخدومين عبر جمع كروت الطايو، رصد النقاط للمسابقات الكنسية، وتوليد كوبونات تبديل الجوائز.</p>
+      </div>
+
+      <!-- Card 4 -->
+      <div class="feature-card">
+        <div class="feature-icon-wrapper">
+          <i class="fa-solid fa-chart-pie"></i>
+        </div>
+        <h3>درجات السلوك التلقائية</h3>
+        <p>واجهة متطورة لتسجيل السلوك مع آلية حماية ذكية تعطي الطلاب درجات كاملة تلقائياً (5 من 5) لتفادي أخطاء تصفير تقييم الطلاب الغائبين.</p>
+      </div>
+
+      <!-- Card 5 -->
+      <div class="feature-card">
+        <div class="feature-icon-wrapper">
+          <i class="fa-solid fa-heart-pulse"></i>
+        </div>
+        <h3>افتقاد المخدومين ومتابعتهم</h3>
+        <p>تذكيرات ذكية للغائبين، وكشوفات بالزيارات والاتصالات السلكية، مع إمكانية تعيين وتوزيع مهام الافتقاد للخدام وكتابة تقارير الرعاية.</p>
+      </div>
+
+      <!-- Card 6 -->
+      <div class="feature-card">
+        <div class="feature-icon-wrapper">
+          <i class="fa-solid fa-file-invoice-dollar"></i>
+        </div>
+        <h3>إدارة الصندوق المالي</h3>
+        <p>تسجيل كامل للاشتراكات الشهرية، مصروفات الرحلات والأنشطة، التبرعات، وتوليد كشوفات الحركة المالية الختامية للخدمة.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive 17 Tab Explorer Section -->
+  <section class="tab-explorer-section" id="explorer">
+    <div class="section-header">
+      <span class="section-tag">استكشف النظام داخلياً</span>
+      <h2 class="section-title">دليل التبويبات الـ <span>17 الكاملة</span> بالتطبيق</h2>
+      <p class="section-desc">فحص تفصيلي للمقومات الداخلية لكل نافذة وتبويب داخل برنامج مدارس الأحد.</p>
+    </div>
+
+    <div class="explorer-wrapper">
+      
+      <!-- Sidebar Category Tabs Selector -->
+      <div class="explorer-sidebar">
+        <div class="sidebar-title">
+          <i class="fa-solid fa-list-ul"></i>
+          <span>تصنيف الأقسام</span>
+        </div>
+        <button class="category-btn active" data-category="org" onclick="switchCategory('org', this)">
+          <span>الهيكل والإدارة</span>
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        <button class="category-btn" data-category="care" onclick="switchCategory('care', this)">
+          <span>الرعاية والحضور</span>
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        <button class="category-btn" data-category="activity" onclick="switchCategory('activity', this)">
+          <span>الأنشطة والتحفيز</span>
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        <button class="category-btn" data-category="reports" onclick="switchCategory('reports', this)">
+          <span>التقارير والأمان</span>
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+      </div>
+
+      <!-- Content Area with Accordions -->
+      <div class="explorer-content-panel">
+        
+        <!-- Org Category Panel -->
+        <div class="category-panel-content" id="panel-org">
+          <div class="panel-header-info">
+            <h3>الهيكل الإداري والتنظيم</h3>
+            <p style="margin-bottom: 20px;">التبويبات المسؤولة عن بناء قاعدة البيانات الأساسية، الفصول، الشمامسة، ونقل المخدومين والمستخدمين.</p>
+          </div>
+          
+          <div class="accordion-container">
+            <!-- 1. الأشخاص -->
+            <div class="accordion-item active">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-user-group"></i></div>
+                  <h4>شاشة إدارة الأشخاص (Persons)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body" style="max-height: 500px;">
+                <div class="accordion-content">
+                  <div class="feature-badge-list">
+                    <span class="feature-badge">فلترة متقدمة</span>
+                    <span class="feature-badge">صلات قرابة عائلية</span>
+                    <span class="feature-badge">أب اعتراف</span>
+                  </div>
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>تعديل وحفظ بيانات الخدام والمخدومين (الاسم، الميلاد، العنوان، التلفونات).</span></li>
+                    <li><i class="fa-solid fa-circle"></i><span>حساب السن تلقائياً برمجياً والربط بآباء الاعتراف الكهنة.</span></li>
+                    <li><i class="fa-solid fa-circle"></i><span>شاشة صلات القرابة لربط أفراد العائلة (أب، أم، أخ، أخت) لتسجيل رعاية عائلية ذكية.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. المراحل -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-graduation-cap"></i></div>
+                  <h4>شاشة المراحل الدراسية (Stages)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>تعريف الهيكل السني والتعليمي من مرحلة الحضانة والابتدائي حتى الإعدادي والثانوي.</span></li>
+                    <li><i class="fa-solid fa-circle"></i><span>تقسيم الفصول الفرعية داخل كل مرحلة وإسناد الأمناء والخدام.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. المستخدمين -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-user-shield"></i></div>
+                  <h4>شاشة إدارة المستخدمين والصلاحيات (Users)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>إنشاء حسابات الخدام وتحديد أسماء الدخول وتعيين الصلاحيات الخاصة بكل خادم.</span></li>
+                    <li><i class="fa-solid fa-circle"></i><span>توزيع صلاحيات التحكم في البيانات والمالية وصيانة النسخ الاحتياطية.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4. النقل -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-shuffle"></i></div>
+                  <h4>شاشة نقل المخدومين والترقية (Transfer)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>أداة نقل الطلاب بشكل فردي أو جماعي بين الخدمات والمراحل المختلفة.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 5. إدارة الخدمات -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-sliders"></i></div>
+                  <h4>شاشة إدارة الخدمات المتعددة (Services)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>إضافة وإدارة خدمات مستقلة ومختلفة داخل نفس التطبيق مع فصل البيانات أمنياً.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Care Category Panel -->
+        <div class="category-panel-content" id="panel-care" style="display: none;">
+          <div class="panel-header-info">
+            <h3>الرعاية والافتقاد والمتابعة</h3>
+            <p style="margin-bottom: 20px;">الأدوات اليومية لتتبع الالتزام بالاجتماع، الاتصالات، رصد الحضور بالـ QR، والسلوك.</p>
+          </div>
+
+          <div class="accordion-container">
+            <!-- 1. الحضور -->
+            <div class="accordion-item active">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-calendar-days"></i></div>
+                  <h4>شاشة رصد الحضور والغياب والـ QR</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body" style="max-height: 500px;">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>جدول رصد الحضور مع دعم "وضع الانصراف" (Checkout Time) لحساب فترات التواجد.</span></li>
+                    <li><i class="fa-solid fa-circle"></i><span>دعم "وضع الفترة" لتأمين وغلق سجلات الرصد السابقة مبرمجاً أثناء المراجعة.</span></li>
+                    <li><i class="fa-solid fa-circle"></i><span>ماسح QR سريع مدمج يعطي تنبيهاً صوتياً فورياً عند نجاح الرصد لتسريع الدخول.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. السلوك -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-thumbs-up"></i></div>
+                  <h4>شاشة تقييم السلوك والتفاعل (Behavior)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>تقييم المخدومين من 1 إلى 5 درجات مع آلية حماية ذكية تعوض الغياب تلقائياً بالدرجة الكاملة (5) لحماية الطلاب من أخطاء التقييم المالي والروحي العام.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. الاجتماعات -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-building-user"></i></div>
+                  <h4>شاشة إدارة الاجتماعات الأسبوعية (Meetings)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>جدولة الفعاليات الخاصة كالأيام الروحية والقداسات وحصر الحضور المخصص لكل منها.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4. أباء الاعتراف -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-cross"></i></div>
+                  <h4>شاشة الآباء الكهنة وأباء الاعتراف (Fathers)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>دليل كامل بآباء الاعتراف لربط كل مخدوم بوالده الروحي ومتابعة الاعتراف الدوري.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 5. المناطق -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-route"></i></div>
+                  <h4>شاشة المناطق الجغرافية والافتقاد (Areas)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>توزيع المخدومين جغرافياً لتسهيل توزيع الخدام ورسم خطط الافتقاد المنزلي.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Activity Category Panel -->
+        <div class="category-panel-content" id="panel-activity" style="display: none;">
+          <div class="panel-header-info">
+            <h3>الأنشطة والتحفيز التشجيعي</h3>
+            <p style="margin-bottom: 20px;">نظام الجوائز والمسابقات والنقاط التشجيعية (الطايو) والفرق المهارية (الخوارس والرهوط).</p>
+          </div>
+
+          <div class="accordion-container">
+            <!-- 1. الطايو -->
+            <div class="accordion-item active">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-ticket"></i></div>
+                  <h4>نظام الطايو والجوائز والمسابقات (El-Tayo)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body" style="max-height: 500px;">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>إدارة كروت الطايو، رصد نقاط الحفظ والتسميع، وتوليد كوبونات استبدال الهدايا العينية للطلاب المتفوقين.</span></li>
+                    <li><i class="fa-solid fa-circle"></i><span>لوحة شرف إحصائية لحظية لترتيب الطلاب الأكثر تفاعلاً في أنشطة مدارس الأحد.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. الخوارس -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-music"></i></div>
+                  <h4>شاشة فصول ألحان الشمامسة (Khoros)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>إنشاء مجموعات دراسة الألحان والتسبحة (الخوارس)، مع تتبع حضور الحفظ لكل خورس بشكل مستقل وإسناد معلمين متخصصين.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. الرهوط -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-people-group"></i></div>
+                  <h4>شاشة المجموعات الصغيرة (Rohot)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>تقسيم المخدومين إلى مجموعات تنافسية صغيرة (رهط) داخل الصف لتشجيع روح الفريق والتنافس البناء.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reports Category Panel -->
+        <div class="category-panel-content" id="panel-reports" style="display: none;">
+          <div class="panel-header-info">
+            <h3>التقارير المتقدمة والأمان والمالية</h3>
+            <p style="margin-bottom: 20px;">أدوات التصدير، إدارة الاشتراكات المالية، التحليلات، وحماية البيانات واسترجاعها.</p>
+          </div>
+
+          <div class="accordion-container">
+            <!-- 1. التقارير والتحليلات -->
+            <div class="accordion-item active">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-chart-line"></i></div>
+                  <h4>شاشة لوحة التحكم الإحصائية والتقارير</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body" style="max-height: 500px;">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>إحصائيات تفاعلية شاملة وتصدير ملفات PDF المتلائمة مع الصفحة أو ملفات Excel.</span></li>
+                    <li><i class="fa-solid fa-circle"></i><span>توليد وتصدير ملفات PDF منفصلة لكل فصل بشكل تلقائي (Grouped PDF Dispatcher) لحفظها في مجلدات بأسماء الفصول وتوزيعها فورياً.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. إصدار كارنيه -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-address-card"></i></div>
+                  <h4>شاشة مصمم الكارنيهات والبطاقات التعريفية</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>واجهة متكاملة لتصميم شكل الكارنيه وخلفيته والتحكم في إظهار أو إخفاء الباركود وأي حقول مخصصة (الخورس، الرهط، الكود).</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. الصندوق الشهري -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-sack-dollar"></i></div>
+                  <h4>شاشة الإدارة المالية والصندوق (Monthly Fund)</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>إدارة الحسابات المالية البسيطة (الإيرادات، المصروفات، اشتراكات الطلاب والمطبوعات الكنسية).</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4. صيانة النظام -->
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <div class="accordion-header-left">
+                  <div class="accordion-icon-box"><i class="fa-solid fa-database"></i></div>
+                  <h4>شاشة الصيانة والنسخ الاحتياطي والترقية السنوية</h4>
+                </div>
+                <div class="accordion-toggle-arrow"><i class="fa-solid fa-chevron-down"></i></div>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-content">
+                  <ul>
+                    <li><i class="fa-solid fa-circle"></i><span>حماية البيانات الكنسية عبر أخذ نسخ احتياطية دورية واستعادتها بنقرة زر واحدة.</span></li>
+                    <li><i class="fa-solid fa-circle"></i><span>أداة "الترقية السنوية" لترحيل الطلاب تلقائياً دفعة واحدة عند بداية العام الدراسي الجديد بسلامة تامة لقاعدة البيانات.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+    
+
+  </section>
+
+  <!-- Downloads Section -->
+  <section class="downloads" id="downloads">
+    <div class="section-header">
+      <span class="section-tag">تحميل النظام والبدء</span>
+      <h2 class="section-title">روابط التنزيل <span>وبيانات الدخول الافتراضية</span></h2>
+      <p class="section-desc">قم بتحميل النسخة المناسبة لنوع جهازك وابدأ في تهيئة خدمتك فوراً.</p>
+    </div>
+
+    <div class="downloads-wrapper">
+      
+      <!-- Account Credentials Alert Box (UI/UX Pro-Max) -->
+      <div class="login-credentials-alert">
+        <div class="credentials-info">
+          <div class="credentials-icon">
+            <i class="fa-solid fa-user-check"></i>
+          </div>
+          <div class="credentials-text">
+            <h4>بيانات حساب المسؤول الافتراضية للبرنامج</h4>
+            <p>بعد فتح وتثبيت البرنامج، قم باختيار اسم المستخدم الموضح بالأسفل واستخدم الرقم السري لتسجيل الدخول كمسؤول للنظام بكافة الصلاحيات.</p>
+          </div>
+        </div>
+        <div class="credentials-badge-container">
+          <div class="cred-badge">
+            <span>اسم المستخدم</span>
+            <strong>admin</strong>
+          </div>
+          <div class="cred-badge" style="border-color: rgba(245, 158, 11, 0.4);">
+            <span>كلمة السر</span>
+            <strong>1234</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Download Cards Grid -->
+      <div class="download-grid">
+        <!-- Card 1: PC -->
+        <div class="download-option-card">
+          <div class="card-top">
+            <i class="fa-solid fa-display"></i>
+            <h3>نسخة أجهزة الكمبيوتر (Windows)</h3>
+          </div>
+          <p>النسخة الرئيسية التي تحتوي على لوحة تحكم الخادم الرئيسية، طباعة التقارير، تصميم الكروت الذكية وإدارة المستخدمين.</p>
+          <a href="https://www.mediafire.com/file/x20mjdbjo4lfp9c/Sunday_School.rar/file" target="_blank" rel="noopener" class="btn-download btn-download-pc">
+            <i class="fa-solid fa-download"></i>
+            <span>تنزيل للكمبيوتر (.rar)</span>
+          </a>
+        </div>
+
+        <!-- Card 2: Mobile -->
+        <div class="download-option-card">
+          <div class="card-top mobile">
+            <i class="fa-solid fa-mobile-screen"></i>
+            <h3>نسخة الهواتف الذكية (Android)</h3>
+          </div>
+          <p>تطبيق الهاتف المخصص للخدام لتسهيل تسجيل الحضور اليومي بالفصل ومسح كروت المخدومين بالـ QR في أي مكان.</p>
+          <a href="https://www.mediafire.com/file/aa95rpi7jbi4vfv/Sunday_School.apk/file" target="_blank" rel="noopener" class="btn-download btn-download-mobile">
+            <i class="fa-solid fa-android"></i>
+            <span>تنزيل للأندرويد (.apk)</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Open Source Project Box -->
+      <div class="open-source-box" style="margin: 40px 0; background: rgba(37, 99, 235, 0.05); border: 1.5px solid var(--border-glow); border-radius: 20px; padding: 25px; display: flex; gap: 25px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap; text-align: right;">
+          <div style="font-size: 2.2rem; color: #fff; background-color: #1a233d; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color); flex-shrink: 0;">
+            <i class="fa-brands fa-github"></i>
+          </div>
+          <div>
+            <h4 style="font-size: 1.2rem; font-weight: 800; color: #fff; margin-bottom: 4px;">مشروع مفتوح المصدر بالكامل (Open Source)</h4>
+            <p style="font-size: 0.95rem; color: var(--text-muted); line-height: 1.65; max-width: 650px;">ندعم المبادرات التعليمية والخدمية المجانية. الكود البرمجي بالكامل متاح للمطورين على GitHub للتعديل والتطوير المشترك للخدمة.</p>
+          </div>
+        </div>
+        <a href="https://github.com/UuWagdy/Sunday_School" target="_blank" rel="noopener" class="btn-download" style="background-color: #1e293b; color: white; padding: 12px 24px; border-radius: 10px; text-decoration: none; font-weight: 800; display: inline-flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,0.08); transition: var(--transition-base); white-space: nowrap;">
+          <i class="fa-brands fa-github"></i>
+          <span>عرض السورس كود على GitHub</span>
+        </a>
+      </div>
+
+      <!-- Prerequisite Warning Box -->
+      <div class="dependency-box">
+        <div class="dep-icon">
+          <i class="fa-solid fa-circle-exclamation"></i>
+        </div>
+        <div class="dep-content">
+          <h4>متطلب تشغيل هام لنسخة الكمبيوتر!</h4>
+          <p>لتشغيل قاعدة البيانات بنجاح وبدون أي أخطاء برمجية على نظام الويندوز، يجب تحميل هذا الملف المساعد وتثبيته على حاسوبك <strong>قبل فتح ملف برنامج مدارس الأحد للكمبيوتر</strong>.</p>
+        </div>
+        <a href="https://www.mediafire.com/file/ggfvkdy8vc9et2b/يجب+التنزيل+قبل+تشغيل+البرنامج.rar/file" target="_blank" rel="noopener" class="btn-dep">
+          <i class="fa-solid fa-download"></i>
+          <span>تنزيل الملف المساعد (.rar)</span>
+        </a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Developers Section -->
+  <section class="developers-section" id="developers">
+    <div class="section-header">
+      <span class="section-tag">فريق التطوير والعمل</span>
+      <h2 class="section-title">الجهات <span>المطورة والمبرمجة</span> للنظام والموقع</h2>
+      <p class="section-desc">فريق العمل المسؤول عن برمجة وتطوير النظام بمختلف نسخه وقواعد بياناته.</p>
+    </div>
+    
+    <div class="dev-grid">
+      <!-- George -->
+      <div class="dev-card">
+        <div class="dev-avatar-wrapper">
+          <img src="public/logo.png" alt="George Mounir">
+        </div>
+        <h3>م. جورج منير</h3>
+        <div class="dev-role">برمجة وتصميم النسخة الأصلية للبرنامج (C#)</div>
+      </div>
+      
+      <!-- Youssab -->
+      <div class="dev-card">
+        <div class="dev-avatar-wrapper" style="color: #02569b;">
+          <img src="public/logo.png" alt="Youssab Wagdy">
+        </div>
+        <h3>د. يوساب وجدي (أنا)</h3>
+        <div class="dev-role">تصميم وتطوير تطبيق الهواتف والكمبيوتر الحالي (Flutter)<br>وتصميم وتطوير هذا الموقع الإلكتروني التعريفي وتطبيق الـ PWA</div>
+        <a href="tel:01036976446" class="dev-phone-btn">
+          <i class="fa-solid fa-phone"></i>
+          <span>01036976446</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-container">
+      <a href="#" class="logo-area">
+        <img src="public/logo.png" alt="شعار مدارس الأحد" class="logo-img">
+        <span class="logo-text">برنامج مدارس الأحد</span>
+      </a>
+      <p class="section-desc" style="max-width: 600px; margin-top: 10px; font-size: 0.95rem;">
+        منصة رقمية متكاملة لخدمة الكنيسة وتسهيل المتابعة والرعاية الروحية والأنشطة.
+      </p>
+      
+      <ul class="footer-links">
+        <li><a href="#features">المميزات الأساسية</a></li>
+        <li><a href="#explorer">التبويبات الـ 17</a></li>
+        <li><a href="#downloads">تنزيل البرنامج</a></li>
+
+      </ul>
+
+      <p class="copyright">
+        صُنع لأجل مجد المسيح وخدمة كنيسته المقدسة <span class="heart-icon">❤</span> 2026. جميع الحقوق محفوظة للخدمة.
+      </p>
+    </div>
+  </footer>
+
+  <!-- Service Worker & PWA Logic + Interactive Tabs Logic -->
+  <script>
+    // Mobile Menu Logic
+    const hamburgerBtn = document.getElementById('hamburger-btn');
+    const mobileMenu = document.getElementById('mobile-menu');
+    const mobileMenuClose = document.getElementById('mobile-menu-close');
+
+    hamburgerBtn.addEventListener('click', () => {
+      mobileMenu.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    });
+
+    mobileMenuClose.addEventListener('click', closeMobileMenu);
+
+    function closeMobileMenu() {
+      mobileMenu.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then((registration) => {
+            console.log('ServiceWorker registered with scope: ', registration.scope);
+          })
+          .catch((error) => {
+            console.log('ServiceWorker registration failed: ', error);
+          });
+      });
+    }
+
+    // PWA Install Banner Logic
+    let deferredPrompt;
+    const pwaBanner = document.getElementById('pwa-banner');
+    const pwaInstallBtn = document.getElementById('pwa-install-btn');
+    const pwaCloseBtn = document.getElementById('pwa-close-btn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      pwaBanner.style.display = 'flex';
+      document.body.classList.add('has-banner');
+    });
+
+    pwaInstallBtn.addEventListener('click', () => {
+      pwaBanner.style.display = 'none';
+      document.body.classList.remove('has-banner');
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('User accepted the install prompt');
+        }
+        deferredPrompt = null;
+      });
+    });
+
+    pwaCloseBtn.addEventListener('click', () => {
+      pwaBanner.style.display = 'none';
+      document.body.classList.remove('has-banner');
+    });
+
+    // 17-Tabs Category Switching Logic
+    function switchCategory(category, buttonElement) {
+      const buttons = document.querySelectorAll('.category-btn');
+      buttons.forEach(btn => btn.classList.remove('active'));
+      buttonElement.classList.add('active');
+      
+      const panels = document.querySelectorAll('.category-panel-content');
+      panels.forEach(panel => {
+        panel.style.display = 'none';
+      });
+      
+      const targetPanel = document.getElementById('panel-' + category);
+      if (targetPanel) {
+        targetPanel.style.display = 'block';
+        
+        const accordionItems = targetPanel.querySelectorAll('.accordion-item');
+        accordionItems.forEach((item, index) => {
+          const body = item.querySelector('.accordion-body');
+          if (index === 0) {
+            item.classList.add('active');
+            body.style.maxHeight = '500px';
+          } else {
+            item.classList.remove('active');
+            body.style.maxHeight = '0px';
+          }
+        });
+      }
+    }
+
+    // Accordion Toggle Logic
+    function toggleAccordion(headerElement) {
+      const accordionItem = headerElement.parentElement;
+      const accordionBody = accordionItem.querySelector('.accordion-body');
+      const isAlreadyActive = accordionItem.classList.contains('active');
+      
+      const activePanel = accordionItem.closest('.category-panel-content');
+      const siblings = activePanel.querySelectorAll('.accordion-item');
+      siblings.forEach(sibling => {
+        sibling.classList.remove('active');
+        sibling.querySelector('.accordion-body').style.maxHeight = '0px';
+      });
+      
+      if (!isAlreadyActive) {
+        accordionItem.classList.add('active');
+        accordionBody.style.maxHeight = '500px';
+      }
+    }
+  </script>
+</body>
+</html>
