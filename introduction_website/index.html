@@ -1939,6 +1939,22 @@
         font-size: 0.8rem;
       }
     }
+
+    /* Force PWA Install Button to the bottom-left on mobile */
+    @media (max-width: 768px) {
+      #pwa-banner {
+        bottom: 20px !important;
+        left: 20px !important;
+        right: auto !important;
+        top: auto !important;
+        width: auto !important;
+        height: auto !important;
+        transform: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        position: fixed !important;
+      }
+    }
   </style>
 </head>
 <body>
