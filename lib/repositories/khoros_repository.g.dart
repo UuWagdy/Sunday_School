@@ -33,7 +33,7 @@ final class KhorosRepositoryProvider
   KhorosRepository create() => KhorosRepository();
 }
 
-String _$khorosRepositoryHash() => r'78046218baadabe308921a7cd9988530f188b0ed';
+String _$khorosRepositoryHash() => r'741a9e2a67aa8d071ece19e17596fc4888155173';
 
 abstract class _$KhorosRepository extends $AsyncNotifier<List<KhorosModel>> {
   FutureOr<List<KhorosModel>> build();

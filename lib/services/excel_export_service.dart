@@ -5,9 +5,32 @@ import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import '../repositories/attendance_repository.dart';
 import '../repositories/persons_repository.dart';
+import '../utils/contact_links.dart';
 
 class ExcelExportService {
   static final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
+
+  static String _customValue(Map<int, String> values, String id) {
+    final parts = id.split('_');
+    if (parts.length < 2) return '';
+    final fieldId = int.tryParse(parts[1]);
+    if (fieldId == null) return '';
+    return values[fieldId] ?? '';
+  }
+
+  static String _attendancePhoneValue(AttendanceDTO r, String id) {
+    if (id == 'mobile') return r.mobile ?? '';
+    if (id == 'phone') return r.phone ?? '';
+    if (id.startsWith('custom_')) return _customValue(r.customValues, id);
+    return '';
+  }
+
+  static String _personPhoneValue(PersonListDTO r, String id) {
+    if (id == 'mobile') return r.mobile;
+    if (id == 'phone') return r.phone;
+    if (id.startsWith('custom_')) return _customValue(r.customValues, id);
+    return '';
+  }
 
   static Future<String?> exportAttendanceList({
     required List<AttendanceDTO> data,
@@ -41,11 +64,34 @@ class ExcelExportService {
       final row = [
         IntCellValue(i + 1),
         ...columns.map((col) {
-          switch (col['id']) {
+          final columnId = col['id'] ?? '';
+          if (columnId.startsWith('call_')) {
+            return TextCellValue(
+              ContactLinks.telUri(
+                    _attendancePhoneValue(
+                      r,
+                      columnId.substring('call_'.length),
+                    ),
+                  )?.toString() ??
+                  '',
+            );
+          }
+          if (columnId.startsWith('whatsapp_')) {
+            return TextCellValue(
+              ContactLinks.normalizeEgyptPhone(
+                _attendancePhoneValue(
+                  r,
+                  columnId.substring('whatsapp_'.length),
+                ),
+              ),
+            );
+          }
+
+          switch (columnId) {
             case 'name':
-              return TextCellValue(r.personName ?? '');
+              return TextCellValue(r.personName);
             case 'id':
-              return IntCellValue(r.personId ?? 0);
+              return IntCellValue(r.personId);
             case 'area':
               return TextCellValue(r.areaName ?? '');
             case 'stage':
@@ -97,6 +143,9 @@ class ExcelExportService {
             case 'visitNotes':
               return TextCellValue(r.visitNotes ?? '');
             default:
+              if (columnId.startsWith('custom_')) {
+                return TextCellValue(_customValue(r.customValues, columnId));
+              }
               return TextCellValue('');
           }
         }),
@@ -132,17 +181,16 @@ class ExcelExportService {
     final Map<int, Set<String>> attendanceMap = {};
 
     for (var r in data) {
-      if (r.personId != null) {
-        if (!personsMap.containsKey(r.personId!)) {
-          personsMap[r.personId!] = r;
-        }
-        if (!attendanceMap.containsKey(r.personId!)) {
-          attendanceMap[r.personId!] = {};
-        }
-        if (r.dateWeek != null && r.id != null) {
-          final s = r.serviceName?.trim() ?? '';
-          attendanceMap[r.personId!]!.add('${r.dateWeek!}|$s');
-        }
+      final personId = r.personId;
+      if (!personsMap.containsKey(personId)) {
+        personsMap[personId] = r;
+      }
+      if (!attendanceMap.containsKey(personId)) {
+        attendanceMap[personId] = {};
+      }
+      if (r.dateWeek != null && r.id != null) {
+        final s = r.serviceName?.trim() ?? '';
+        attendanceMap[personId]!.add('${r.dateWeek}|$s');
       }
     }
     final personIds = personsMap.keys.toList();
@@ -170,12 +218,34 @@ class ExcelExportService {
         IntCellValue(i + 1),
         ...columns.map((col) {
           String txt = '';
-          switch (col['id']) {
+          final columnId = col['id'] ?? '';
+          if (columnId.startsWith('call_')) {
+            txt =
+                ContactLinks.telUri(
+                  _attendancePhoneValue(
+                    personRec,
+                    columnId.substring('call_'.length),
+                  ),
+                )?.toString() ??
+                '';
+            return TextCellValue(txt);
+          }
+          if (columnId.startsWith('whatsapp_')) {
+            txt = ContactLinks.normalizeEgyptPhone(
+              _attendancePhoneValue(
+                personRec,
+                columnId.substring('whatsapp_'.length),
+              ),
+            );
+            return TextCellValue(txt);
+          }
+
+          switch (columnId) {
             case 'name':
-              txt = personRec.personName ?? '';
+              txt = personRec.personName;
               break;
             case 'id':
-              txt = personRec.personId?.toString() ?? '';
+              txt = personRec.personId.toString();
               break;
             case 'area':
               txt = personRec.areaName ?? '';
@@ -214,6 +284,10 @@ class ExcelExportService {
             case 'visitNotes':
               txt = personRec.visitNotes ?? '';
               break;
+            default:
+              if (columnId.startsWith('custom_')) {
+                txt = _customValue(personRec.customValues, columnId);
+              }
           }
           return TextCellValue(txt);
         }),
@@ -273,7 +347,24 @@ class ExcelExportService {
       final row = [
         IntCellValue(i + 1),
         ...columns.map((col) {
-          switch (col['id']) {
+          final columnId = col['id'] ?? '';
+          if (columnId.startsWith('call_')) {
+            return TextCellValue(
+              ContactLinks.telUri(
+                    _personPhoneValue(r, columnId.substring('call_'.length)),
+                  )?.toString() ??
+                  '',
+            );
+          }
+          if (columnId.startsWith('whatsapp_')) {
+            return TextCellValue(
+              ContactLinks.normalizeEgyptPhone(
+                _personPhoneValue(r, columnId.substring('whatsapp_'.length)),
+              ),
+            );
+          }
+
+          switch (columnId) {
             case 'name':
               return TextCellValue(r.name);
             case 'id':
@@ -303,6 +394,9 @@ class ExcelExportService {
             case 'relationship':
               return TextCellValue(r.relationship ?? '');
             default:
+              if (columnId.startsWith('custom_')) {
+                return TextCellValue(_customValue(r.customValues, columnId));
+              }
               return TextCellValue('');
           }
         }),

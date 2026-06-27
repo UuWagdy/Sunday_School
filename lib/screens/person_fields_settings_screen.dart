@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../repositories/fields_repository.dart';
@@ -7,10 +6,12 @@ class PersonFieldsSettingsScreen extends ConsumerStatefulWidget {
   const PersonFieldsSettingsScreen({super.key});
 
   @override
-  ConsumerState<PersonFieldsSettingsScreen> createState() => _PersonFieldsSettingsScreenState();
+  ConsumerState<PersonFieldsSettingsScreen> createState() =>
+      _PersonFieldsSettingsScreenState();
 }
 
-class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSettingsScreen> {
+class _PersonFieldsSettingsScreenState
+    extends ConsumerState<PersonFieldsSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final fieldsAsync = ref.watch(fieldsRepositoryProvider);
@@ -24,10 +25,12 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
         child: Dialog(
           elevation: 24,
           insetPadding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 12 : 24, 
-            vertical: isMobile ? 16 : 32
+            horizontal: isMobile ? 12 : 24,
+            vertical: isMobile ? 16 : 32,
           ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
           clipBehavior: Clip.antiAlias,
           child: Container(
             width: isMobile ? screenWidth * 0.95 : 700,
@@ -42,7 +45,8 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
                 Expanded(
                   child: fieldsAsync.when(
                     data: (fields) => _buildFieldsList(fields, isMobile),
-                    loading: () => const Center(child: CircularProgressIndicator()),
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
                     error: (e, _) => Center(child: Text('Error: $e')),
                   ),
                 ),
@@ -58,12 +62,15 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
   Widget _buildHeader(bool isMobile) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 16 : 24, 
-        vertical: isMobile ? 16 : 20
+        horizontal: isMobile ? 16 : 24,
+        vertical: isMobile ? 16 : 20,
       ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withBlue(150)],
+          colors: [
+            Theme.of(context).primaryColor,
+            Theme.of(context).primaryColor.withBlue(150),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -77,9 +84,9 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              Icons.settings_suggest_rounded, 
-              color: Colors.white, 
-              size: isMobile ? 22 : 28
+              Icons.settings_suggest_rounded,
+              color: Colors.white,
+              size: isMobile ? 22 : 28,
             ),
           ),
           SizedBox(width: isMobile ? 12 : 16),
@@ -90,19 +97,19 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
                 Text(
                   'إعدادات خانات المخدومين',
                   style: TextStyle(
-                    color: Colors.white, 
-                    fontSize: isMobile ? 17 : 20, 
-                    fontWeight: FontWeight.w900, 
-                    letterSpacing: 0.5
+                    color: Colors.white,
+                    fontSize: isMobile ? 17 : 20,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   'تخصيص وترتيب البيانات الإضافية',
                   style: TextStyle(
-                    color: Colors.white70, 
-                    fontSize: isMobile ? 10 : 12, 
-                    fontWeight: FontWeight.normal
+                    color: Colors.white70,
+                    fontSize: isMobile ? 10 : 12,
+                    fontWeight: FontWeight.normal,
                   ),
                 ),
               ],
@@ -144,20 +151,28 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
   Widget _buildFieldItem(FieldConfigDTO f, bool isMobile) {
     IconData typeIcon = Icons.text_fields;
     Color typeColor = Colors.blue;
-    if (f.type == 'dropdown') { typeIcon = Icons.arrow_drop_down_circle_outlined; typeColor = Colors.orange; }
-    else if (f.type == 'multi_select') { typeIcon = Icons.checklist_rtl_outlined; typeColor = Colors.purple; }
-    else if (f.type == 'checkbox') { typeIcon = Icons.check_box_outlined; typeColor = Colors.teal; }
-    else if (f.type == 'document') { typeIcon = Icons.attach_file; typeColor = Colors.brown; }
-    else if (f.type == 'native') { typeIcon = Icons.vpn_key_outlined; typeColor = Colors.grey; }
+    if (f.type == 'dropdown') {
+      typeIcon = Icons.arrow_drop_down_circle_outlined;
+      typeColor = Colors.orange;
+    } else if (f.type == 'multi_select') {
+      typeIcon = Icons.checklist_rtl_outlined;
+      typeColor = Colors.purple;
+    } else if (f.type == 'checkbox') {
+      typeIcon = Icons.check_box_outlined;
+      typeColor = Colors.teal;
+    } else if (f.type == 'document') {
+      typeIcon = Icons.attach_file;
+      typeColor = Colors.brown;
+    } else if (f.type == 'native') {
+      typeIcon = Icons.vpn_key_outlined;
+      typeColor = Colors.grey;
+    }
 
     final bool isNative = f.fieldKey != null;
 
     return Container(
       key: ValueKey(f.id),
-      margin: EdgeInsets.symmetric(
-        horizontal: isMobile ? 8 : 16, 
-        vertical: 6
-      ),
+      margin: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 16, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -175,33 +190,34 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
         child: IntrinsicHeight(
           child: Row(
             children: [
-              Container(
-                width: 5,
-                color: typeColor,
-              ),
+              Container(width: 5, color: typeColor),
               Expanded(
                 child: ListTile(
                   contentPadding: EdgeInsets.fromLTRB(
-                    isMobile ? 4 : 12, 
-                    isMobile ? 4 : 8, 
-                    isMobile ? 12 : 20, 
-                    isMobile ? 4 : 8
+                    isMobile ? 4 : 12,
+                    isMobile ? 4 : 8,
+                    isMobile ? 12 : 20,
+                    isMobile ? 4 : 8,
                   ),
                   leading: Container(
-                    width: isMobile ? 40 : 48, 
+                    width: isMobile ? 40 : 48,
                     height: isMobile ? 40 : 48,
                     decoration: BoxDecoration(
                       color: typeColor.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(typeIcon, color: typeColor, size: isMobile ? 20 : 24),
+                    child: Icon(
+                      typeIcon,
+                      color: typeColor,
+                      size: isMobile ? 20 : 24,
+                    ),
                   ),
                   title: Text(
                     f.name,
                     style: TextStyle(
-                      fontWeight: FontWeight.w800, 
-                      fontSize: isMobile ? 14 : 16, 
-                      color: const Color(0xFF2D3142)
+                      fontWeight: FontWeight.w800,
+                      fontSize: isMobile ? 14 : 16,
+                      color: const Color(0xFF2D3142),
                     ),
                   ),
                   subtitle: Padding(
@@ -212,15 +228,32 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         if (f.isFilter)
-                          _buildChip(Icons.filter_alt_rounded, 'فلتر', Colors.green, isMobile),
+                          _buildChip(
+                            Icons.filter_alt_rounded,
+                            'فلتر',
+                            Colors.green,
+                            isMobile,
+                          ),
+                        if (f.isPhone)
+                          _buildChip(
+                            Icons.phone_rounded,
+                            'رقم هاتف',
+                            Colors.indigo,
+                            isMobile,
+                          ),
                         if (!f.isVisible)
-                          _buildChip(Icons.visibility_off_rounded, 'مخفي', Colors.red, isMobile),
+                          _buildChip(
+                            Icons.visibility_off_rounded,
+                            'مخفي',
+                            Colors.red,
+                            isMobile,
+                          ),
                         Text(
                           isNative ? 'نظام' : 'مخصص',
                           style: TextStyle(
-                            fontSize: isMobile ? 9 : 11, 
-                            color: Colors.blueGrey.shade300, 
-                            fontWeight: FontWeight.w500
+                            fontSize: isMobile ? 9 : 11,
+                            color: Colors.blueGrey.shade300,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
@@ -230,33 +263,37 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _buildActionButton(
-                        Icons.edit_rounded, 
-                        Colors.indigo, 
-                        () => _showEditFieldDialog(f), 
+                        Icons.edit_rounded,
+                        Colors.indigo,
+                        () => _showEditFieldDialog(f),
                         'تعديل',
-                        isMobile
+                        isMobile,
                       ),
                       if (!isNative)
                         _buildActionButton(
-                          Icons.delete_outline_rounded, 
-                          Colors.red, 
-                          () => _deleteField(f), 
+                          Icons.delete_outline_rounded,
+                          Colors.red,
+                          () => _deleteField(f),
                           'حذف',
-                          isMobile
+                          isMobile,
                         ),
                       if (isNative)
                         _buildActionButton(
-                          f.isVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                          f.isVisible
+                              ? Icons.visibility_rounded
+                              : Icons.visibility_off_rounded,
                           f.isVisible ? Colors.teal : Colors.blueGrey,
-                          () => ref.read(fieldsRepositoryProvider.notifier).updateFieldVisibility(f.id, !f.isVisible),
+                          () => ref
+                              .read(fieldsRepositoryProvider.notifier)
+                              .updateFieldVisibility(f.id, !f.isVisible),
                           'رؤية',
-                          isMobile
+                          isMobile,
                         ),
                       if (!isMobile) const SizedBox(width: 4),
                       Icon(
-                        Icons.drag_indicator_rounded, 
-                        color: Colors.black12, 
-                        size: isMobile ? 20 : 24
+                        Icons.drag_indicator_rounded,
+                        color: Colors.black12,
+                        size: isMobile ? 20 : 24,
                       ),
                     ],
                   ),
@@ -269,12 +306,14 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
     );
   }
 
-  Widget _buildChip(IconData icon, String label, MaterialColor color, bool isMobile) {
+  Widget _buildChip(
+    IconData icon,
+    String label,
+    MaterialColor color,
+    bool isMobile,
+  ) {
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 6 : 10, 
-        vertical: 2
-      ),
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 10, vertical: 2),
       decoration: BoxDecoration(
         color: color.shade50,
         borderRadius: BorderRadius.circular(20),
@@ -286,19 +325,25 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
           Icon(icon, size: isMobile ? 10 : 12, color: color.shade700),
           SizedBox(width: isMobile ? 2 : 4),
           Text(
-            label, 
+            label,
             style: TextStyle(
-              fontSize: isMobile ? 8 : 10, 
-              color: color.shade800, 
-              fontWeight: FontWeight.bold
-            )
+              fontSize: isMobile ? 8 : 10,
+              color: color.shade800,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildActionButton(IconData icon, Color color, VoidCallback onTap, String tooltip, bool isMobile) {
+  Widget _buildActionButton(
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+    String tooltip,
+    bool isMobile,
+  ) {
     return Material(
       color: Colors.transparent,
       child: IconButton(
@@ -308,9 +353,7 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
         onPressed: onTap,
         tooltip: tooltip,
         splashRadius: isMobile ? 18 : 24,
-        style: IconButton.styleFrom(
-          hoverColor: color.withOpacity(0.08),
-        ),
+        style: IconButton.styleFrom(hoverColor: color.withOpacity(0.08)),
       ),
     );
   }
@@ -330,8 +373,8 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
               onPressed: _showAddFieldDialog,
               icon: Icon(Icons.add, size: isMobile ? 18 : 20),
               label: Text(
-                'إضافة خانة مخصصة', 
-                style: TextStyle(fontSize: isMobile ? 12 : 14)
+                'إضافة خانة مخصصة',
+                style: TextStyle(fontSize: isMobile ? 12 : 14),
               ),
               style: FilledButton.styleFrom(
                 padding: EdgeInsets.symmetric(vertical: isMobile ? 10 : 16),
@@ -342,8 +385,8 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: Text(
-              'إغلاق', 
-              style: TextStyle(fontSize: isMobile ? 12 : 14)
+              'إغلاق',
+              style: TextStyle(fontSize: isMobile ? 12 : 14),
             ),
           ),
         ],
@@ -356,10 +399,18 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('حذف خانة'),
-        content: Text('هل أنت متأكد من حذف الخانة "${f.name}"؟ سيتم حذف بياناتها من كل المخدومين.'),
+        content: Text(
+          'هل أنت متأكد من حذف الخانة "${f.name}"؟ سيتم حذف بياناتها من كل المخدومين.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('حذف', style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
@@ -382,6 +433,7 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
     final List<String> options = List.from(f?.options ?? []);
     bool isFilter = f?.isFilter ?? false;
     bool isVisible = f?.isVisible ?? true;
+    bool isPhone = f?.isPhone ?? false;
 
     showDialog(
       context: context,
@@ -398,35 +450,82 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
                   children: [
                     TextField(
                       controller: nameC,
-                      decoration: const InputDecoration(labelText: 'اسم الخانة', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: 'اسم الخانة',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: type,
-                      decoration: const InputDecoration(labelText: 'نوع الخانة', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: 'نوع الخانة',
+                        border: OutlineInputBorder(),
+                      ),
                       items: [
-                        const DropdownMenuItem(value: 'text', child: Text('كتابة نصية')),
-                        const DropdownMenuItem(value: 'dropdown', child: Text('قائمة منسدلة (اختيار واحد)')),
-                        const DropdownMenuItem(value: 'multi_select', child: Text('قائمة منسدلة (اختيار متعدد)')),
-                        const DropdownMenuItem(value: 'checkbox', child: Text('مربع اختيار (نعم/لا)')),
-                        const DropdownMenuItem(value: 'document', child: Text('مستندات (ملفات)')),
+                        const DropdownMenuItem(
+                          value: 'text',
+                          child: Text('كتابة نصية'),
+                        ),
+                        const DropdownMenuItem(
+                          value: 'dropdown',
+                          child: Text('قائمة منسدلة (اختيار واحد)'),
+                        ),
+                        const DropdownMenuItem(
+                          value: 'multi_select',
+                          child: Text('قائمة منسدلة (اختيار متعدد)'),
+                        ),
+                        const DropdownMenuItem(
+                          value: 'checkbox',
+                          child: Text('مربع اختيار (نعم/لا)'),
+                        ),
+                        const DropdownMenuItem(
+                          value: 'document',
+                          child: Text('مستندات (ملفات)'),
+                        ),
                         if (f?.type == 'native')
-                          const DropdownMenuItem(value: 'native', child: Text('حقل نظام أساسي')),
+                          const DropdownMenuItem(
+                            value: 'native',
+                            child: Text('حقل نظام أساسي'),
+                          ),
                       ],
                       onChanged: f?.fieldKey != null
                           ? null
-                          : (v) => setDlgState(() => type = v!),
+                          : (v) => setDlgState(() {
+                              type = v!;
+                              if (type != 'text') isPhone = false;
+                            }),
                     ),
+
+                    if (type == 'text' && f?.fieldKey == null) ...[
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        title: const Text('هذا رقم هاتف'),
+                        subtitle: const Text(
+                          'عند تحديدها يظهر لهذه الخانة أعمدة اتصال وواتساب في تقارير الأشخاص والحضور والافتقاد.',
+                        ),
+                        value: isPhone,
+                        contentPadding: EdgeInsets.zero,
+                        onChanged: (v) =>
+                            setDlgState(() => isPhone = v ?? false),
+                      ),
+                    ],
 
                     if (type == 'dropdown' || type == 'multi_select') ...[
                       const SizedBox(height: 20),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('تسمية الحالات والاختيارات:', style: TextStyle(fontWeight: FontWeight.bold)),
+                          const Text(
+                            'تسمية الحالات والاختيارات:',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           TextButton.icon(
                             onPressed: () => _addOption(setDlgState, options),
-                            icon: const Icon(Icons.add_circle_outline, size: 18),
+                            icon: const Icon(
+                              Icons.add_circle_outline,
+                              size: 18,
+                            ),
                             label: const Text('إضافة اختيار'),
                           ),
                         ],
@@ -439,7 +538,12 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: options.isEmpty
-                            ? const Center(child: Text('لا توجد اختيارات بعد', style: TextStyle(color: Colors.grey)))
+                            ? const Center(
+                                child: Text(
+                                  'لا توجد اختيارات بعد',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              )
                             : ListView.builder(
                                 itemCount: options.length,
                                 itemBuilder: (ctx, i) => ListTile(
@@ -449,12 +553,26 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       IconButton(
-                                        icon: const Icon(Icons.edit, size: 18, color: Colors.blue),
-                                        onPressed: () => _editOption(setDlgState, options, i),
+                                        icon: const Icon(
+                                          Icons.edit,
+                                          size: 18,
+                                          color: Colors.blue,
+                                        ),
+                                        onPressed: () => _editOption(
+                                          setDlgState,
+                                          options,
+                                          i,
+                                        ),
                                       ),
                                       IconButton(
-                                        icon: const Icon(Icons.delete, size: 18, color: Colors.red),
-                                        onPressed: () => setDlgState(() => options.removeAt(i)),
+                                        icon: const Icon(
+                                          Icons.delete,
+                                          size: 18,
+                                          color: Colors.red,
+                                        ),
+                                        onPressed: () => setDlgState(
+                                          () => options.removeAt(i),
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -464,38 +582,50 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
                     ],
                     const SizedBox(height: 16),
                     CheckboxListTile(
-                      title: const Text('هل تريد ظهور فلتر خاص بها في تبويب الحضور وتحليل البيانات؟'),
+                      title: const Text(
+                        'هل تريد ظهور فلتر خاص بها في تبويب الحضور وتحليل البيانات؟',
+                      ),
                       value: isFilter,
                       contentPadding: EdgeInsets.zero,
-                      onChanged: (v) => setDlgState(() => isFilter = v ?? false),
+                      onChanged: (v) =>
+                          setDlgState(() => isFilter = v ?? false),
                     ),
                   ],
                 ),
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إلغاء'),
+              ),
               FilledButton(
                 onPressed: () async {
                   if (nameC.text.trim().isEmpty) return;
-                  
+
                   bool ok;
                   if (f == null) {
-                    ok = await ref.read(fieldsRepositoryProvider.notifier).addCustomField(
-                      name: nameC.text.trim(),
-                      type: type,
-                      options: type == 'text' ? null : options,
-                      isFilter: isFilter,
-                    );
+                    ok = await ref
+                        .read(fieldsRepositoryProvider.notifier)
+                        .addCustomField(
+                          name: nameC.text.trim(),
+                          type: type,
+                          options: type == 'text' ? null : options,
+                          isFilter: isFilter,
+                          isPhone: isPhone,
+                        );
                   } else {
-                    ok = await ref.read(fieldsRepositoryProvider.notifier).updateCustomField(
-                      id: f.id,
-                      name: nameC.text.trim(),
-                      type: type,
-                      options: type == 'text' ? null : options,
-                      isFilter: isFilter,
-                      isVisible: isVisible,
-                    );
+                    ok = await ref
+                        .read(fieldsRepositoryProvider.notifier)
+                        .updateCustomField(
+                          id: f.id,
+                          name: nameC.text.trim(),
+                          type: type,
+                          options: type == 'text' ? null : options,
+                          isFilter: isFilter,
+                          isVisible: isVisible,
+                          isPhone: isPhone,
+                        );
                   }
                   if (mounted && ok) Navigator.pop(context);
                 },
@@ -508,7 +638,10 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
     );
   }
 
-  void _addOption(void Function(void Function()) setDlgState, List<String> options) {
+  void _addOption(
+    void Function(void Function()) setDlgState,
+    List<String> options,
+  ) {
     final c = TextEditingController();
     showDialog(
       context: context,
@@ -520,7 +653,10 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
           decoration: const InputDecoration(hintText: 'اكتب الاختيار هنا...'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
           TextButton(
             onPressed: () {
               if (c.text.trim().isNotEmpty) {
@@ -535,7 +671,11 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
     );
   }
 
-  void _editOption(void Function(void Function()) setDlgState, List<String> options, int index) {
+  void _editOption(
+    void Function(void Function()) setDlgState,
+    List<String> options,
+    int index,
+  ) {
     final c = TextEditingController(text: options[index]);
     showDialog(
       context: context,
@@ -544,10 +684,15 @@ class _PersonFieldsSettingsScreenState extends ConsumerState<PersonFieldsSetting
         content: TextField(
           controller: c,
           autofocus: true,
-          decoration: const InputDecoration(hintText: 'اكتب الاختيار الجديد...'),
+          decoration: const InputDecoration(
+            hintText: 'اكتب الاختيار الجديد...',
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
           TextButton(
             onPressed: () {
               if (c.text.trim().isNotEmpty) {

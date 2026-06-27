@@ -17,6 +17,7 @@ class FieldConfigDTO {
   final int order;
   final bool isVisible;
   final bool isFilter;
+  final bool isPhone;
 
   FieldConfigDTO({
     required this.id,
@@ -27,6 +28,7 @@ class FieldConfigDTO {
     required this.order,
     required this.isVisible,
     required this.isFilter,
+    required this.isPhone,
   });
 
   factory FieldConfigDTO.fromDb(CustomFieldDefinition d) {
@@ -45,6 +47,7 @@ class FieldConfigDTO {
       order: d.fieldOrder,
       isVisible: d.isVisible,
       isFilter: d.isFilter,
+      isPhone: d.isPhone || d.fieldKey == 'mobile' || d.fieldKey == 'phone',
     );
   }
 }
@@ -58,20 +61,27 @@ class FieldsRepository extends _$FieldsRepository {
 
   Future<List<FieldConfigDTO>> fetchAll() async {
     final db = ref.read(appDatabaseProvider);
-    final rows = await (db.select(db.customFieldDefinitions)
-      ..orderBy([(t) => OrderingTerm.asc(t.fieldOrder)])).get();
+    final rows = await (db.select(
+      db.customFieldDefinitions,
+    )..orderBy([(t) => OrderingTerm.asc(t.fieldOrder)])).get();
     return rows.map((r) => FieldConfigDTO.fromDb(r)).toList();
   }
 
   Future<void> updateFieldVisibility(int id, bool isVisible) async {
     final db = ref.read(appDatabaseProvider);
-    final field = await (db.select(db.customFieldDefinitions)..where((t) => t.id.equals(id))).getSingleOrNull();
+    final field = await (db.select(
+      db.customFieldDefinitions,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
     if (field != null) {
-      await (db.update(db.customFieldDefinitions)..where((t) => t.id.equals(id)))
+      await (db.update(db.customFieldDefinitions)
+            ..where((t) => t.id.equals(id)))
           .write(CustomFieldDefinitionsCompanion(isVisible: Value(isVisible)));
       if (field.fieldKey == 'rohot' && isVisible) {
-        await (db.update(db.customFieldDefinitions)..where((t) => t.fieldKey.equals('leader')))
-            .write(const CustomFieldDefinitionsCompanion(isVisible: Value(true)));
+        await (db.update(
+          db.customFieldDefinitions,
+        )..where((t) => t.fieldKey.equals('leader'))).write(
+          const CustomFieldDefinitionsCompanion(isVisible: Value(true)),
+        );
       }
     }
     ref.invalidateSelf();
@@ -88,9 +98,11 @@ class FieldsRepository extends _$FieldsRepository {
     final db = ref.read(appDatabaseProvider);
     await db.batch((batch) {
       for (int i = 0; i < fields.length; i++) {
-        batch.update(db.customFieldDefinitions,
-            CustomFieldDefinitionsCompanion(fieldOrder: Value(i)),
-            where: (t) => t.id.equals(fields[i].id));
+        batch.update(
+          db.customFieldDefinitions,
+          CustomFieldDefinitionsCompanion(fieldOrder: Value(i)),
+          where: (t) => t.id.equals(fields[i].id),
+        );
       }
     });
     ref.invalidateSelf();
@@ -98,22 +110,29 @@ class FieldsRepository extends _$FieldsRepository {
 
   Future<bool> addCustomField({
     required String name,
-    required String type, // 'text', 'dropdown', 'multi_select', 'checkbox', 'document'
+    required String
+    type, // 'text', 'dropdown', 'multi_select', 'checkbox', 'document'
     List<String>? options,
     bool isFilter = false,
+    bool isPhone = false,
   }) async {
     try {
       final db = ref.read(appDatabaseProvider);
       final all = await fetchAll();
       final nextOrder = all.isEmpty ? 0 : all.last.order + 1;
-      
-      await db.into(db.customFieldDefinitions).insert(CustomFieldDefinitionsCompanion.insert(
-        name: name,
-        type: type,
-        fieldOrder: nextOrder,
-        options: Value(options != null ? jsonEncode(options) : null),
-        isFilter: Value(isFilter),
-      ));
+
+      await db
+          .into(db.customFieldDefinitions)
+          .insert(
+            CustomFieldDefinitionsCompanion.insert(
+              name: name,
+              type: type,
+              fieldOrder: nextOrder,
+              options: Value(options != null ? jsonEncode(options) : null),
+              isFilter: Value(isFilter),
+              isPhone: Value(type == 'text' && isPhone),
+            ),
+          );
       ref.invalidateSelf();
       return true;
     } catch (e) {
@@ -121,7 +140,7 @@ class FieldsRepository extends _$FieldsRepository {
       return false;
     }
   }
-  
+
   Future<bool> updateCustomField({
     required int id,
     required String name,
@@ -129,16 +148,24 @@ class FieldsRepository extends _$FieldsRepository {
     List<String>? options,
     bool? isFilter,
     bool? isVisible,
+    bool? isPhone,
   }) async {
     try {
       final db = ref.read(appDatabaseProvider);
-      await (db.update(db.customFieldDefinitions)..where((t) => t.id.equals(id))).write(
+      await (db.update(
+        db.customFieldDefinitions,
+      )..where((t) => t.id.equals(id))).write(
         CustomFieldDefinitionsCompanion(
           name: Value(name),
           type: Value(type),
           options: Value(options != null ? jsonEncode(options) : null),
           isFilter: isFilter != null ? Value(isFilter) : const Value.absent(),
-          isVisible: isVisible != null ? Value(isVisible) : const Value.absent(),
+          isVisible: isVisible != null
+              ? Value(isVisible)
+              : const Value.absent(),
+          isPhone: isPhone != null
+              ? Value(type == 'text' && isPhone)
+              : const Value.absent(),
         ),
       );
       ref.invalidateSelf();
@@ -152,7 +179,9 @@ class FieldsRepository extends _$FieldsRepository {
   Future<bool> addOptionToCustomField(int id, String newOption) async {
     try {
       final db = ref.read(appDatabaseProvider);
-      final field = await (db.select(db.customFieldDefinitions)..where((t) => t.id.equals(id))).getSingleOrNull();
+      final field = await (db.select(
+        db.customFieldDefinitions,
+      )..where((t) => t.id.equals(id))).getSingleOrNull();
       if (field != null) {
         List<String> opts = [];
         if (field.options != null && field.options!.isNotEmpty) {
@@ -162,8 +191,11 @@ class FieldsRepository extends _$FieldsRepository {
         }
         if (!opts.contains(newOption)) {
           opts.add(newOption);
-          await (db.update(db.customFieldDefinitions)..where((t) => t.id.equals(id)))
-              .write(CustomFieldDefinitionsCompanion(options: Value(jsonEncode(opts))));
+          await (db.update(
+            db.customFieldDefinitions,
+          )..where((t) => t.id.equals(id))).write(
+            CustomFieldDefinitionsCompanion(options: Value(jsonEncode(opts))),
+          );
           ref.invalidateSelf();
           return true;
         }
@@ -178,7 +210,9 @@ class FieldsRepository extends _$FieldsRepository {
   Future<bool> deleteCustomField(int id) async {
     try {
       final db = ref.read(appDatabaseProvider);
-      await (db.delete(db.customFieldDefinitions)..where((t) => t.id.equals(id))).go();
+      await (db.delete(
+        db.customFieldDefinitions,
+      )..where((t) => t.id.equals(id))).go();
       ref.invalidateSelf();
       return true;
     } catch (e) {

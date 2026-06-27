@@ -30,7 +30,7 @@ class PersonDialog extends ConsumerStatefulWidget {
 
 class _PersonDialogState extends ConsumerState<PersonDialog> {
   final _formKey = GlobalKey<FormState>();
-  late TextEditingController _nameC, _streetC, _phoneC, _mobileC;
+  late TextEditingController _idC, _nameC, _streetC, _phoneC, _mobileC;
   late TextEditingController _dayC_birth, _monthC_birth, _yearC_birth;
   int? _stageId, _khorosId, _areaId, _fatherId, _day, _month, _year;
   String? _gender, _rohot, _leader;
@@ -53,30 +53,45 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
     super.initState();
     _currentPerson = widget.person; // Initialize with widget.person
     final p = _currentPerson; // Use _currentPerson for initial values
+    _idC = TextEditingController(text: p?.id.toString() ?? '');
     _nameC = TextEditingController(text: p?.name ?? '');
     _streetC = TextEditingController(text: p?.streetName ?? '');
     _phoneC = TextEditingController(text: p?.phone ?? '');
     _mobileC = TextEditingController(text: p?.mobile ?? '');
-    _dayC_birth = TextEditingController(text: p?.day != null ? p!.day.toString() : '');
-    _monthC_birth = TextEditingController(text: p?.month != null ? p!.month.toString() : '');
-    _yearC_birth = TextEditingController(text: p?.year != null ? p!.year.toString() : '');
-    _stageId = p?.stageId; _khorosId = p?.khorosId; _areaId = p?.areaId; _fatherId = p?.fatherId;
-    _gender = p?.jenderName; _day = p?.day; _month = p?.month; _year = p?.year;
+    _dayC_birth = TextEditingController(
+      text: p?.day != null ? p!.day.toString() : '',
+    );
+    _monthC_birth = TextEditingController(
+      text: p?.month != null ? p!.month.toString() : '',
+    );
+    _yearC_birth = TextEditingController(
+      text: p?.year != null ? p!.year.toString() : '',
+    );
+    _stageId = p?.stageId;
+    _khorosId = p?.khorosId;
+    _areaId = p?.areaId;
+    _fatherId = p?.fatherId;
+    _gender = p?.jenderName;
+    _day = p?.day;
+    _month = p?.month;
+    _year = p?.year;
     _rohot = p?.rohot;
     _leader = p?.leader;
     _photoBytes = p?.photo;
     _selectedServiceIds = List.from(p?.serviceIds ?? []);
-    
+
     if (isEditing) {
       _loadCustomValues();
     } else {
       _isInitDataLoaded = true;
+      _loadNextPersonId();
     }
     _loadRohotGroupsMap();
   }
 
   @override
   void dispose() {
+    _idC.dispose();
     _nameC.dispose();
     _streetC.dispose();
     _phoneC.dispose();
@@ -88,8 +103,11 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   }
 
   Future<void> _loadCustomValues() async {
-    if (_currentPerson == null) return; // Should not happen if isEditing is true
-    final values = await ref.read(personsRepositoryProvider.notifier).fetchCustomFieldValues(_currentPerson!.id);
+    if (_currentPerson == null)
+      return; // Should not happen if isEditing is true
+    final values = await ref
+        .read(personsRepositoryProvider.notifier)
+        .fetchCustomFieldValues(_currentPerson!.id);
     if (mounted) {
       setState(() {
         _customValues = values;
@@ -98,20 +116,29 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
     }
   }
 
-  bool _hasModifiedData = false; // Flag to return true to caller for refreshing list
+  Future<void> _loadNextPersonId() async {
+    final nextId = await ref
+        .read(personsRepositoryProvider.notifier)
+        .nextPersonId();
+    if (!mounted || isEditing || _idC.text.trim().isNotEmpty) return;
+    setState(() => _idC.text = nextId.toString());
+  }
+
+  bool _hasModifiedData =
+      false; // Flag to return true to caller for refreshing list
 
   bool _isValidDate(int day, int month, int year) {
     if (month < 1 || month > 12) return false;
     if (year < 1900 || year > DateTime.now().year) return false;
-    
+
     final monthLength = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    
+
     if (month == 2) {
       final isLeap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
       final maxDays = isLeap ? 29 : 28;
       return day >= 1 && day <= maxDays;
     }
-    
+
     return day >= 1 && day <= monthLength[month - 1];
   }
 
@@ -127,7 +154,11 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
 
     if (dayStr.isNotEmpty || monthStr.isNotEmpty || yearStr.isNotEmpty) {
       if (dayStr.isEmpty || monthStr.isEmpty || yearStr.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إكمال تاريخ الميلاد (يوم وشهر وسنة)')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('يرجى إكمال تاريخ الميلاد (يوم وشهر وسنة)'),
+          ),
+        );
         setState(() => _isLoading = false);
         return;
       }
@@ -135,7 +166,13 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       final m = int.tryParse(monthStr);
       final y = int.tryParse(yearStr);
       if (d == null || m == null || y == null || !_isValidDate(d, m, y)) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تاريخ الميلاد المدخل غير صالح (مثلاً تحقق من عدد أيام الشهر أو السنة الكبيسة)')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'تاريخ الميلاد المدخل غير صالح (مثلاً تحقق من عدد أيام الشهر أو السنة الكبيسة)',
+            ),
+          ),
+        );
         setState(() => _isLoading = false);
         return;
       }
@@ -147,57 +184,112 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       _month = null;
       _year = null;
     }
-    
+
+    final enteredId = int.tryParse(_idC.text.trim());
+    if (enteredId == null || enteredId <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('يرجى إدخال رقم كارنيه صحيح وغير فارغ'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    final idExists = await ref
+        .read(personsRepositoryProvider.notifier)
+        .personIdExists(enteredId);
+    if (widget.person == null && !_hasBeenAdded && idExists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'رقم الكارنيه $enteredId مستخدم بالفعل، اختر رقمًا آخر',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+
     final bool isBrandNew = widget.person == null && !_hasBeenAdded;
 
     try {
       final repo = ref.read(personsRepositoryProvider.notifier);
-      
+
       if (!isBrandNew) {
         // Update Case
         final ok = await repo.updatePerson(
-          id: _currentPerson!.id, 
+          id: _currentPerson!.id,
           name: _nameC.text.trim(),
-          stageId: _stageId, khorosId: _khorosId, areaId: _areaId, fatherId: _fatherId, streetName: _streetC.text.trim(),
-          phone: _phoneC.text.trim(), mobile: _mobileC.text.trim(),
-          day: _day, month: _month, year: _year, jenderName: _gender,
+          stageId: _stageId,
+          khorosId: _khorosId,
+          areaId: _areaId,
+          fatherId: _fatherId,
+          streetName: _streetC.text.trim(),
+          phone: _phoneC.text.trim(),
+          mobile: _mobileC.text.trim(),
+          day: _day,
+          month: _month,
+          year: _year,
+          jenderName: _gender,
           photo: _photoBytes,
           serviceIds: _selectedServiceIds,
           customValues: _customValues,
           rohot: _rohot,
           leader: _leader,
         );
-        
+
         if (mounted && ok) {
           _hasModifiedData = true;
           Navigator.pop(context, true); // Complete and close
         } else if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('حدث خطأ أثناء الحفظ')));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('حدث خطأ أثناء الحفظ')));
         }
       } else {
         // Initial 'Add' Case
         final newId = await repo.addPerson(
+          id: enteredId,
           name: _nameC.text.trim(),
-          stageId: _stageId, khorosId: _khorosId, areaId: _areaId, fatherId: _fatherId, streetName: _streetC.text.trim(),
-          phone: _phoneC.text.trim(), mobile: _mobileC.text.trim(),
-          day: _day, month: _month, year: _year, jenderName: _gender,
+          stageId: _stageId,
+          khorosId: _khorosId,
+          areaId: _areaId,
+          fatherId: _fatherId,
+          streetName: _streetC.text.trim(),
+          phone: _phoneC.text.trim(),
+          mobile: _mobileC.text.trim(),
+          day: _day,
+          month: _month,
+          year: _year,
+          jenderName: _gender,
           photo: _photoBytes,
           serviceIds: _selectedServiceIds,
           customValues: _customValues,
           rohot: _rohot,
           leader: _leader,
         );
-        
+
         if (mounted && newId != null) {
           _hasModifiedData = true;
           Navigator.pop(context, true);
         } else if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('حدث خطأ أثناء إضافة المخدوم؛ تأكد من الحقول المطلوبة')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'حدث خطأ أثناء إضافة المخدوم؛ تأكد من الحقول المطلوبة',
+              ),
+            ),
+          );
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ برمجيا: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('خطأ برمجيا: $e')));
       }
     } finally {
       if (mounted) {
@@ -217,7 +309,6 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
     final isWide = screenW >= 700;
     final dialogWidth = isWide ? 650.0 : screenW * 0.95;
 
-
     return Directionality(
       textDirection: TextDirection.rtl,
       child: PopScope(
@@ -227,69 +318,96 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
           Navigator.pop(context, _hasModifiedData);
         },
         child: Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           clipBehavior: Clip.antiAlias,
           child: Container(
-          width: dialogWidth,
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
-          child: DefaultTabController(
-            length: 2,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildHeader(),
-                TabBar(
-                  labelColor: Theme.of(context).primaryColor,
-                  unselectedLabelColor: Colors.grey,
-                  indicatorColor: Theme.of(context).primaryColor,
-                  tabs: const [
-                    Tab(icon: Icon(Icons.person_outline), text: 'البيانات الأساسية'),
-                    Tab(icon: Icon(Icons.family_restroom_outlined), text: 'الأقارب'),
-                  ],
-                ),
-                Flexible(
-                  child: TabBarView(
-                    children: [
-                      // Tab 1: Basic Info
-                      SingleChildScrollView(
-                        padding: EdgeInsets.all(isWide ? 24 : 12),
-                        child: Consumer(
-                          builder: (context, ref, child) {
-                            final fieldsAsync = ref.watch(fieldsRepositoryProvider);
-                            return fieldsAsync.when(
-                              data: (fields) => Form(
-                                key: _formKey,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildPhotoPicker(),
-                                    const SizedBox(height: 16),
-                                    _buildStaticIdField(),
-                                    const SizedBox(height: 16),
-                                    ...fields.where((f) => f.isVisible).map((f) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 16),
-                                      child: _buildDynamicField(f, db, isWide),
-                                    )),
-                                  ],
-                                ),
-                              ),
-                              loading: () => const Center(child: CircularProgressIndicator()),
-                              error: (e, _) => Center(child: Text('Error loading fields: $e')),
-                            );
-                          },
-                        ),
+            width: dialogWidth,
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
+            child: DefaultTabController(
+              length: 2,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildHeader(),
+                  TabBar(
+                    labelColor: Theme.of(context).primaryColor,
+                    unselectedLabelColor: Colors.grey,
+                    indicatorColor: Theme.of(context).primaryColor,
+                    tabs: const [
+                      Tab(
+                        icon: Icon(Icons.person_outline),
+                        text: 'البيانات الأساسية',
                       ),
-                      // Tab 2: Kinship
-                      _buildKinshipTab(),
+                      Tab(
+                        icon: Icon(Icons.family_restroom_outlined),
+                        text: 'الأقارب',
+                      ),
                     ],
                   ),
-                ),
-                _buildActions(),
-              ],
+                  Flexible(
+                    child: TabBarView(
+                      children: [
+                        // Tab 1: Basic Info
+                        SingleChildScrollView(
+                          padding: EdgeInsets.all(isWide ? 24 : 12),
+                          child: Consumer(
+                            builder: (context, ref, child) {
+                              final fieldsAsync = ref.watch(
+                                fieldsRepositoryProvider,
+                              );
+                              return fieldsAsync.when(
+                                data: (fields) => Form(
+                                  key: _formKey,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _buildPhotoPicker(),
+                                      const SizedBox(height: 16),
+                                      _buildStaticIdField(),
+                                      const SizedBox(height: 16),
+                                      ...fields
+                                          .where((f) => f.isVisible)
+                                          .map(
+                                            (f) => Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 16,
+                                              ),
+                                              child: _buildDynamicField(
+                                                f,
+                                                db,
+                                                isWide,
+                                              ),
+                                            ),
+                                          ),
+                                    ],
+                                  ),
+                                ),
+                                loading: () => const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                                error: (e, _) => Center(
+                                  child: Text('Error loading fields: $e'),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        // Tab 2: Kinship
+                        _buildKinshipTab(),
+                      ],
+                    ),
+                  ),
+                  _buildActions(),
+                ],
+              ),
             ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -297,19 +415,30 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   Widget _buildHeader() {
     final isMobile = MediaQuery.of(context).size.width < 600;
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 24, vertical: isMobile ? 14 : 20),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 12 : 24,
+        vertical: isMobile ? 14 : 20,
+      ),
       decoration: BoxDecoration(
         color: Theme.of(context).primaryColor,
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
       ),
       child: Row(
         children: [
-          Icon(isEditing ? Icons.edit_note : Icons.person_add_outlined, color: Colors.white, size: isMobile ? 24 : 28),
+          Icon(
+            isEditing ? Icons.edit_note : Icons.person_add_outlined,
+            color: Colors.white,
+            size: isMobile ? 24 : 28,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               isEditing ? 'تعديل بيانات مخدوم' : 'إضافة مخدوم جديد',
-              style: TextStyle(color: Colors.white, fontSize: isMobile ? 17 : 20, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: isMobile ? 17 : 20,
+                fontWeight: FontWeight.bold,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -330,7 +459,14 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       builder: (_, snap) {
         final data = snap.data ?? [];
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Align(alignment: Alignment.centerLeft, child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)));
+          return const Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
         }
         return HierarchicalAreaPicker(
           allAreas: data,
@@ -349,13 +485,23 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       future: db.select(db.fathers).get(),
       builder: (_, snap) {
         final data = snap.data ?? [];
-        final effectiveValue = data.any((f) => f.fatherId == _fatherId) ? _fatherId : null;
+        final effectiveValue = data.any((f) => f.fatherId == _fatherId)
+            ? _fatherId
+            : null;
         return DropdownButtonFormField<int?>(
           value: effectiveValue,
-          decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.person_pin_outlined)),
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: const Icon(Icons.person_pin_outlined),
+          ),
           items: [
             DropdownMenuItem(value: null, child: Text('اختر $label')),
-            ...data.map((f) => DropdownMenuItem(value: f.fatherId, child: Text(f.fatherName ?? ''))),
+            ...data.map(
+              (f) => DropdownMenuItem(
+                value: f.fatherId,
+                child: Text(f.fatherName ?? ''),
+              ),
+            ),
           ],
           onChanged: (v) => setState(() => _fatherId = v),
         );
@@ -423,7 +569,10 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
           children: [
             const Icon(Icons.cake_outlined, size: 20, color: Colors.grey),
             const SizedBox(width: 8),
-            Text('$label:', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            Text(
+              '$label:',
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -443,7 +592,10 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   Widget _buildActions() {
     final isMobile = MediaQuery.of(context).size.width < 600;
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 24, vertical: 12),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 12 : 24,
+        vertical: 12,
+      ),
       decoration: BoxDecoration(
         color: Colors.grey[50],
         border: Border(top: BorderSide(color: Colors.grey.shade200)),
@@ -452,18 +604,33 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           TextButton(
-            onPressed: _isLoading ? null : () => Navigator.pop(context, _hasModifiedData),
+            onPressed: _isLoading
+                ? null
+                : () => Navigator.pop(context, _hasModifiedData),
             child: Text(_hasModifiedData ? 'إغلاق' : 'إلغاء'),
           ),
           const SizedBox(width: 12),
           ElevatedButton.icon(
             onPressed: _isLoading ? null : _save,
-            icon: _isLoading 
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : Icon(isEditing ? Icons.check : Icons.add, size: 18),
-            label: Text(_isLoading ? 'جاري...' : (isEditing ? 'حفظ' : 'إضافة'), style: const TextStyle(fontWeight: FontWeight.bold)),
+            icon: _isLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Icon(isEditing ? Icons.check : Icons.add, size: 18),
+            label: Text(
+              _isLoading ? 'جاري...' : (isEditing ? 'حفظ' : 'إضافة'),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             style: ElevatedButton.styleFrom(
-              padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24, vertical: 12),
+              padding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 16 : 24,
+                vertical: 12,
+              ),
             ),
           ),
         ],
@@ -471,7 +638,11 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
     );
   }
 
-  Widget _wrapWithAddButton({required Widget child, required VoidCallback onAdd, String tooltip = 'إضافة جديد'}) {
+  Widget _wrapWithAddButton({
+    required Widget child,
+    required VoidCallback onAdd,
+    String tooltip = 'إضافة جديد',
+  }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -507,7 +678,10 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context, textC.text),
-                child: const Text('موافق', style: TextStyle(color: Colors.green)),
+                child: const Text(
+                  'موافق',
+                  style: TextStyle(color: Colors.green),
+                ),
               ),
             ],
           ),
@@ -517,17 +691,27 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   }
 
   Future<void> _addStage(AppDatabase db) async {
-    final name = await _showSimpleInputDialog('إضافة مرحلة جديدة', 'اسم المرحلة');
+    final name = await _showSimpleInputDialog(
+      'إضافة مرحلة جديدة',
+      'اسم المرحلة',
+    );
     if (name != null && name.trim().isNotEmpty) {
-      final ok = await ref.read(stagesRepositoryProvider.notifier).addStage(name.trim());
+      final ok = await ref
+          .read(stagesRepositoryProvider.notifier)
+          .addStage(name.trim());
       if (ok) {
         final list = await db.select(db.stages).get();
-        final newStage = list.firstWhere((s) => s.stageName == name.trim(), orElse: () => list.last);
+        final newStage = list.firstWhere(
+          (s) => s.stageName == name.trim(),
+          orElse: () => list.last,
+        );
         setState(() {
           _stageId = newStage.stageId;
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('المرحلة موجودة بالفعل أو حدث خطأ')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('المرحلة موجودة بالفعل أو حدث خطأ')),
+        );
       }
     }
   }
@@ -535,15 +719,22 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   Future<void> _addKhoros(AppDatabase db) async {
     final name = await _showSimpleInputDialog('إضافة خورس جديد', 'اسم الخورس');
     if (name != null && name.trim().isNotEmpty) {
-      final ok = await ref.read(khorosRepositoryProvider.notifier).addKhoros(name.trim());
+      final ok = await ref
+          .read(khorosRepositoryProvider.notifier)
+          .addKhoros(name.trim());
       if (ok) {
         final list = await db.select(db.khoroses).get();
-        final newKhoros = list.firstWhere((k) => k.khorosName == name.trim(), orElse: () => list.last);
+        final newKhoros = list.firstWhere(
+          (k) => k.khorosName == name.trim(),
+          orElse: () => list.last,
+        );
         setState(() {
           _khorosId = newKhoros.khorosId;
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الخورس موجود بالفعل أو حدث خطأ')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('الخورس موجود بالفعل أو حدث خطأ')),
+        );
       }
     }
   }
@@ -552,7 +743,7 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
     final areas = await db.select(db.areas).get();
     int? parentId = _areaId;
     final nameC = TextEditingController();
-    
+
     final result = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -567,15 +758,27 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                   children: [
                     TextField(
                       controller: nameC,
-                      decoration: const InputDecoration(labelText: 'اسم المنطقة *'),
+                      decoration: const InputDecoration(
+                        labelText: 'اسم المنطقة *',
+                      ),
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<int?>(
                       value: parentId,
-                      decoration: const InputDecoration(labelText: 'المنطقة الرئيسية (اختياري)'),
+                      decoration: const InputDecoration(
+                        labelText: 'المنطقة الرئيسية (اختياري)',
+                      ),
                       items: [
-                        const DropdownMenuItem(value: null, child: Text('بدون منطقة رئيسية (منطقة مستوى أول)')),
-                        ...areas.map((a) => DropdownMenuItem(value: a.areaId, child: Text(a.areaName ?? ''))),
+                        const DropdownMenuItem(
+                          value: null,
+                          child: Text('بدون منطقة رئيسية (منطقة مستوى أول)'),
+                        ),
+                        ...areas.map(
+                          (a) => DropdownMenuItem(
+                            value: a.areaId,
+                            child: Text(a.areaName ?? ''),
+                          ),
+                        ),
                       ],
                       onChanged: (val) {
                         setState(() {
@@ -586,10 +789,16 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                   ],
                 ),
                 actions: [
-                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('إلغاء'),
+                  ),
                   TextButton(
                     onPressed: () => Navigator.pop(context, true),
-                    child: const Text('إضافة', style: TextStyle(color: Colors.green)),
+                    child: const Text(
+                      'إضافة',
+                      style: TextStyle(color: Colors.green),
+                    ),
                   ),
                 ],
               ),
@@ -598,33 +807,50 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
         );
       },
     );
-    
+
     if (result == true && nameC.text.trim().isNotEmpty) {
-      final ok = await ref.read(areasRepositoryProvider.notifier).addArea(nameC.text.trim(), parentId: parentId);
+      final ok = await ref
+          .read(areasRepositoryProvider.notifier)
+          .addArea(nameC.text.trim(), parentId: parentId);
       if (ok) {
         final list = await db.select(db.areas).get();
-        final newArea = list.firstWhere((a) => a.areaName == nameC.text.trim(), orElse: () => list.last);
+        final newArea = list.firstWhere(
+          (a) => a.areaName == nameC.text.trim(),
+          orElse: () => list.last,
+        );
         setState(() {
           _areaId = newArea.areaId;
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('المنطقة موجودة بالفعل أو حدث خطأ')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('المنطقة موجودة بالفعل أو حدث خطأ')),
+        );
       }
     }
   }
 
   Future<void> _addFather(AppDatabase db) async {
-    final name = await _showSimpleInputDialog('إضافة أب اعتراف جديد', 'اسم أب الاعتراف');
+    final name = await _showSimpleInputDialog(
+      'إضافة أب اعتراف جديد',
+      'اسم أب الاعتراف',
+    );
     if (name != null && name.trim().isNotEmpty) {
-      final ok = await ref.read(fathersRepositoryProvider.notifier).addFather(name.trim());
+      final ok = await ref
+          .read(fathersRepositoryProvider.notifier)
+          .addFather(name.trim());
       if (ok) {
         final list = await db.select(db.fathers).get();
-        final newFather = list.firstWhere((f) => f.fatherName == name.trim(), orElse: () => list.last);
+        final newFather = list.firstWhere(
+          (f) => f.fatherName == name.trim(),
+          orElse: () => list.last,
+        );
         setState(() {
           _fatherId = newFather.fatherId;
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أب الاعتراف موجود بالفعل أو حدث خطأ')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('أب الاعتراف موجود بالفعل أو حدث خطأ')),
+        );
       }
     }
   }
@@ -633,7 +859,7 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
     final nameC = TextEditingController();
     final leaders = List<String>.from(_leadersList);
     String? selectedLeader;
-    
+
     final result = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -648,15 +874,24 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                   children: [
                     TextField(
                       controller: nameC,
-                      decoration: const InputDecoration(labelText: 'اسم الرهط *'),
+                      decoration: const InputDecoration(
+                        labelText: 'اسم الرهط *',
+                      ),
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String?>(
                       value: selectedLeader,
-                      decoration: const InputDecoration(labelText: 'قائد الرهط (اختياري)'),
+                      decoration: const InputDecoration(
+                        labelText: 'قائد الرهط (اختياري)',
+                      ),
                       items: [
-                        const DropdownMenuItem(value: null, child: Text('بدون قائد حالياً')),
-                        ...leaders.map((l) => DropdownMenuItem(value: l, child: Text(l))),
+                        const DropdownMenuItem(
+                          value: null,
+                          child: Text('بدون قائد حالياً'),
+                        ),
+                        ...leaders.map(
+                          (l) => DropdownMenuItem(value: l, child: Text(l)),
+                        ),
                       ],
                       onChanged: (val) {
                         setState(() {
@@ -667,10 +902,16 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                   ],
                 ),
                 actions: [
-                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('إلغاء'),
+                  ),
                   TextButton(
                     onPressed: () => Navigator.pop(context, true),
-                    child: const Text('إضافة', style: TextStyle(color: Colors.green)),
+                    child: const Text(
+                      'إضافة',
+                      style: TextStyle(color: Colors.green),
+                    ),
                   ),
                 ],
               ),
@@ -679,16 +920,21 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
         );
       },
     );
-    
+
     if (result == true && nameC.text.trim().isNotEmpty) {
       final name = nameC.text.trim();
       final settingsRepo = ref.read(settingsRepositoryProvider);
-      
+
       _rohotLeaderMap[name] = selectedLeader ?? '';
-      
-      final listToSave = _rohotLeaderMap.entries.map((e) => {'name': e.key, 'leader': e.value}).toList();
-      await settingsRepo.saveSetting('rohot_groups_json', jsonEncode(listToSave));
-      
+
+      final listToSave = _rohotLeaderMap.entries
+          .map((e) => {'name': e.key, 'leader': e.value})
+          .toList();
+      await settingsRepo.saveSetting(
+        'rohot_groups_json',
+        jsonEncode(listToSave),
+      );
+
       await _loadRohotGroupsMap();
       setState(() {
         _rohot = name;
@@ -705,7 +951,10 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       final settingsRepo = ref.read(settingsRepositoryProvider);
       if (!_leadersList.contains(name.trim())) {
         _leadersList.add(name.trim());
-        await settingsRepo.saveSetting('rohot_leaders_json', jsonEncode(_leadersList));
+        await settingsRepo.saveSetting(
+          'rohot_leaders_json',
+          jsonEncode(_leadersList),
+        );
         await _loadRohotGroupsMap();
         setState(() {
           _leader = name.trim();
@@ -717,15 +966,15 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   Future<void> _addService(AppDatabase db) async {
     final name = await _showSimpleInputDialog('إضافة خدمة جديدة', 'اسم الخدمة');
     if (name != null && name.trim().isNotEmpty) {
-      final ok = await ref.read(servicesRepositoryProvider.notifier).addService(
-        name: name.trim(),
-        dayOfWeek: 5,
-        hour: 8,
-        minute: 0,
-      );
+      final ok = await ref
+          .read(servicesRepositoryProvider.notifier)
+          .addService(name: name.trim(), dayOfWeek: 5, hour: 8, minute: 0);
       if (ok) {
         final list = await db.select(db.services).get();
-        final newService = list.firstWhere((s) => s.serviceName == name.trim(), orElse: () => list.last);
+        final newService = list.firstWhere(
+          (s) => s.serviceName == name.trim(),
+          orElse: () => list.last,
+        );
         setState(() {
           if (!_selectedServiceIds.contains(newService.serviceId)) {
             _selectedServiceIds.add(newService.serviceId);
@@ -736,52 +985,83 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   }
 
   Future<void> _addCustomDropdownOption(FieldConfigDTO f) async {
-    final name = await _showSimpleInputDialog('إضافة خيار جديد لـ ${f.name}', 'الخيار الجديد');
+    final name = await _showSimpleInputDialog(
+      'إضافة خيار جديد لـ ${f.name}',
+      'الخيار الجديد',
+    );
     if (name != null && name.trim().isNotEmpty) {
       final newOption = name.trim();
-      final ok = await ref.read(fieldsRepositoryProvider.notifier).addOptionToCustomField(f.id, newOption);
+      final ok = await ref
+          .read(fieldsRepositoryProvider.notifier)
+          .addOptionToCustomField(f.id, newOption);
       if (ok) {
         setState(() {
           _customValues[f.id] = newOption;
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الخيار موجود بالفعل أو حدث خطأ')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('الخيار موجود بالفعل أو حدث خطأ')),
+        );
       }
     }
   }
 
   Future<void> _addCustomMultiSelectOption(FieldConfigDTO f) async {
-    final name = await _showSimpleInputDialog('إضافة خيار جديد لـ ${f.name}', 'الخيار الجديد');
+    final name = await _showSimpleInputDialog(
+      'إضافة خيار جديد لـ ${f.name}',
+      'الخيار الجديد',
+    );
     if (name != null && name.trim().isNotEmpty) {
       final newOption = name.trim();
-      final ok = await ref.read(fieldsRepositoryProvider.notifier).addOptionToCustomField(f.id, newOption);
+      final ok = await ref
+          .read(fieldsRepositoryProvider.notifier)
+          .addOptionToCustomField(f.id, newOption);
       if (ok) {
         setState(() {
-          final currentVals = _customValues[f.id]?.split(',').where((e) => e.isNotEmpty).toList() ?? [];
+          final currentVals =
+              _customValues[f.id]
+                  ?.split(',')
+                  .where((e) => e.isNotEmpty)
+                  .toList() ??
+              [];
           if (!currentVals.contains(newOption)) {
             currentVals.add(newOption);
           }
           _customValues[f.id] = currentVals.join(',');
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الخيار موجود بالفعل أو حدث خطأ')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('الخيار موجود بالفعل أو حدث خطأ')),
+        );
       }
     }
   }
 
   Widget _buildStaticIdField() {
     return TextFormField(
-      initialValue: isEditing ? _currentPerson!.id.toString() : 'تلقائي (Automatic)',
-      readOnly: true,
-      enabled: false,
-      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+      controller: _idC,
+      readOnly: isEditing,
+      enabled: true,
+      keyboardType: TextInputType.number,
+      style: TextStyle(
+        fontWeight: FontWeight.bold,
+        color: isEditing ? Colors.grey.shade700 : Colors.black87,
+      ),
       decoration: InputDecoration(
-        labelText: 'كود المخدوم',
+        labelText: 'رقم الكارنيه',
+        helperText: isEditing
+            ? 'الرقم محفوظ لهذا الشخص'
+            : 'يمكنك ترك الرقم التلقائي أو تغييره قبل الحفظ',
         prefixIcon: const Icon(Icons.qr_code),
         filled: true,
-        fillColor: Colors.grey.shade200,
+        fillColor: isEditing ? Colors.grey.shade200 : Colors.white,
         border: const OutlineInputBorder(),
       ),
+      validator: (value) {
+        final id = int.tryParse(value?.trim() ?? '');
+        if (id == null || id <= 0) return 'رقم الكارنيه غير صحيح';
+        return null;
+      },
     );
   }
 
@@ -791,34 +1071,85 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
         case 'name':
           return TextFormField(
             controller: _nameC,
-            decoration: InputDecoration(labelText: '${f.name} *', prefixIcon: const Icon(Icons.person_outline)),
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'يرجى إدخال ${f.name}' : null,
+            decoration: InputDecoration(
+              labelText: '${f.name} *',
+              prefixIcon: const Icon(Icons.person_outline),
+            ),
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'يرجى إدخال ${f.name}' : null,
           );
-        case 'gender': return _buildGenderDropdown(db, f.name);
-        case 'stage': return _wrapWithAddButton(child: _buildStageDropdown(db, f.name), onAdd: () => _addStage(db), tooltip: 'إضافة مرحلة');
+        case 'gender':
+          return _buildGenderDropdown(db, f.name);
+        case 'stage':
+          return _wrapWithAddButton(
+            child: _buildStageDropdown(db, f.name),
+            onAdd: () => _addStage(db),
+            tooltip: 'إضافة مرحلة',
+          );
         case 'mobile':
           return TextFormField(
             controller: _mobileC,
-            decoration: InputDecoration(labelText: f.name, prefixIcon: const Icon(Icons.phone_android_outlined)),
+            decoration: InputDecoration(
+              labelText: f.name,
+              prefixIcon: const Icon(Icons.phone_android_outlined),
+            ),
           );
         case 'phone':
           return TextFormField(
             controller: _phoneC,
-            decoration: InputDecoration(labelText: f.name, prefixIcon: const Icon(Icons.phone_outlined)),
+            decoration: InputDecoration(
+              labelText: f.name,
+              prefixIcon: const Icon(Icons.phone_outlined),
+            ),
           );
-        case 'area': return _wrapWithAddButton(child: _buildAreaDropdown(db, f.name), onAdd: () => _addArea(db), tooltip: 'إضافة منطقة');
+        case 'area':
+          return _wrapWithAddButton(
+            child: _buildAreaDropdown(db, f.name),
+            onAdd: () => _addArea(db),
+            tooltip: 'إضافة منطقة',
+          );
         case 'street':
           return TextFormField(
             controller: _streetC,
-            decoration: InputDecoration(labelText: f.name, prefixIcon: const Icon(Icons.location_on_outlined)),
+            decoration: InputDecoration(
+              labelText: f.name,
+              prefixIcon: const Icon(Icons.location_on_outlined),
+            ),
           );
-        case 'father': return _wrapWithAddButton(child: _buildFatherDropdown(db, f.name), onAdd: () => _addFather(db), tooltip: 'إضافة أب اعتراف');
-        case 'khoros': return _wrapWithAddButton(child: _buildKhorosDropdown(db, f.name), onAdd: () => _addKhoros(db), tooltip: 'إضافة خورس');
-        case 'rohot': return _wrapWithAddButton(child: _buildRohotDropdown(db, f.name), onAdd: () => _addRohotGroup(), tooltip: 'إضافة رهط');
-        case 'leader': return _wrapWithAddButton(child: _buildLeaderDropdown(db, f.name), onAdd: () => _addLeader(), tooltip: 'إضافة قائد');
-        case 'services': return _wrapWithAddButton(child: _buildServicesMultiSelect(db, f.name), onAdd: () => _addService(db), tooltip: 'إضافة خدمة');
-        case 'birthday': return _buildBirthDatePicker(f.name);
-        default: return const SizedBox.shrink();
+        case 'father':
+          return _wrapWithAddButton(
+            child: _buildFatherDropdown(db, f.name),
+            onAdd: () => _addFather(db),
+            tooltip: 'إضافة أب اعتراف',
+          );
+        case 'khoros':
+          return _wrapWithAddButton(
+            child: _buildKhorosDropdown(db, f.name),
+            onAdd: () => _addKhoros(db),
+            tooltip: 'إضافة خورس',
+          );
+        case 'rohot':
+          return _wrapWithAddButton(
+            child: _buildRohotDropdown(db, f.name),
+            onAdd: () => _addRohotGroup(),
+            tooltip: 'إضافة رهط',
+          );
+        case 'leader':
+          return _wrapWithAddButton(
+            child: _buildLeaderDropdown(db, f.name),
+            onAdd: () => _addLeader(),
+            tooltip: 'إضافة قائد',
+          );
+        case 'services':
+          return _wrapWithAddButton(
+            child: _buildServicesMultiSelect(db, f.name),
+            onAdd: () => _addService(db),
+            tooltip: 'إضافة خدمة',
+          );
+        case 'birthday':
+          return _buildBirthDatePicker(f.name);
+        default:
+          return const SizedBox.shrink();
       }
     } else {
       // Custom Fields
@@ -826,17 +1157,27 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
         case 'text':
           return TextFormField(
             initialValue: _customValues[f.id],
-            decoration: InputDecoration(labelText: f.name, prefixIcon: const Icon(Icons.edit_note)),
+            decoration: InputDecoration(
+              labelText: f.name,
+              prefixIcon: const Icon(Icons.edit_note),
+            ),
             onChanged: (v) => _customValues[f.id] = v,
           );
         case 'dropdown':
           return _wrapWithAddButton(
             child: DropdownButtonFormField<String>(
-              value: _customValues[f.id]?.isNotEmpty == true ? _customValues[f.id] : null,
-              decoration: InputDecoration(labelText: f.name, prefixIcon: const Icon(Icons.list)),
+              value: _customValues[f.id]?.isNotEmpty == true
+                  ? _customValues[f.id]
+                  : null,
+              decoration: InputDecoration(
+                labelText: f.name,
+                prefixIcon: const Icon(Icons.list),
+              ),
               items: [
                 DropdownMenuItem(value: null, child: Text('اختر ${f.name}')),
-                ...f.options.map((opt) => DropdownMenuItem(value: opt, child: Text(opt))),
+                ...f.options.map(
+                  (opt) => DropdownMenuItem(value: opt, child: Text(opt)),
+                ),
               ],
               onChanged: (v) => setState(() => _customValues[f.id] = v ?? ''),
             ),
@@ -844,16 +1185,31 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
             tooltip: 'إضافة خيار جديد',
           );
         case 'multi_select':
-          final currentVals = _customValues[f.id]?.split(',').where((e) => e.isNotEmpty).toList() ?? [];
+          final currentVals =
+              _customValues[f.id]
+                  ?.split(',')
+                  .where((e) => e.isNotEmpty)
+                  .toList() ??
+              [];
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(f.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  Text(
+                    f.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
                   IconButton(
-                    icon: const Icon(Icons.add_circle_outline, color: Colors.green, size: 20),
+                    icon: const Icon(
+                      Icons.add_circle_outline,
+                      color: Colors.green,
+                      size: 20,
+                    ),
                     onPressed: () => _addCustomMultiSelectOption(f),
                     tooltip: 'إضافة خيار جديد',
                   ),
@@ -869,8 +1225,10 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                     selected: isSelected,
                     onSelected: (selected) {
                       setState(() {
-                        if (selected) currentVals.add(opt);
-                        else currentVals.remove(opt);
+                        if (selected)
+                          currentVals.add(opt);
+                        else
+                          currentVals.remove(opt);
                         _customValues[f.id] = currentVals.join(',');
                       });
                     },
@@ -888,11 +1246,13 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
             subtitle: Text(isChecked ? trueLabel : falseLabel),
             value: isChecked,
             contentPadding: EdgeInsets.zero,
-            onChanged: (v) => setState(() => _customValues[f.id] = (v ?? false).toString()),
+            onChanged: (v) =>
+                setState(() => _customValues[f.id] = (v ?? false).toString()),
           );
         case 'document':
           return _buildDocumentField(f);
-        default: return const SizedBox.shrink();
+        default:
+          return const SizedBox.shrink();
       }
     }
   }
@@ -901,12 +1261,20 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
     if (!isEditing) {
       return Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: Row(
           children: [
             const Icon(Icons.info_outline, size: 20, color: Colors.blue),
             const SizedBox(width: 8),
-            Expanded(child: Text('يرجى حفظ بيانات المخدوم أولاً لإضافة ${f.name}', style: const TextStyle(fontSize: 12))),
+            Expanded(
+              child: Text(
+                'يرجى حفظ بيانات المخدوم أولاً لإضافة ${f.name}',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
           ],
         ),
       );
@@ -929,37 +1297,58 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
         const SizedBox(height: 8),
         Consumer(
           builder: (context, ref, _) {
-            final docsAsync = ref.watch(documentsRepositoryProvider.notifier).fetchDocuments(_currentPerson!.id, f.id);
+            final docsAsync = ref
+                .watch(documentsRepositoryProvider.notifier)
+                .fetchDocuments(_currentPerson!.id, f.id);
             return FutureBuilder<List<PersonDocumentDTO>>(
               future: docsAsync,
               builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) return const LinearProgressIndicator();
+                if (snap.connectionState == ConnectionState.waiting)
+                  return const LinearProgressIndicator();
                 final docs = snap.data ?? [];
-                if (docs.isEmpty) return const Text('لا توجد ملفات', style: TextStyle(fontSize: 11, color: Colors.grey));
+                if (docs.isEmpty)
+                  return const Text(
+                    'لا توجد ملفات',
+                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                  );
                 return Column(
-                  children: docs.map((doc) => Card(
-                    margin: const EdgeInsets.only(bottom: 4),
-                    child: ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.insert_drive_file_outlined),
-                      title: Text(doc.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.download, size: 18),
-                            onPressed: () => _downloadDocument(doc),
-                            tooltip: 'تحميل',
+                  children: docs
+                      .map(
+                        (doc) => Card(
+                          margin: const EdgeInsets.only(bottom: 4),
+                          child: ListTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.insert_drive_file_outlined,
+                            ),
+                            title: Text(
+                              doc.fileName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.download, size: 18),
+                                  onPressed: () => _downloadDocument(doc),
+                                  tooltip: 'تحميل',
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.red,
+                                    size: 18,
+                                  ),
+                                  onPressed: () => _deleteDocument(doc),
+                                  tooltip: 'حذف',
+                                ),
+                              ],
+                            ),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
-                            onPressed: () => _deleteDocument(doc),
-                            tooltip: 'حذف',
-                          ),
-                        ],
-                      ),
-                    ),
-                  )).toList(),
+                        ),
+                      )
+                      .toList(),
                 );
               },
             );
@@ -973,16 +1362,20 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
     try {
       final result = await FilePicker.platform.pickFiles(withData: true);
       if (result != null && result.files.single.bytes != null) {
-        final ok = await ref.read(documentsRepositoryProvider.notifier).addDocument(
-          personId: _currentPerson!.id,
-          fieldId: f.id,
-          fileName: result.files.single.name,
-          fileContent: result.files.single.bytes!,
-        );
+        final ok = await ref
+            .read(documentsRepositoryProvider.notifier)
+            .addDocument(
+              personId: _currentPerson!.id,
+              fieldId: f.id,
+              fileName: result.files.single.name,
+              fileContent: result.files.single.bytes!,
+            );
         if (ok) setState(() {});
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ في رفع الملف: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطأ في رفع الملف: $e')));
     }
   }
 
@@ -996,10 +1389,14 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       if (outputFile != null) {
         final file = File(outputFile);
         await file.writeAsBytes(doc.fileContent);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الملف بنجاح')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تم حفظ الملف بنجاح')));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ في حفظ الملف: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطأ في حفظ الملف: $e')));
     }
   }
 
@@ -1010,13 +1407,21 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
         title: const Text('حذف ملف'),
         content: Text('هل أنت متأكد من حذف الملف "${doc.fileName}"؟'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('حذف', style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
     if (confirm == true) {
-      final ok = await ref.read(documentsRepositoryProvider.notifier).deleteDocument(doc.id);
+      final ok = await ref
+          .read(documentsRepositoryProvider.notifier)
+          .deleteDocument(doc.id);
       if (ok) setState(() {});
     }
   }
@@ -1026,7 +1431,10 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
     final effectiveGender = (genders.contains(_gender)) ? _gender : null;
     return DropdownButtonFormField<String?>(
       value: effectiveGender,
-      decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.wc_outlined)),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.wc_outlined),
+      ),
       items: [
         DropdownMenuItem(value: null, child: Text('اختر $label')),
         ...genders.map((g) => DropdownMenuItem(value: g, child: Text(g))),
@@ -1040,17 +1448,28 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       future: db.select(db.stages).get(),
       builder: (_, snap) {
         final data = snap.data ?? [];
-        final effectiveValue = data.any((s) => s.stageId == _stageId) ? _stageId : null;
+        final effectiveValue = data.any((s) => s.stageId == _stageId)
+            ? _stageId
+            : null;
         return DropdownButtonFormField<int?>(
           value: effectiveValue,
-          decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.school_outlined)),
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: const Icon(Icons.school_outlined),
+          ),
           items: [
             DropdownMenuItem(value: null, child: Text('اختر $label')),
-            ...data.map((s) => DropdownMenuItem(value: s.stageId, child: Text(s.stageName ?? ''))),
+            ...data.map(
+              (s) => DropdownMenuItem(
+                value: s.stageId,
+                child: Text(s.stageName ?? ''),
+              ),
+            ),
           ],
           onChanged: (v) async {
-            final linkedServices =
-                await ServiceEligibilityRepository(db).stageServiceIds(v);
+            final linkedServices = await ServiceEligibilityRepository(
+              db,
+            ).stageServiceIds(v);
             if (!mounted) return;
             setState(() {
               _stageId = v;
@@ -1071,17 +1490,28 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       future: db.select(db.khoroses).get(),
       builder: (_, snap) {
         final data = snap.data ?? [];
-        final effectiveValue = data.any((k) => k.khorosId == _khorosId) ? _khorosId : null;
+        final effectiveValue = data.any((k) => k.khorosId == _khorosId)
+            ? _khorosId
+            : null;
         return DropdownButtonFormField<int?>(
           value: effectiveValue,
-          decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.library_music_outlined)),
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: const Icon(Icons.library_music_outlined),
+          ),
           items: [
             DropdownMenuItem(value: null, child: Text('اختر $label')),
-            ...data.map((k) => DropdownMenuItem(value: k.khorosId, child: Text(k.khorosName ?? ''))),
+            ...data.map(
+              (k) => DropdownMenuItem(
+                value: k.khorosId,
+                child: Text(k.khorosName ?? ''),
+              ),
+            ),
           ],
           onChanged: (v) async {
-            final linkedServices =
-                await ServiceEligibilityRepository(db).khorosServiceIds(v);
+            final linkedServices = await ServiceEligibilityRepository(
+              db,
+            ).khorosServiceIds(v);
             if (!mounted) return;
             setState(() {
               _khorosId = v;
@@ -1098,7 +1528,9 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   }
 
   Future<void> _loadRohotGroupsMap() async {
-    final raw = await ref.read(settingsRepositoryProvider).getSetting('rohot_groups_json');
+    final raw = await ref
+        .read(settingsRepositoryProvider)
+        .getSetting('rohot_groups_json');
     if (raw != null && raw.trim().isNotEmpty) {
       try {
         final decoded = jsonDecode(raw);
@@ -1122,7 +1554,9 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       } catch (_) {}
     }
 
-    final rawLeaders = await ref.read(settingsRepositoryProvider).getSetting('rohot_leaders_json');
+    final rawLeaders = await ref
+        .read(settingsRepositoryProvider)
+        .getSetting('rohot_leaders_json');
     if (rawLeaders != null && rawLeaders.trim().isNotEmpty) {
       try {
         final decoded = jsonDecode(rawLeaders);
@@ -1152,7 +1586,9 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       ),
       items: [
         DropdownMenuItem(value: null, child: Text('اختر $label')),
-        ...rohotNames.map((name) => DropdownMenuItem(value: name, child: Text(name))),
+        ...rohotNames.map(
+          (name) => DropdownMenuItem(value: name, child: Text(name)),
+        ),
       ],
       onChanged: (v) {
         setState(() {
@@ -1193,7 +1629,9 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
         final allServices = snap.data ?? [];
         if (allServices.isEmpty) return const SizedBox.shrink();
 
-        final selectedServices = allServices.where((s) => _selectedServiceIds.contains(s.serviceId)).toList();
+        final selectedServices = allServices
+            .where((s) => _selectedServiceIds.contains(s.serviceId))
+            .toList();
 
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
@@ -1211,11 +1649,18 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.group_work_outlined, color: Theme.of(context).primaryColor, size: 20),
+                      Icon(
+                        Icons.group_work_outlined,
+                        color: Theme.of(context).primaryColor,
+                        size: 20,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         '$label:',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
                       ),
                     ],
                   ),
@@ -1235,7 +1680,10 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                       }
                     },
                     icon: const Icon(Icons.edit_outlined, size: 16),
-                    label: const Text('إضافة / تعديل الخدمات', style: TextStyle(fontSize: 12)),
+                    label: const Text(
+                      'إضافة / تعديل الخدمات',
+                      style: TextStyle(fontSize: 12),
+                    ),
                   ),
                 ],
               ),
@@ -1245,7 +1693,11 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                       padding: EdgeInsets.symmetric(vertical: 8),
                       child: Text(
                         'لم يتم اختيار أي خدمات بعد.',
-                        style: TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic),
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
                       ),
                     )
                   : Wrap(
@@ -1260,19 +1712,32 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                                 )
                               : CircleAvatar(
                                   radius: 12,
-                                  backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
-                                  child: Icon(Icons.group_work_outlined, size: 12, color: Theme.of(context).primaryColor),
+                                  backgroundColor: Theme.of(
+                                    context,
+                                  ).primaryColor.withOpacity(0.1),
+                                  child: Icon(
+                                    Icons.group_work_outlined,
+                                    size: 12,
+                                    color: Theme.of(context).primaryColor,
+                                  ),
                                 ),
                           label: Text(
                             s.serviceName ?? '',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                           onDeleted: () {
                             setState(() {
                               _selectedServiceIds.remove(s.serviceId);
                             });
                           },
-                          deleteIcon: const Icon(Icons.cancel, size: 16, color: Colors.red),
+                          deleteIcon: const Icon(
+                            Icons.cancel,
+                            size: 16,
+                            color: Colors.red,
+                          ),
                           backgroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
@@ -1299,13 +1764,16 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
               color: Colors.grey[200],
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.grey[300]!),
-              image: _photoBytes != null 
-                ? DecorationImage(image: MemoryImage(_photoBytes!), fit: BoxFit.cover)
-                : null,
+              image: _photoBytes != null
+                  ? DecorationImage(
+                      image: MemoryImage(_photoBytes!),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
             ),
-            child: _photoBytes == null 
-              ? const Icon(Icons.person, size: 60, color: Colors.grey)
-              : null,
+            child: _photoBytes == null
+                ? const Icon(Icons.person, size: 60, color: Colors.grey)
+                : null,
           ),
           const SizedBox(height: 8),
           Row(
@@ -1314,7 +1782,9 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
               TextButton.icon(
                 onPressed: _pickImage,
                 icon: const Icon(Icons.photo_library),
-                label: Text(_photoBytes == null ? 'إضافة صورة' : 'تغيير الصورة'),
+                label: Text(
+                  _photoBytes == null ? 'إضافة صورة' : 'تغيير الصورة',
+                ),
               ),
               if (_photoBytes != null)
                 TextButton.icon(
@@ -1338,16 +1808,26 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
           child: const Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.family_restroom_outlined, size: 64, color: Colors.grey),
+              Icon(
+                Icons.family_restroom_outlined,
+                size: 64,
+                color: Colors.grey,
+              ),
               SizedBox(height: 16),
-              Text('يرجى حفظ بيانات المخدوم أولاً لإضافة الأقارب', style: TextStyle(color: Colors.grey), textAlign: TextAlign.center),
+              Text(
+                'يرجى حفظ بيانات المخدوم أولاً لإضافة الأقارب',
+                style: TextStyle(color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
             ],
           ),
         ),
       );
     }
 
-    final relativesAsync = ref.watch(familyRepositoryProvider(_currentPerson!.id));
+    final relativesAsync = ref.watch(
+      familyRepositoryProvider(_currentPerson!.id),
+    );
 
     return Padding(
       padding: EdgeInsets.all(isMobile ? 12 : 24),
@@ -1368,7 +1848,12 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
             child: relativesAsync.when(
               data: (relatives) {
                 if (relatives.isEmpty) {
-                  return const Center(child: Text('لا توجد صلة قرابة مسجلة', style: TextStyle(color: Colors.grey)));
+                  return const Center(
+                    child: Text(
+                      'لا توجد صلة قرابة مسجلة',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  );
                 }
                 return _buildCategorizedRelatives(relatives);
               },
@@ -1404,9 +1889,23 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 children: [
-                  Container(width: 4, height: 16, decoration: BoxDecoration(color: c.color, borderRadius: BorderRadius.circular(2))),
+                  Container(
+                    width: 4,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: c.color,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                   const SizedBox(width: 8),
-                  Text(c.label, style: TextStyle(fontWeight: FontWeight.bold, color: c.color, fontSize: 16)),
+                  Text(
+                    c.label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: c.color,
+                      fontSize: 16,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1422,14 +1921,22 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: color.withOpacity(0.1),
           child: Icon(Icons.person, color: color, size: 20),
         ),
-        title: Text(r.relatedPersonName, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(_getRelationshipLabel(r.relationshipCode, r.customLabel)),
+        title: Text(
+          r.relatedPersonName,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          _getRelationshipLabel(r.relationshipCode, r.customLabel),
+        ),
         trailing: IconButton(
           icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
           onPressed: () => _deleteRelationship(r),
@@ -1441,16 +1948,32 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   String _getRelationshipLabel(String code, String? custom) {
     if (code == 'OTHER' && custom != null) return custom;
     final Map<String, String> labels = {
-      'FATHER': 'أب', 'MOTHER': 'أم', 'SON': 'ابن', 'DAUGHTER': 'ابنة',
-      'HUSBAND': 'زوج', 'WIFE': 'زوجة', 'BROTHER': 'أخ', 'SISTER': 'أخت',
-      'UNCLE_PATERNAL': 'عم', 'AUNT_PATERNAL': 'عمة', 'UNCLE_MATERNAL': 'خال', 'AUNT_MATERNAL': 'خالة',
-      'NEPHEW_PATERNAL': 'ابن أخ', 'NIECE_PATERNAL': 'ابنة أخ',
-      'NEPHEW_MATERNAL': 'ابن أخت', 'NIECE_MATERNAL': 'ابنة أخت',
-      'COUSIN_PATERNAL': 'ابن عم', 'COUSIN_PATERNAL_F': 'ابنة عم',
-      'COUSIN_AMMA': 'ابن عمة', 'COUSIN_AMMA_F': 'ابنة عمة',
-      'COUSIN_MATERNAL': 'ابن خال', 'COUSIN_MATERNAL_F': 'ابنة خال',
-      'COUSIN_KHALA': 'ابن خالة', 'COUSIN_KHALA_F': 'ابنة خالة',
-      'GRANDFATHER': 'جد', 'GRANDMOTHER': 'جدة',
+      'FATHER': 'أب',
+      'MOTHER': 'أم',
+      'SON': 'ابن',
+      'DAUGHTER': 'ابنة',
+      'HUSBAND': 'زوج',
+      'WIFE': 'زوجة',
+      'BROTHER': 'أخ',
+      'SISTER': 'أخت',
+      'UNCLE_PATERNAL': 'عم',
+      'AUNT_PATERNAL': 'عمة',
+      'UNCLE_MATERNAL': 'خال',
+      'AUNT_MATERNAL': 'خالة',
+      'NEPHEW_PATERNAL': 'ابن أخ',
+      'NIECE_PATERNAL': 'ابنة أخ',
+      'NEPHEW_MATERNAL': 'ابن أخت',
+      'NIECE_MATERNAL': 'ابنة أخت',
+      'COUSIN_PATERNAL': 'ابن عم',
+      'COUSIN_PATERNAL_F': 'ابنة عم',
+      'COUSIN_AMMA': 'ابن عمة',
+      'COUSIN_AMMA_F': 'ابنة عمة',
+      'COUSIN_MATERNAL': 'ابن خال',
+      'COUSIN_MATERNAL_F': 'ابنة خال',
+      'COUSIN_KHALA': 'ابن خالة',
+      'COUSIN_KHALA_F': 'ابنة خالة',
+      'GRANDFATHER': 'جد',
+      'GRANDMOTHER': 'جدة',
     };
     return labels[code] ?? code;
   }
@@ -1460,30 +1983,47 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('حذف صلة قرابة'),
-        content: Text('هل أنت متأكد من حذف صلة القرابة مع "${r.relatedPersonName}"؟ سيتم حذفها من كلا الطرفين.'),
+        content: Text(
+          'هل أنت متأكد من حذف صلة القرابة مع "${r.relatedPersonName}"؟ سيتم حذفها من كلا الطرفين.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('حذف', style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
 
     if (confirm == true) {
-      await ref.read(familyRepositoryProvider(_currentPerson!.id).notifier).deleteRelationship(r.id);
+      await ref
+          .read(familyRepositoryProvider(_currentPerson!.id).notifier)
+          .deleteRelationship(r.id);
     }
   }
 
   void _showAddRelativeDialog() async {
     await showDialog(
       context: context,
-      builder: (context) => _AddRelativeDialog(personId: _currentPerson!.id, personGender: _gender),
+      builder: (context) => _AddRelativeDialog(
+        personId: _currentPerson!.id,
+        personGender: _gender,
+      ),
     );
     // Riverpod will auto-update since addRelationship calls invalidateSelf()
   }
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final file = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800, imageQuality: 85);
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      imageQuality: 85,
+    );
     if (file != null) {
       final bytes = await file.readAsBytes();
       setState(() => _photoBytes = bytes);
@@ -1538,8 +2078,18 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
               children: [
                 DropdownButtonFormField<String>(
                   value: _category,
-                  decoration: const InputDecoration(labelText: 'نوع العلاقة', border: OutlineInputBorder()),
-                  items: _categories.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
+                  decoration: const InputDecoration(
+                    labelText: 'نوع العلاقة',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _categories.entries
+                      .map(
+                        (e) => DropdownMenuItem(
+                          value: e.key,
+                          child: Text(e.value),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (v) => setState(() {
                     _category = v!;
                     _relationshipCode = _getDefaultCodeForCategory(v);
@@ -1547,29 +2097,49 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
                 ),
                 const SizedBox(height: 16),
                 if (_category != 'other')
-                  Builder(builder: (context) {
-                    final codes = _getCodesForCategory(_category);
-                    final effectiveCode = codes.any((c) => c.code == _relationshipCode) 
-                        ? _relationshipCode 
-                        : (codes.isNotEmpty ? codes.first.code : '');
-                    return DropdownButtonFormField<String>(
-                      key: ValueKey('rel_${_category}'),
-                      value: effectiveCode,
-                      decoration: const InputDecoration(labelText: 'العلاقة', border: OutlineInputBorder()),
-                      items: codes.map((c) => DropdownMenuItem(value: c.code, child: Text(c.label))).toList(),
-                      onChanged: (v) => setState(() => _relationshipCode = v!),
-                    );
-                  })
+                  Builder(
+                    builder: (context) {
+                      final codes = _getCodesForCategory(_category);
+                      final effectiveCode =
+                          codes.any((c) => c.code == _relationshipCode)
+                          ? _relationshipCode
+                          : (codes.isNotEmpty ? codes.first.code : '');
+                      return DropdownButtonFormField<String>(
+                        key: ValueKey('rel_${_category}'),
+                        value: effectiveCode,
+                        decoration: const InputDecoration(
+                          labelText: 'العلاقة',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: codes
+                            .map(
+                              (c) => DropdownMenuItem(
+                                value: c.code,
+                                child: Text(c.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _relationshipCode = v!),
+                      );
+                    },
+                  )
                 else
                   Column(
                     children: [
                       TextField(
-                        decoration: const InputDecoration(labelText: 'هو يقرب لي (مثلاً: ابن أخ)', border: OutlineInputBorder()),
+                        decoration: const InputDecoration(
+                          labelText: 'هو يقرب لي (مثلاً: ابن أخ)',
+                          border: OutlineInputBorder(),
+                        ),
                         onChanged: (v) => setState(() => _targetLabel = v),
                       ),
                       const SizedBox(height: 12),
                       TextField(
-                        decoration: const InputDecoration(labelText: 'أنا أقرب له (مثلاً: عم)', border: OutlineInputBorder()),
+                        decoration: const InputDecoration(
+                          labelText: 'أنا أقرب له (مثلاً: عم)',
+                          border: OutlineInputBorder(),
+                        ),
                         onChanged: (v) => setState(() => _initiatorLabel = v),
                       ),
                     ],
@@ -1581,9 +2151,17 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
           FilledButton(
-            onPressed: (_selectedPerson == null || (_category == 'other' && (_initiatorLabel == null || _targetLabel == null))) ? null : _save,
+            onPressed:
+                (_selectedPerson == null ||
+                    (_category == 'other' &&
+                        (_initiatorLabel == null || _targetLabel == null)))
+                ? null
+                : _save,
             child: const Text('ربط'),
           ),
         ],
@@ -1599,7 +2177,11 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
     if (result == true) {
       // Refresh or notify? The repo invalidates self on add.
       // We could try to find the last added person, but better to just let user search again.
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إضافة الشخص بنجاح، يمكنك البحث عنه الآن')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم إضافة الشخص بنجاح، يمكنك البحث عنه الآن'),
+        ),
+      );
     }
   }
 
@@ -1610,7 +2192,10 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('اختيار الشخص:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text(
+              'اختيار الشخص:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
             TextButton.icon(
               onPressed: _addNewPerson,
               icon: const Icon(Icons.person_add_alt_1, size: 18),
@@ -1624,7 +2209,16 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
           decoration: InputDecoration(
             hintText: 'ابحث بالأسم أو الكود أو الموبايل...',
             prefixIcon: const Icon(Icons.search),
-            suffixIcon: _isSearching ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2))) : null,
+            suffixIcon: _isSearching
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : null,
             border: const OutlineInputBorder(),
           ),
           onChanged: _onSearch,
@@ -1637,7 +2231,13 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
               color: Colors.white,
               border: Border.all(color: Colors.grey.shade300),
               borderRadius: BorderRadius.circular(8),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: ListView.builder(
               itemCount: _searchResults.length,
@@ -1666,7 +2266,14 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
               children: [
                 const Icon(Icons.check_circle, color: Colors.green, size: 16),
                 const SizedBox(width: 4),
-                Text('تم اختيار: ${_selectedPerson!.name}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
+                Text(
+                  'تم اختيار: ${_selectedPerson!.name}',
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1680,12 +2287,16 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
       return;
     }
     setState(() => _isSearching = true);
-    
-    final results = await ref.read(personsRepositoryProvider.notifier).searchPersons(v);
+
+    final results = await ref
+        .read(personsRepositoryProvider.notifier)
+        .searchPersons(v);
     if (mounted) {
       setState(() {
-        Iterable<PersonListDTO> filtered = results.where((p) => p.id != widget.personId);
-        
+        Iterable<PersonListDTO> filtered = results.where(
+          (p) => p.id != widget.personId,
+        );
+
         // Perspective: selection describes the Initiator (Side A).
         // Selection 'HUSBAND' -> Initiator is Husband -> Target must be female.
         // Selection 'WIFE' -> Initiator is Wife -> Target must be male.
@@ -1694,7 +2305,7 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
         } else if (_relationshipCode == 'WIFE') {
           filtered = filtered.where((p) => p.jenderName == 'ذكر');
         }
-        
+
         _searchResults = filtered.toList();
         _isSearching = false;
       });
@@ -1705,40 +2316,62 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
     bool isMale = widget.personGender == 'ذكر';
     if (cat == 'marriage') return isMale ? 'HUSBAND' : 'WIFE';
     if (cat == 'first_degree') return isMale ? 'FATHER' : 'MOTHER';
-    if (cat == 'second_degree') return isMale ? 'UNCLE_PATERNAL' : 'AUNT_PATERNAL';
-    if (cat == 'third_degree') return isMale ? 'COUSIN_PATERNAL' : 'COUSIN_PATERNAL_F';
+    if (cat == 'second_degree')
+      return isMale ? 'UNCLE_PATERNAL' : 'AUNT_PATERNAL';
+    if (cat == 'third_degree')
+      return isMale ? 'COUSIN_PATERNAL' : 'COUSIN_PATERNAL_F';
     return 'OTHER';
   }
 
   List<({String code, String label})> _getCodesForCategory(String cat) {
     bool isMale = widget.personGender == 'ذكر';
-    
+
     if (cat == 'marriage') {
-      return isMale 
-          ? [(code: 'HUSBAND', label: 'زوج')] 
+      return isMale
+          ? [(code: 'HUSBAND', label: 'زوج')]
           : [(code: 'WIFE', label: 'زوجة')];
     }
     if (cat == 'first_degree') {
       return [
         isMale ? (code: 'FATHER', label: 'أب') : (code: 'MOTHER', label: 'أم'),
-        isMale ? (code: 'BROTHER', label: 'أخ') : (code: 'SISTER', label: 'أخت'),
-        isMale ? (code: 'SON', label: 'ابن') : (code: 'DAUGHTER', label: 'ابنة'),
+        isMale
+            ? (code: 'BROTHER', label: 'أخ')
+            : (code: 'SISTER', label: 'أخت'),
+        isMale
+            ? (code: 'SON', label: 'ابن')
+            : (code: 'DAUGHTER', label: 'ابنة'),
       ];
     }
     if (cat == 'second_degree') {
       return [
-        isMale ? (code: 'UNCLE_PATERNAL', label: 'عم') : (code: 'AUNT_PATERNAL', label: 'عمة'),
-        isMale ? (code: 'UNCLE_MATERNAL', label: 'خال') : (code: 'AUNT_MATERNAL', label: 'خالة'),
-        isMale ? (code: 'NEPHEW_PATERNAL', label: 'ابن أخ') : (code: 'NIECE_PATERNAL', label: 'ابنة أخ'),
-        isMale ? (code: 'NEPHEW_MATERNAL', label: 'ابن أخت') : (code: 'NIECE_MATERNAL', label: 'ابنة أخت'),
+        isMale
+            ? (code: 'UNCLE_PATERNAL', label: 'عم')
+            : (code: 'AUNT_PATERNAL', label: 'عمة'),
+        isMale
+            ? (code: 'UNCLE_MATERNAL', label: 'خال')
+            : (code: 'AUNT_MATERNAL', label: 'خالة'),
+        isMale
+            ? (code: 'NEPHEW_PATERNAL', label: 'ابن أخ')
+            : (code: 'NIECE_PATERNAL', label: 'ابنة أخ'),
+        isMale
+            ? (code: 'NEPHEW_MATERNAL', label: 'ابن أخت')
+            : (code: 'NIECE_MATERNAL', label: 'ابنة أخت'),
       ];
     }
     if (cat == 'third_degree') {
       return [
-        isMale ? (code: 'COUSIN_PATERNAL', label: 'ابن عم') : (code: 'COUSIN_PATERNAL_F', label: 'ابنة عم'),
-        isMale ? (code: 'COUSIN_AMMA', label: 'ابن عمة') : (code: 'COUSIN_AMMA_F', label: 'ابنة عمة'),
-        isMale ? (code: 'COUSIN_MATERNAL', label: 'ابن خال') : (code: 'COUSIN_MATERNAL_F', label: 'ابنة خال'),
-        isMale ? (code: 'COUSIN_KHALA', label: 'ابن خالة') : (code: 'COUSIN_KHALA_F', label: 'ابنة خالة'),
+        isMale
+            ? (code: 'COUSIN_PATERNAL', label: 'ابن عم')
+            : (code: 'COUSIN_PATERNAL_F', label: 'ابنة عم'),
+        isMale
+            ? (code: 'COUSIN_AMMA', label: 'ابن عمة')
+            : (code: 'COUSIN_AMMA_F', label: 'ابنة عمة'),
+        isMale
+            ? (code: 'COUSIN_MATERNAL', label: 'ابن خال')
+            : (code: 'COUSIN_MATERNAL_F', label: 'ابنة خال'),
+        isMale
+            ? (code: 'COUSIN_KHALA', label: 'ابن خالة')
+            : (code: 'COUSIN_KHALA_F', label: 'ابنة خالة'),
       ];
     }
     return [(code: 'OTHER', label: 'أخرى')];
@@ -1746,21 +2379,25 @@ class _AddRelativeDialogState extends ConsumerState<_AddRelativeDialog> {
 
   void _save() async {
     if (_selectedPerson == null) return;
-    
-    final ok = await ref.read(familyRepositoryProvider(widget.personId).notifier).addRelationship(
-      personId: widget.personId,
-      relatedPersonId: _selectedPerson!.id,
-      category: _category,
-      relationshipCode: _relationshipCode,
-      customLabel: _targetLabel,
-      initiatorCustomLabel: _initiatorLabel,
-    );
+
+    final ok = await ref
+        .read(familyRepositoryProvider(widget.personId).notifier)
+        .addRelationship(
+          personId: widget.personId,
+          relatedPersonId: _selectedPerson!.id,
+          category: _category,
+          relationshipCode: _relationshipCode,
+          customLabel: _targetLabel,
+          initiatorCustomLabel: _initiatorLabel,
+        );
 
     if (mounted) {
       if (ok) {
         Navigator.pop(context);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فشل الربط')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('فشل الربط')));
       }
     }
   }
@@ -1776,7 +2413,8 @@ class _ServicesSelectionDialog extends StatefulWidget {
   });
 
   @override
-  State<_ServicesSelectionDialog> createState() => _ServicesSelectionDialogState();
+  State<_ServicesSelectionDialog> createState() =>
+      _ServicesSelectionDialogState();
 }
 
 class _ServicesSelectionDialogState extends State<_ServicesSelectionDialog> {
@@ -1809,7 +2447,10 @@ class _ServicesSelectionDialogState extends State<_ServicesSelectionDialog> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(Icons.group_work_outlined, color: Theme.of(context).primaryColor),
+            Icon(
+              Icons.group_work_outlined,
+              color: Theme.of(context).primaryColor,
+            ),
             const SizedBox(width: 8),
             const Text(
               'اختيار الخدمات',
@@ -1866,7 +2507,10 @@ class _ServicesSelectionDialogState extends State<_ServicesSelectionDialog> {
                       });
                     },
                     icon: const Icon(Icons.select_all, size: 18),
-                    label: const Text('تحديد الكل', style: TextStyle(fontSize: 12)),
+                    label: const Text(
+                      'تحديد الكل',
+                      style: TextStyle(fontSize: 12),
+                    ),
                   ),
                   TextButton.icon(
                     onPressed: () {
@@ -1877,7 +2521,10 @@ class _ServicesSelectionDialogState extends State<_ServicesSelectionDialog> {
                       });
                     },
                     icon: const Icon(Icons.deselect, size: 18),
-                    label: const Text('إلغاء تحديد الكل', style: TextStyle(fontSize: 12)),
+                    label: const Text(
+                      'إلغاء تحديد الكل',
+                      style: TextStyle(fontSize: 12),
+                    ),
                   ),
                 ],
               ),
@@ -1901,7 +2548,9 @@ class _ServicesSelectionDialogState extends State<_ServicesSelectionDialog> {
                           itemCount: filteredServices.length,
                           itemBuilder: (context, index) {
                             final s = filteredServices[index];
-                            final isChecked = _selectedIds.contains(s.serviceId);
+                            final isChecked = _selectedIds.contains(
+                              s.serviceId,
+                            );
                             return CheckboxListTile(
                               value: isChecked,
                               onChanged: (val) {
@@ -1915,7 +2564,9 @@ class _ServicesSelectionDialogState extends State<_ServicesSelectionDialog> {
                               },
                               title: Text(
                                 s.serviceName ?? '',
-                                style: const TextStyle(fontWeight: FontWeight.w600),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                               secondary: s.logo != null
                                   ? CircleAvatar(
@@ -1923,7 +2574,9 @@ class _ServicesSelectionDialogState extends State<_ServicesSelectionDialog> {
                                       radius: 16,
                                     )
                                   : CircleAvatar(
-                                      backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                                      backgroundColor: Theme.of(
+                                        context,
+                                      ).primaryColor.withOpacity(0.1),
                                       radius: 16,
                                       child: Icon(
                                         Icons.group_work_outlined,

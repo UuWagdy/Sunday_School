@@ -31,6 +31,7 @@ class AttendanceDTO {
   final String? attendTime;
   final String? checkoutTime;
   final int? visited;
+  final String? visitType;
   final String? visitNotes;
   final String? gender;
   final int? behavior;
@@ -59,6 +60,7 @@ class AttendanceDTO {
     this.attendTime,
     this.checkoutTime,
     this.visited,
+    this.visitType,
     this.visitNotes,
     this.gender,
     this.behavior,
@@ -260,20 +262,27 @@ class AttendanceRepository extends _$AttendanceRepository {
         onHasMore(limit != null && rows.length == limit);
       }
 
-      final personIds = rows.map((r) => r.readTable(db.persons).personId).toSet().toList();
+      final personIds = rows
+          .map((r) => r.readTable(db.persons).personId)
+          .toSet()
+          .toList();
       final Map<int, Map<int, String>> personCustomValues = {};
       final Map<int, List<String>> personServicesNames = {};
 
       if (personIds.isNotEmpty) {
-        final customRows = await (db.select(db.personCustomFieldValues)
-              ..where((t) => t.personId.isIn(personIds)))
-            .get();
+        final customRows = await (db.select(
+          db.personCustomFieldValues,
+        )..where((t) => t.personId.isIn(personIds))).get();
         for (final r in customRows) {
-          personCustomValues.putIfAbsent(r.personId, () => {})[r.fieldId] = r.value ?? '';
+          personCustomValues.putIfAbsent(r.personId, () => {})[r.fieldId] =
+              r.value ?? '';
         }
 
         final serviceRows = await (db.select(db.personServices).join([
-          drift.innerJoin(db.services, db.services.serviceId.equalsExp(db.personServices.serviceId)),
+          drift.innerJoin(
+            db.services,
+            db.services.serviceId.equalsExp(db.personServices.serviceId),
+          ),
         ])..where(db.personServices.personId.isIn(personIds))).get();
         for (final r in serviceRows) {
           final pId = r.readTable(db.personServices).personId;
@@ -358,7 +367,8 @@ class AttendanceRepository extends _$AttendanceRepository {
                 behavior: coming?.behavior,
                 rohot: person.rohot,
                 leader: person.leader,
-                services: personServicesNames[person.personId]?.join('، ') ?? '',
+                services:
+                    personServicesNames[person.personId]?.join('، ') ?? '',
                 customValues: personCustomValues[person.personId] ?? {},
               ),
             );
@@ -722,6 +732,70 @@ class AttendanceRepository extends _$AttendanceRepository {
 
       return updatedCount;
     });
+  }
+
+  Future<int> updateAttendancePointsForIds({
+    required Iterable<int> ids,
+    required int points,
+    bool isCheckoutMode = false,
+    int defaultAttendancePoints = 2,
+  }) async {
+    final idList = ids.toSet().toList();
+    if (idList.isEmpty) return 0;
+
+    final db = ref.read(appDatabaseProvider);
+    return db.transaction(() async {
+      final records = await (db.select(
+        db.coming,
+      )..where((t) => t.id.isIn(idList))).get();
+      var updatedCount = 0;
+
+      for (final record in records) {
+        final id = record.id;
+        if (id == null) continue;
+
+        final totalPoints = record.point ?? 0;
+        final hasCheckout =
+            record.checkoutTime != null && record.checkoutTime!.isNotEmpty;
+        final attendancePoints = hasCheckout
+            ? (totalPoints <= defaultAttendancePoints
+                  ? totalPoints
+                  : defaultAttendancePoints)
+            : totalPoints;
+        final checkoutPoints = hasCheckout ? totalPoints - attendancePoints : 0;
+        final normalizedCheckoutPoints = checkoutPoints < 0
+            ? 0
+            : checkoutPoints;
+        final newTotalPoints = isCheckoutMode
+            ? attendancePoints + points
+            : points + normalizedCheckoutPoints;
+
+        updatedCount +=
+            await (db.update(db.coming)..where((t) => t.id.equals(id))).write(
+              ComingCompanion(point: drift.Value(newTotalPoints)),
+            );
+      }
+
+      return updatedCount;
+    });
+  }
+
+  Future<int> clearCheckoutForIds(Iterable<int> ids) async {
+    final idList = ids.toSet().toList();
+    if (idList.isEmpty) return 0;
+
+    final db = ref.read(appDatabaseProvider);
+    return (db.update(db.coming)..where((t) => t.id.isIn(idList))).write(
+      const ComingCompanion(checkoutTime: drift.Value(null)),
+    );
+  }
+
+  Future<int> deleteAttendanceForIds(Iterable<int> ids) async {
+    final idList = ids.toSet().toList();
+    if (idList.isEmpty) return 0;
+
+    final db = ref.read(appDatabaseProvider);
+    return (db.delete(db.coming)..where((t) => t.id.isIn(idList))).go();
   }
 
   Future<bool> updateAttendance({

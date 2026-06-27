@@ -11,6 +11,7 @@ import 'users_screen.dart';
 import 'stages_screen.dart';
 import 'persons_screen.dart';
 import 'attendance_screen.dart';
+import 'visitation_screen.dart';
 import 'fathers_screen.dart';
 import 'maintenance_screen.dart';
 import 'services_management_screen.dart';
@@ -399,6 +400,12 @@ class _MainShellState extends ConsumerState<MainShell> {
         'الحضور',
         const AttendanceScreen(),
         user.canAbsence,
+      ),
+      _NavData(
+        Icons.volunteer_activism,
+        'الافتقاد',
+        const VisitationScreen(),
+        granularFeature('visitation'),
       ),
       _NavData(
         Icons.thumbs_up_down_outlined,

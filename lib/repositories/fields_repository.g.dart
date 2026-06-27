@@ -33,7 +33,7 @@ final class FieldsRepositoryProvider
   FieldsRepository create() => FieldsRepository();
 }
 
-String _$fieldsRepositoryHash() => r'52b581320174fc551847d05ef63f8cbd58ab07ca';
+String _$fieldsRepositoryHash() => r'd1fa451878572eb76a1626d8685c40eea9a0f57a';
 
 abstract class _$FieldsRepository extends $AsyncNotifier<List<FieldConfigDTO>> {
   FutureOr<List<FieldConfigDTO>> build();

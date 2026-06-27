@@ -77,6 +77,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   // --- Data / Pagination ---
   final ScrollController _scrollController = ScrollController();
   final List<AttendanceDTO> _records = [];
+  final Set<int> _selectedPersonIds = {};
   bool _isLoading = false;
   bool _hasMore = true;
   int _offset = 0;
@@ -101,6 +102,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   int? _selectedServiceId;
   bool _isSaving = false;
   bool _isCheckingOutAll = false;
+  bool _isBulkActionRunning = false;
   bool _isCheckoutMode = false;
 
   @override
@@ -343,6 +345,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         _absentCount = summary['absent'] ?? 0;
         _records.clear();
         _records.addAll(data);
+        final visiblePersonIds = data.map((r) => r.personId).toSet();
+        _selectedPersonIds.removeWhere((id) => !visiblePersonIds.contains(id));
         _hasMore = rawHasMore;
         _isLoading = false;
         _offset = _limit;
@@ -402,6 +406,184 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         _offset = _offset + _limit;
         _hasMore = rawHasMore;
       });
+    }
+  }
+
+  Future<void> _reloadPreservingScroll() async {
+    final offset = _scrollController.hasClients
+        ? _scrollController.offset
+        : 0.0;
+    await _loadInitialData();
+    if (!mounted || !_scrollController.hasClients) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final max = _scrollController.position.maxScrollExtent;
+      _scrollController.jumpTo(offset.clamp(0.0, max));
+    });
+  }
+
+  List<AttendanceDTO> get _selectedRecords =>
+      _records.where((r) => _selectedPersonIds.contains(r.personId)).toList();
+
+  List<int> get _selectedAttendanceIds =>
+      _selectedRecords.map((r) => r.id).whereType<int>().toSet().toList();
+
+  int get _currentPoints =>
+      int.tryParse(_pointsController.text) ?? _defaultAttendancePoints;
+
+  void _toggleSelectAllVisible() {
+    final visibleIds = _records.map((r) => r.personId).toSet();
+    final allSelected =
+        visibleIds.isNotEmpty && visibleIds.every(_selectedPersonIds.contains);
+    setState(() {
+      if (allSelected) {
+        _selectedPersonIds.removeAll(visibleIds);
+      } else {
+        _selectedPersonIds.addAll(visibleIds);
+      }
+    });
+  }
+
+  void _clearSelection() {
+    if (_selectedPersonIds.isEmpty) return;
+    setState(_selectedPersonIds.clear);
+  }
+
+  Future<void> _applyPointsToSelected() async {
+    if (_selectedAttendanceIds.isEmpty || _isBulkActionRunning) return;
+    setState(() => _isBulkActionRunning = true);
+    try {
+      final count = await ref
+          .read(attendanceRepositoryProvider.notifier)
+          .updateAttendancePointsForIds(
+            ids: _selectedAttendanceIds,
+            points: _currentPoints,
+            isCheckoutMode: _isCheckoutMode,
+            defaultAttendancePoints: _defaultAttendancePoints,
+          );
+      await _reloadPreservingScroll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم تعديل النقاط لـ $count سجل'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isBulkActionRunning = false);
+    }
+  }
+
+  Future<void> _cancelSelectedAttendance() async {
+    if (_selectedAttendanceIds.isEmpty || _isBulkActionRunning) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('إلغاء الحضور'),
+          content: Text(
+            'سيتم حذف سجلات الحضور المحددة (${_selectedAttendanceIds.length} سجل).',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('تأكيد'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    setState(() => _isBulkActionRunning = true);
+    try {
+      final count = await ref
+          .read(attendanceRepositoryProvider.notifier)
+          .deleteAttendanceForIds(_selectedAttendanceIds);
+      _clearSelection();
+      await _reloadPreservingScroll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم إلغاء الحضور لـ $count سجل'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isBulkActionRunning = false);
+    }
+  }
+
+  Future<void> _cancelSelectedCheckout() async {
+    if (_selectedAttendanceIds.isEmpty || _isBulkActionRunning) return;
+    setState(() => _isBulkActionRunning = true);
+    try {
+      final count = await ref
+          .read(attendanceRepositoryProvider.notifier)
+          .clearCheckoutForIds(_selectedAttendanceIds);
+      await _reloadPreservingScroll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم إلغاء الانصراف لـ $count سجل'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isBulkActionRunning = false);
+    }
+  }
+
+  Future<void> _checkoutSelected() async {
+    final targets = _selectedRecords
+        .where(
+          (r) =>
+              r.id != null &&
+              r.attendTime != null &&
+              (r.checkoutTime == null || r.checkoutTime!.isEmpty),
+        )
+        .toList();
+    if (targets.isEmpty || _isBulkActionRunning || _periodModeEnabled) return;
+
+    setState(() => _isBulkActionRunning = true);
+    try {
+      final services = ref.read(servicesRepositoryProvider).asData?.value ?? [];
+      var count = 0;
+      for (final r in targets) {
+        final errorMsg = await ref
+            .read(attendanceRepositoryProvider.notifier)
+            .addAttendance(
+              personId: r.personId,
+              dateWeek:
+                  r.dateWeek ?? DateFormat('yyyy-MM-dd').format(_selectedDate),
+              point: _currentPoints,
+              month: _selectedDate.month,
+              year: _selectedDate.year,
+              serviceId: r.serviceId ?? _selectedServiceId,
+              attendTime: _currentTime12h(),
+              isCheckout: true,
+              personName: r.personName,
+              serviceName:
+                  r.serviceName ?? _serviceNameById(services, r.serviceId),
+            );
+        if (errorMsg == null) count++;
+      }
+      await _reloadPreservingScroll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم تسجيل انصراف $count شخص'),
+          backgroundColor: count == 0 ? Colors.orange : Colors.green,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isBulkActionRunning = false);
     }
   }
 
@@ -571,7 +753,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         if (errorMsg == null) {
-          _loadInitialData();
+          await _reloadPreservingScroll();
           final label = _isCheckoutMode ? 'انصراف' : 'حضور';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -643,7 +825,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         if (errorMsg == null) {
-          _loadInitialData();
+          await _reloadPreservingScroll();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('✅ تم تسجيل انصراف ${r.personName} بنجاح'),
@@ -795,7 +977,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           .read(attendanceRepositoryProvider.notifier)
           .deleteAttendance(r.id!);
       if (mounted) {
-        _loadInitialData();
+        await _reloadPreservingScroll();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(success ? 'تم الحذف بنجاح' : 'فشل الحذف')),
         );
@@ -859,7 +1041,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                           dateWeek: DateFormat('yyyy-MM-dd').format(editDate),
                         );
                     if (mounted && success) {
-                      _loadInitialData();
+                      await _reloadPreservingScroll();
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('تم التعديل بنجاح'),
@@ -897,7 +1079,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         !user.isAdvanced ||
         (attendancePermissions?['delete'] ?? false);
 
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    final viewport = MediaQuery.sizeOf(context);
+    final isMobile = viewport.width < 700 || viewport.height < 600;
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -965,11 +1148,17 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                       ),
                       if (_mobileFiltersExpanded) ...[
                         const SizedBox(height: 8),
-                        _buildFilterPanel(),
+                        _buildFilterPanel(scrollable: false),
                       ],
                       const SizedBox(height: 8),
                       _buildSearchField(),
                       const SizedBox(height: 8),
+                      _buildBulkSelectionBar(
+                        canEdit: canEdit,
+                        canDelete: canDelete,
+                        canAdd: canAdd,
+                      ),
+                      if (_records.isNotEmpty) const SizedBox(height: 8),
                       if (_records.isEmpty && !_isLoading)
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 32),
@@ -982,6 +1171,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                           shrinkWrap: true,
                           canEdit: canEdit,
                           canDelete: canDelete,
+                          canAdd: canAdd,
                         ),
                     ],
                   ),
@@ -1011,6 +1201,13 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                               children: [
                                 _buildSearchField(),
                                 const SizedBox(height: 8),
+                                _buildBulkSelectionBar(
+                                  canEdit: canEdit,
+                                  canDelete: canDelete,
+                                  canAdd: canAdd,
+                                ),
+                                if (_records.isNotEmpty)
+                                  const SizedBox(height: 8),
                                 Expanded(
                                   child: _records.isEmpty && !_isLoading
                                       ? const Center(
@@ -1365,9 +1562,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       onChanged: (v) {
         setState(() {
           _selectedServiceId = v;
-          _filterServiceId = v;
         });
-        _loadInitialData();
       },
     );
   }
@@ -1699,12 +1894,109 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     );
   }
 
+  Widget _buildBulkSelectionBar({
+    required bool canEdit,
+    required bool canDelete,
+    required bool canAdd,
+  }) {
+    if (_records.isEmpty) return const SizedBox.shrink();
+
+    final visibleIds = _records.map((r) => r.personId).toSet();
+    final selectedCount = visibleIds.where(_selectedPersonIds.contains).length;
+    final allSelected =
+        visibleIds.isNotEmpty && visibleIds.every(_selectedPersonIds.contains);
+    final hasSelectedRecords = _selectedAttendanceIds.isNotEmpty;
+    final hasPendingCheckout = _selectedRecords.any(
+      (r) =>
+          r.id != null &&
+          r.attendTime != null &&
+          (r.checkoutTime == null || r.checkoutTime!.isEmpty),
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: selectedCount == 0 ? Colors.white : Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selectedCount == 0
+              ? Colors.grey.shade200
+              : Colors.blue.shade100,
+        ),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          OutlinedButton.icon(
+            onPressed: _toggleSelectAllVisible,
+            icon: Icon(
+              allSelected ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 18,
+            ),
+            label: Text(allSelected ? 'إلغاء تحديد الكل' : 'تحديد الكل'),
+          ),
+          if (selectedCount > 0)
+            Chip(
+              avatar: const Icon(Icons.people_alt_outlined, size: 16),
+              label: Text('$selectedCount محدد'),
+              visualDensity: VisualDensity.compact,
+            ),
+          if (selectedCount > 0 && canEdit && hasSelectedRecords)
+            FilledButton.icon(
+              onPressed: _isBulkActionRunning ? null : _applyPointsToSelected,
+              icon: const Icon(Icons.exposure_outlined, size: 18),
+              label: const Text('تطبيق النقاط'),
+            ),
+          if (selectedCount > 0 &&
+              _isCheckoutMode &&
+              canAdd &&
+              hasPendingCheckout)
+            FilledButton.icon(
+              onPressed: _isBulkActionRunning ? null : _checkoutSelected,
+              icon: const Icon(Icons.logout_rounded, size: 18),
+              label: const Text('انصراف المحددين'),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            ),
+          if (selectedCount > 0 && !_isCheckoutMode && canDelete)
+            OutlinedButton.icon(
+              onPressed: _isBulkActionRunning
+                  ? null
+                  : _cancelSelectedAttendance,
+              icon: const Icon(Icons.event_busy_rounded, size: 18),
+              label: const Text('إلغاء الحضور'),
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+            ),
+          if (selectedCount > 0 && _isCheckoutMode && canEdit)
+            OutlinedButton.icon(
+              onPressed: _isBulkActionRunning ? null : _cancelSelectedCheckout,
+              icon: const Icon(Icons.undo_rounded, size: 18),
+              label: const Text('إلغاء الانصراف'),
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+            ),
+          if (selectedCount > 0)
+            IconButton(
+              onPressed: _clearSelection,
+              icon: const Icon(Icons.close),
+              tooltip: 'مسح التحديد',
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _toggleButton(bool val, String label, Color color) {
     final active = _isCheckoutMode == val;
     return GestureDetector(
       onTap: _periodModeEnabled
           ? null
-          : () => setState(() => _isCheckoutMode = val),
+          : () => setState(() {
+              _isCheckoutMode = val;
+              if (val) {
+                _pointsController.text = '$_defaultAttendancePoints';
+              }
+            }),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
@@ -1724,44 +2016,44 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   }
 
   // =================== FILTER PANEL ===================
-  Widget _buildFilterPanel() {
+  Widget _buildFilterPanel({bool scrollable = true}) {
+    final content = Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildFilterGroup(
+            '👤 بيانات المخدوم',
+            _showPersonFilters,
+            (v) => setState(() => _showPersonFilters = v),
+            _buildPersonFilters(),
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+          _buildFilterGroup(
+            '📅 الحضور والغياب',
+            _showAttendanceFilters,
+            (v) => setState(() => _showAttendanceFilters = v),
+            _buildAttendanceFilters(),
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+          _buildFilterGroup(
+            '🏠 الافتقاد والمتابعة',
+            _showVisitationFilters,
+            (v) => setState(() => _showVisitationFilters = v),
+            _buildVisitationFilters(),
+          ),
+        ],
+      ),
+    );
+
     return Card(
       elevation: 6,
       shadowColor: Colors.black.withOpacity(0.08),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              _buildFilterGroup(
-                '👤 بيانات المخدوم',
-                _showPersonFilters,
-                (v) => setState(() => _showPersonFilters = v),
-                _buildPersonFilters(),
-              ),
-              const SizedBox(height: 12),
-              const Divider(height: 1),
-              const SizedBox(height: 12),
-              _buildFilterGroup(
-                '📅 الحضور والغياب',
-                _showAttendanceFilters,
-                (v) => setState(() => _showAttendanceFilters = v),
-                _buildAttendanceFilters(),
-              ),
-              const SizedBox(height: 12),
-              const Divider(height: 1),
-              const SizedBox(height: 12),
-              _buildFilterGroup(
-                '🏠 الافتقاد والمتابعة',
-                _showVisitationFilters,
-                (v) => setState(() => _showVisitationFilters = v),
-                _buildVisitationFilters(),
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: scrollable ? SingleChildScrollView(child: content) : content,
     );
   }
 
@@ -2191,36 +2483,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   }
 
   Widget _buildAttendanceFilters() {
-    final servicesAsync = ref.watch(servicesRepositoryProvider);
-    final services = servicesAsync.asData?.value ?? [];
     return Column(
       children: [
-        // Service
-        if (services.isNotEmpty) ...[
-          DropdownButtonFormField<int?>(
-            value: _filterServiceId,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'الخدمة',
-              isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('كل الخدمات')),
-              ...services.map(
-                (s) => DropdownMenuItem(value: s.id, child: Text(s.name)),
-              ),
-            ],
-            onChanged: (v) {
-              setState(() {
-                _filterServiceId = v;
-                _selectedServiceId = v;
-              });
-              _loadInitialData();
-            },
-          ),
-          const SizedBox(height: 8),
-        ],
         // Month & Year
         MultiSelectFilter(
           label: 'الشهر',
@@ -2585,6 +2849,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                           (c) => {
                             'id': c.id.toString(),
                             'title': c.title.toString(),
+                            'isPhone': c.isPhone.toString(),
                           },
                         )
                         .toList();
@@ -2796,6 +3061,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                           (c) => {
                             'id': c.id.toString(),
                             'title': c.title.toString(),
+                            'isPhone': c.isPhone.toString(),
                           },
                         )
                         .toList();
@@ -3035,6 +3301,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                           (c) => {
                             'id': c.id.toString(),
                             'title': c.title.toString(),
+                            'isPhone': c.isPhone.toString(),
                           },
                         )
                         .toList();
@@ -3338,6 +3605,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                           (c) => {
                             'id': c.id.toString(),
                             'title': c.title.toString(),
+                            'isPhone': c.isPhone.toString(),
                           },
                         )
                         .toList();
@@ -3660,6 +3928,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
     final isMobile = MediaQuery.of(context).size.width < 600;
     final bool isPresent = r.id != null && r.attendTime != null;
+    final bool isSelected = _selectedPersonIds.contains(r.personId);
     final visitIcon = r.visited == 2
         ? Icons.check_box
         : (r.visited == 1
@@ -3689,6 +3958,19 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           children: [
             Row(
               children: [
+                Checkbox(
+                  value: isSelected,
+                  visualDensity: VisualDensity.compact,
+                  onChanged: (selected) {
+                    setState(() {
+                      if (selected == true) {
+                        _selectedPersonIds.add(r.personId);
+                      } else {
+                        _selectedPersonIds.remove(r.personId);
+                      }
+                    });
+                  },
+                ),
                 Container(
                   width: 38,
                   height: 38,
@@ -4078,7 +4360,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               ),
             ],
             // Visitation row
-            if (isPresent) ...[
+            if (r.id != null) ...[
               const Divider(height: 8),
               Row(
                 children: [
@@ -4095,7 +4377,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                                   visited: newVal,
                                   visitNotes: r.visitNotes,
                                 );
-                            _loadInitialData();
+                            await _reloadPreservingScroll();
                           },
                     child: Row(
                       mainAxisSize: MainAxisSize.min,

@@ -11,10 +11,18 @@ class StagesScreen extends ConsumerStatefulWidget {
   ConsumerState<StagesScreen> createState() => _StagesScreenState();
 }
 
+class _ServiceName {
+  const _ServiceName(this.name);
+  final String name;
+}
+
 class _StagesScreenState extends ConsumerState<StagesScreen> {
   final TextEditingController _nameController = TextEditingController();
   StageModel? _selectedStage;
   List<int> _selectedServiceIds = [];
+  final Set<int> _selectedBulkStageIds = {};
+  List<int> _bulkStageServiceIds = [];
+  bool _isBulkSaving = false;
   int? get _selectedServiceId =>
       _selectedServiceIds.isEmpty ? null : _selectedServiceIds.first;
   set _selectedServiceId(int? value) {
@@ -36,6 +44,46 @@ class _StagesScreenState extends ConsumerState<StagesScreen> {
       _selectedServiceIds = [];
       _selectedNextStageId = null;
     });
+  }
+
+  void _clearBulkSelection() {
+    setState(() {
+      _selectedBulkStageIds.clear();
+      _bulkStageServiceIds = [];
+    });
+  }
+
+  void _toggleSelectAll(List<StageModel> list) {
+    final ids = list.map((item) => item.id).toSet();
+    final allSelected =
+        ids.isNotEmpty && ids.every((id) => _selectedBulkStageIds.contains(id));
+    setState(() {
+      if (allSelected) {
+        _selectedBulkStageIds.removeAll(ids);
+      } else {
+        _selectedBulkStageIds.addAll(ids);
+      }
+    });
+  }
+
+  Future<void> _applyBulkServices() async {
+    if (_selectedBulkStageIds.isEmpty || _isBulkSaving) return;
+    setState(() => _isBulkSaving = true);
+    try {
+      final count = await ref
+          .read(stagesRepositoryProvider.notifier)
+          .updateStageServicesForIds(
+            _selectedBulkStageIds,
+            _bulkStageServiceIds,
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('تم ربط الخدمات بـ $count مرحلة')));
+      _clearBulkSelection();
+    } finally {
+      if (mounted) setState(() => _isBulkSaving = false);
+    }
   }
 
   void _save() async {
@@ -176,52 +224,84 @@ class _StagesScreenState extends ConsumerState<StagesScreen> {
           );
         }
         return Card(
-          child: ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: list.length,
-            separatorBuilder: (context, index) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final s = list[index];
-              final isSelected = _selectedStage?.id == s.id;
-              final service = servicesList
-                  .where((ser) => ser.id == s.serviceId)
-                  .firstOrNull;
-              final nextStage = stagesList
-                  .where((st) => st.id == s.nextStageId)
-                  .firstOrNull;
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                _buildBulkServicesBar(list, servicesList),
+                const SizedBox(height: 12),
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: list.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final s = list[index];
+                    final isSelected = _selectedStage?.id == s.id;
+                    final linkedServices = servicesList
+                        .where((ser) => s.serviceIds.contains(ser.id))
+                        .map((ser) => ser.name)
+                        .toList();
+                    final service = linkedServices.isEmpty
+                        ? null
+                        : _ServiceName(linkedServices.join('، '));
+                    final nextStage = stagesList
+                        .where((st) => st.id == s.nextStageId)
+                        .firstOrNull;
 
-              return ListTile(
-                selected: isSelected,
-                title: Text(s.name),
-                subtitle: (service != null || nextStage != null)
-                    ? Text(
-                        '${service != null ? "الخدمة: ${service.name}" : ""}${service != null && nextStage != null ? " • " : ""}${nextStage != null ? "التالية: ${nextStage.name}" : ""}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      )
-                    : null,
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.blue),
-                      onPressed: () {
-                        setState(() {
-                          _selectedStage = s;
-                          _nameController.text = s.name;
-                          _selectedServiceIds = List<int>.from(s.serviceIds);
-                          _selectedNextStageId = s.nextStageId;
-                        });
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _delete(s),
-                    ),
-                  ],
+                    return ListTile(
+                      selected: isSelected,
+                      leading: Checkbox(
+                        value: _selectedBulkStageIds.contains(s.id),
+                        visualDensity: VisualDensity.compact,
+                        onChanged: (selected) {
+                          setState(() {
+                            if (selected == true) {
+                              _selectedBulkStageIds.add(s.id);
+                            } else {
+                              _selectedBulkStageIds.remove(s.id);
+                            }
+                          });
+                        },
+                      ),
+                      title: Text(s.name),
+                      subtitle: (service != null || nextStage != null)
+                          ? Text(
+                              '${service != null ? "الخدمة: ${service.name}" : ""}${service != null && nextStage != null ? " • " : ""}${nextStage != null ? "التالية: ${nextStage.name}" : ""}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            )
+                          : null,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () {
+                              setState(() {
+                                _selectedStage = s;
+                                _nameController.text = s.name;
+                                _selectedServiceIds = List<int>.from(
+                                  s.serviceIds,
+                                );
+                                _selectedNextStageId = s.nextStageId;
+                              });
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => _delete(s),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
+              ],
+            ),
           ),
         );
       },
@@ -246,6 +326,89 @@ class _StagesScreenState extends ConsumerState<StagesScreen> {
           style: TextStyle(color: Colors.grey[600], fontSize: 13),
         ),
       ],
+    );
+  }
+
+  Widget _buildBulkServicesBar(
+    List<StageModel> list,
+    List<ServiceDTO> servicesList,
+  ) {
+    if (list.isEmpty) return const SizedBox.shrink();
+    final allSelected = list.every(
+      (item) => _selectedBulkStageIds.contains(item.id),
+    );
+    final selectedCount = list
+        .where((item) => _selectedBulkStageIds.contains(item.id))
+        .length;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: selectedCount == 0 ? Colors.grey.shade50 : Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selectedCount == 0
+              ? Colors.grey.shade200
+              : Colors.blue.shade100,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _toggleSelectAll(list),
+                icon: Icon(
+                  allSelected ? Icons.check_box : Icons.check_box_outline_blank,
+                  size: 18,
+                ),
+                label: Text(allSelected ? 'إلغاء تحديد الكل' : 'تحديد الكل'),
+              ),
+              if (selectedCount > 0)
+                Chip(
+                  label: Text('$selectedCount مرحلة محددة'),
+                  visualDensity: VisualDensity.compact,
+                ),
+              if (selectedCount > 0)
+                IconButton(
+                  onPressed: _clearBulkSelection,
+                  icon: const Icon(Icons.close),
+                  tooltip: 'مسح التحديد',
+                ),
+            ],
+          ),
+          if (selectedCount > 0) ...[
+            const SizedBox(height: 8),
+            MultiSelectFilter(
+              label: 'الخدمات التي سيتم ربطها بالمحدد',
+              hintText: 'بدون خدمات',
+              selectedIds: _bulkStageServiceIds,
+              allItems: servicesList
+                  .map((s) => SelectableItem(id: s.id, name: s.name))
+                  .toList(),
+              onChanged: (ids) {
+                setState(() => _bulkStageServiceIds = ids.cast<int>());
+              },
+            ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: _isBulkSaving ? null : _applyBulkServices,
+              icon: _isBulkSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.link_rounded),
+              label: const Text('ربط الخدمات بالمحدد'),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -417,6 +580,11 @@ class _StagesScreenState extends ConsumerState<StagesScreen> {
               ],
             ),
             const SizedBox(height: 16),
+            async.maybeWhen(
+              data: (list) => _buildBulkServicesBar(list, servicesList),
+              orElse: () => const SizedBox.shrink(),
+            ),
+            const SizedBox(height: 12),
             Expanded(
               child: async.when(
                 data: (list) {
@@ -432,9 +600,13 @@ class _StagesScreenState extends ConsumerState<StagesScreen> {
                     itemBuilder: (context, index) {
                       final s = list[index];
                       final isSelected = _selectedStage?.id == s.id;
-                      final service = servicesList
-                          .where((ser) => ser.id == s.serviceId)
-                          .firstOrNull;
+                      final linkedServices = servicesList
+                          .where((ser) => s.serviceIds.contains(ser.id))
+                          .map((ser) => ser.name)
+                          .toList();
+                      final service = linkedServices.isEmpty
+                          ? null
+                          : _ServiceName(linkedServices.join('، '));
                       final nextStage = stagesList
                           .where((st) => st.id == s.nextStageId)
                           .firstOrNull;
@@ -444,13 +616,31 @@ class _StagesScreenState extends ConsumerState<StagesScreen> {
                         selectedTileColor: Theme.of(
                           context,
                         ).primaryColor.withOpacity(0.05),
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.green.withOpacity(0.1),
-                          child: const Icon(
-                            Icons.school_outlined,
-                            color: Colors.green,
-                            size: 20,
-                          ),
+                        leading: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Checkbox(
+                              value: _selectedBulkStageIds.contains(s.id),
+                              visualDensity: VisualDensity.compact,
+                              onChanged: (selected) {
+                                setState(() {
+                                  if (selected == true) {
+                                    _selectedBulkStageIds.add(s.id);
+                                  } else {
+                                    _selectedBulkStageIds.remove(s.id);
+                                  }
+                                });
+                              },
+                            ),
+                            CircleAvatar(
+                              backgroundColor: Colors.green.withOpacity(0.1),
+                              child: const Icon(
+                                Icons.school_outlined,
+                                color: Colors.green,
+                                size: 20,
+                              ),
+                            ),
+                          ],
                         ),
                         title: Text(
                           s.name,

@@ -193,23 +193,29 @@ class PersonsRepository extends _$PersonsRepository {
 
     if (fetchedPersonIds.isNotEmpty) {
       final allServices = await (db.select(db.personServices).join([
-        drift.innerJoin(db.services, db.services.serviceId.equalsExp(db.personServices.serviceId)),
+        drift.innerJoin(
+          db.services,
+          db.services.serviceId.equalsExp(db.personServices.serviceId),
+        ),
       ])..where(db.personServices.personId.isIn(fetchedPersonIds))).get();
-      
+
       for (final row in allServices) {
         final ps = row.readTable(db.personServices);
         final svc = row.readTable(db.services);
         personServicesMap.putIfAbsent(ps.personId, () => []).add(ps.serviceId);
         if (svc.serviceName != null && svc.serviceName!.isNotEmpty) {
-          personServiceNamesMap.putIfAbsent(ps.personId, () => []).add(svc.serviceName!);
+          personServiceNamesMap
+              .putIfAbsent(ps.personId, () => [])
+              .add(svc.serviceName!);
         }
       }
 
-      final customRows = await (db.select(db.personCustomFieldValues)
-            ..where((t) => t.personId.isIn(fetchedPersonIds)))
-          .get();
+      final customRows = await (db.select(
+        db.personCustomFieldValues,
+      )..where((t) => t.personId.isIn(fetchedPersonIds))).get();
       for (final r in customRows) {
-        personCustomValuesMap.putIfAbsent(r.personId, () => {})[r.fieldId] = r.value ?? '';
+        personCustomValuesMap.putIfAbsent(r.personId, () => {})[r.fieldId] =
+            r.value ?? '';
       }
     }
 
@@ -290,13 +296,16 @@ class PersonsRepository extends _$PersonsRepository {
             khorosId: person.khorosId,
           );
 
-      final customRows = await (db.select(db.personCustomFieldValues)
-            ..where((t) => t.personId.equals(id)))
-          .get();
+      final customRows = await (db.select(
+        db.personCustomFieldValues,
+      )..where((t) => t.personId.equals(id))).get();
       final customValues = {for (var r in customRows) r.fieldId: r.value ?? ''};
 
       final serviceRows = await (db.select(db.personServices).join([
-        drift.innerJoin(db.services, db.services.serviceId.equalsExp(db.personServices.serviceId)),
+        drift.innerJoin(
+          db.services,
+          db.services.serviceId.equalsExp(db.personServices.serviceId),
+        ),
       ])..where(db.personServices.personId.equals(id))).get();
       final serviceNames = serviceRows
           .map((r) => r.readTable(db.services).serviceName ?? '')
@@ -515,7 +524,27 @@ class PersonsRepository extends _$PersonsRepository {
     return fetchPersons(search: query, limit: 100);
   }
 
+  Future<int> nextPersonId() async {
+    final db = ref.read(appDatabaseProvider);
+    final row = await db
+        .customSelect(
+          'SELECT COALESCE(MAX("Person_ID"), 0) + 1 AS next_id FROM "Persons"',
+        )
+        .getSingle();
+    return row.read<int>('next_id');
+  }
+
+  Future<bool> personIdExists(int id, {int? exceptId}) async {
+    final db = ref.read(appDatabaseProvider);
+    final query = db.select(db.persons)..where((t) => t.personId.equals(id));
+    if (exceptId != null) {
+      query.where((t) => t.personId.equals(exceptId).not());
+    }
+    return await query.getSingleOrNull() != null;
+  }
+
   Future<int?> addPerson({
+    int? id,
     required String name,
     int? stageId,
     int? khorosId,
@@ -541,6 +570,7 @@ class PersonsRepository extends _$PersonsRepository {
       await db.transaction(() async {
         // Use regular Companion constructor instead of .insert for better flexibility
         final companion = PersonsCompanion(
+          personId: id != null ? drift.Value(id) : const drift.Value.absent(),
           personName: drift.Value(name),
           stageId: drift.Value(stageId),
           khorosId: drift.Value(khorosId),
@@ -766,20 +796,28 @@ class PersonsRepository extends _$PersonsRepository {
     await db.transaction(() async {
       if (stageIds.isNotEmpty) {
         // Clear rohot and leader for anyone in these stages who is not in the map
-        await (db.update(db.persons)
-              ..where((t) => t.stageId.isIn(stageIds) & t.personId.isNotIn(rohotMap.keys.toList())))
-            .write(const PersonsCompanion(
-              rohot: drift.Value(null),
-              leader: drift.Value(null),
-            ));
+        await (db.update(db.persons)..where(
+              (t) =>
+                  t.stageId.isIn(stageIds) &
+                  t.personId.isNotIn(rohotMap.keys.toList()),
+            ))
+            .write(
+              const PersonsCompanion(
+                rohot: drift.Value(null),
+                leader: drift.Value(null),
+              ),
+            );
       }
       for (final entry in rohotMap.entries) {
         final personId = entry.key;
-        await (db.update(db.persons)..where((t) => t.personId.equals(personId)))
-            .write(PersonsCompanion(
-              rohot: drift.Value(entry.value),
-              leader: drift.Value(leaderMap[personId]),
-            ));
+        await (db.update(
+          db.persons,
+        )..where((t) => t.personId.equals(personId))).write(
+          PersonsCompanion(
+            rohot: drift.Value(entry.value),
+            leader: drift.Value(leaderMap[personId]),
+          ),
+        );
       }
     });
     ref.invalidateSelf();
@@ -791,11 +829,21 @@ class PersonsRepository extends _$PersonsRepository {
 
       await db.transaction(() async {
         for (final id in ids) {
-          await (db.delete(db.coming)..where((t) => t.personId.equals(id))).go();
-          await (db.delete(db.credit)..where((t) => t.personId.equals(id))).go();
-          await (db.delete(db.absentPersons)..where((t) => t.personId.equals(id))).go();
-          await (db.delete(db.absentPrint)..where((t) => t.personId.equals(id))).go();
-          await (db.delete(db.persons)..where((t) => t.personId.equals(id))).go();
+          await (db.delete(
+            db.coming,
+          )..where((t) => t.personId.equals(id))).go();
+          await (db.delete(
+            db.credit,
+          )..where((t) => t.personId.equals(id))).go();
+          await (db.delete(
+            db.absentPersons,
+          )..where((t) => t.personId.equals(id))).go();
+          await (db.delete(
+            db.absentPrint,
+          )..where((t) => t.personId.equals(id))).go();
+          await (db.delete(
+            db.persons,
+          )..where((t) => t.personId.equals(id))).go();
         }
       });
 
@@ -847,7 +895,9 @@ class PersonsRepository extends _$PersonsRepository {
         );
 
         for (final id in ids) {
-          await (db.update(db.persons)..where((t) => t.personId.equals(id))).write(companion);
+          await (db.update(
+            db.persons,
+          )..where((t) => t.personId.equals(id))).write(companion);
 
           if (serviceIds != null) {
             int? currentStageId;
@@ -855,13 +905,17 @@ class PersonsRepository extends _$PersonsRepository {
             if (stageId.present) {
               currentStageId = stageId.value;
             } else {
-              final p = await (db.select(db.persons)..where((t) => t.personId.equals(id))).getSingleOrNull();
+              final p = await (db.select(
+                db.persons,
+              )..where((t) => t.personId.equals(id))).getSingleOrNull();
               currentStageId = p?.stageId;
             }
             if (khorosId.present) {
               currentKhorosId = khorosId.value;
             } else {
-              final p = await (db.select(db.persons)..where((t) => t.personId.equals(id))).getSingleOrNull();
+              final p = await (db.select(
+                db.persons,
+              )..where((t) => t.personId.equals(id))).getSingleOrNull();
               currentKhorosId = p?.khorosId;
             }
             await ServiceEligibilityRepository(db).replacePersonServiceLinks(
@@ -872,16 +926,21 @@ class PersonsRepository extends _$PersonsRepository {
             );
           } else {
             if (stageId.present || khorosId.present) {
-              await ServiceEligibilityRepository(db).syncResolvedServicesForPerson(id);
+              await ServiceEligibilityRepository(
+                db,
+              ).syncResolvedServicesForPerson(id);
             }
           }
 
           if (customValues != null) {
             for (final entry in customValues.entries) {
-              await (db.delete(db.personCustomFieldValues)
-                    ..where((t) => t.personId.equals(id) & t.fieldId.equals(entry.key)))
+              await (db.delete(db.personCustomFieldValues)..where(
+                    (t) => t.personId.equals(id) & t.fieldId.equals(entry.key),
+                  ))
                   .go();
-              await db.into(db.personCustomFieldValues).insert(
+              await db
+                  .into(db.personCustomFieldValues)
+                  .insert(
                     PersonCustomFieldValuesCompanion.insert(
                       personId: id,
                       fieldId: entry.key,

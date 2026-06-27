@@ -33,7 +33,7 @@ final class StagesRepositoryProvider
   StagesRepository create() => StagesRepository();
 }
 
-String _$stagesRepositoryHash() => r'f27f1cb44a518bfa28746fb707530ce9a0aa0813';
+String _$stagesRepositoryHash() => r'117cd0c1a8332c5647e907014d42634e83d42f7e';
 
 abstract class _$StagesRepository extends $AsyncNotifier<List<StageModel>> {
   FutureOr<List<StageModel>> build();

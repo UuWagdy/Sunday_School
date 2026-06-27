@@ -1,0 +1,92 @@
+{
+  "Absent_Persons": [
+    "ID",
+    "Person_ID",
+    "Person_Name",
+    "Stage",
+    "Month_1",
+    "First",
+    "second",
+    "third",
+    "Forth",
+    "fife"
+  ],
+  "Absent_Print": [
+    "ID",
+    "Person_ID",
+    "Person_Name",
+    "Stage_ID",
+    "Stage_Name",
+    "Area_ID",
+    "Area_Name",
+    "Street_Name",
+    "Phone",
+    "Mobile",
+    "Date_From",
+    "Date_To"
+  ],
+  "Adding": [
+    "Date_ID",
+    "Date"
+  ],
+  "Areas": [
+    "Area_ID",
+    "Area_Name"
+  ],
+  "Coming": [
+    "Id",
+    "Person_ID",
+    "date_Week",
+    "Point",
+    "Mont_1",
+    "Year_1"
+  ],
+  "Credit": [
+    "Id",
+    "Person_ID",
+    "Person_Name",
+    "Stage_Name",
+    "Area_name",
+    "Street",
+    "Phone",
+    "Mobile",
+    "Day",
+    "month",
+    "year",
+    "Jender",
+    "Photo",
+    "Parcode"
+  ],
+  "Fathers": [
+    "Father_ID",
+    "Father_Name"
+  ],
+  "Jender": [
+    "Jender_ID",
+    "Jender_Name"
+  ],
+  "Pass": [
+    "Pass_ID",
+    "Pass_Word",
+    "Person_Name"
+  ],
+  "Persons": [
+    "Person_ID",
+    "Person_Name",
+    "Stage_ID",
+    "Area_ID",
+    "Street_Name",
+    "Phone",
+    "Mobile",
+    "Day",
+    "Month",
+    "Year",
+    "Jender_Name",
+    "Father_ID",
+    "Photo"
+  ],
+  "Stages": [
+    "Stage_ID",
+    "Stage_Name"
+  ]
+}

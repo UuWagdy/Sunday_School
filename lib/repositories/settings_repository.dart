@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' as drift;
 import '../database/database.dart';
 import '../database/database_provider.dart';
 import '../models/card_template.dart';
+import '../utils/contact_links.dart';
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
   return SettingsRepository(ref.read(appDatabaseProvider));
@@ -17,6 +18,9 @@ final programNameProvider = FutureProvider<String>((ref) {
 class SettingsRepository {
   static const String programNameKey = 'program_name';
   static const String idCardActiveTemplateKey = 'id_card_active_template';
+  static const String visitationMessageTemplateKey =
+      'visitation_message_template';
+  static const String visitationNamePartsKey = 'visitation_name_parts';
   static const String defaultProgramName = 'برنامج مدارس الأحد';
   static const int maxProgramNameLength = 80;
 
@@ -25,22 +29,27 @@ class SettingsRepository {
   SettingsRepository(this._db);
 
   Future<String?> getSetting(String key) async {
-    final query = _db.select(_db.settings)..where((t) => t.settingKey.equals(key));
+    final query = _db.select(_db.settings)
+      ..where((t) => t.settingKey.equals(key));
     final result = await query.getSingleOrNull();
     return result?.settingValue;
   }
 
   Future<void> saveSetting(String key, String value) async {
-    await _db.into(_db.settings).insertOnConflictUpdate(
-      SettingsCompanion(
-        settingKey: drift.Value(key),
-        settingValue: drift.Value(value),
-      ),
-    );
+    await _db
+        .into(_db.settings)
+        .insertOnConflictUpdate(
+          SettingsCompanion(
+            settingKey: drift.Value(key),
+            settingValue: drift.Value(value),
+          ),
+        );
   }
 
   Future<void> deleteSetting(String key) async {
-    await (_db.delete(_db.settings)..where((t) => t.settingKey.equals(key))).go();
+    await (_db.delete(
+      _db.settings,
+    )..where((t) => t.settingKey.equals(key))).go();
   }
 
   Future<String> getProgramName() async {
@@ -86,6 +95,34 @@ class SettingsRepository {
 
   Future<void> deleteActiveCardTemplate() async {
     await deleteSetting(idCardActiveTemplateKey);
+  }
+
+  Future<String> getVisitationMessageTemplate() async {
+    final value = await getSetting(visitationMessageTemplateKey);
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return ContactLinks.defaultVisitationMessageTemplate;
+    }
+    return trimmed;
+  }
+
+  Future<void> saveVisitationMessageTemplate(String value) async {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError.value(value, 'value', 'رسالة الافتقاد مطلوبة');
+    }
+    await saveSetting(visitationMessageTemplateKey, trimmed);
+  }
+
+  Future<int> getVisitationNameParts() async {
+    final value = await getSetting(visitationNamePartsKey);
+    final parsed = int.tryParse(value ?? '');
+    if (parsed == null || parsed < 0 || parsed > 3) return 1;
+    return parsed;
+  }
+
+  Future<void> saveVisitationNameParts(int value) async {
+    await saveSetting(visitationNamePartsKey, value.clamp(0, 3).toString());
   }
 
   Future<Uint8List?> getChurchLogo() async {

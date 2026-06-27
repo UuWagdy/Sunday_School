@@ -233,15 +233,20 @@ class AttendanceGridPdfGenerator {
     final List<String> sortedDates = uniqueDatesSet.toList()
       ..sort((a, b) => a.split('|')[0].compareTo(b.split('|')[0]));
 
-    final showPointsInAttendanceCells =
-        shouldRenderPointsInAttendanceCells(columns, sortedDates);
+    final showPointsInAttendanceCells = shouldRenderPointsInAttendanceCells(
+      columns,
+      sortedDates,
+    );
     final List<Map<String, String>> expandedColumns = [];
     for (var col in columns) {
       final id = col['id'];
       if (id == 'points' && showPointsInAttendanceCells) {
         continue;
       }
-      if (id == 'points' || id == 'earlyLate' || id == 'time' || id == 'checkout') {
+      if (id == 'points' ||
+          id == 'earlyLate' ||
+          id == 'time' ||
+          id == 'checkout') {
         if (sortedDates.isNotEmpty) {
           for (var d in sortedDates) {
             expandedColumns.add({
@@ -387,24 +392,26 @@ class AttendanceGridPdfGenerator {
       leftmostWidget = pw.Row(
         mainAxisSize: pw.MainAxisSize.min,
         children: serviceLogos
-            .map((img) => pw.Padding(
-                  padding: const pw.EdgeInsets.symmetric(horizontal: 2),
-                  child: pw.Image(img, width: 45, height: 45),
-                ))
+            .map(
+              (img) => pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 1),
+                child: pw.Image(img, width: 32, height: 32),
+              ),
+            )
             .toList(),
       );
       if (khorosLogo != null) {
         showKhorosInCenter = true;
       }
     } else if (khorosLogo != null) {
-      leftmostWidget = pw.Image(khorosLogo, width: 50, height: 50);
+      leftmostWidget = pw.Image(khorosLogo, width: 34, height: 34);
     } else {
-      leftmostWidget = pw.SizedBox(width: 50);
+      leftmostWidget = pw.SizedBox(width: 34);
     }
 
     return pw.Container(
       alignment: pw.Alignment.center,
-      margin: const pw.EdgeInsets.only(bottom: 15),
+      margin: const pw.EdgeInsets.only(bottom: 6),
       child: pw.Column(
         children: [
           // Logo row: Church logo on the right (RTL), Service logo(s) on the left
@@ -414,9 +421,9 @@ class AttendanceGridPdfGenerator {
             children: [
               // Right side (RTL first): Church logo
               if (rightLogo != null)
-                pw.Image(rightLogo, width: 50, height: 50)
+                pw.Image(rightLogo, width: 34, height: 34)
               else
-                pw.SizedBox(width: 50),
+                pw.SizedBox(width: 34),
               // Title in center
               pw.Expanded(
                 child: pw.Column(
@@ -425,7 +432,7 @@ class AttendanceGridPdfGenerator {
                       title,
                       style: pw.TextStyle(
                         font: boldFont,
-                        fontSize: 22,
+                        fontSize: 14,
                         fontWeight: pw.FontWeight.bold,
                         color: PdfColors.blue900,
                       ),
@@ -436,7 +443,7 @@ class AttendanceGridPdfGenerator {
                         churchName,
                         style: pw.TextStyle(
                           font: font,
-                          fontSize: 11,
+                          fontSize: 8,
                           color: PdfColors.grey800,
                         ),
                         textAlign: pw.TextAlign.center,
@@ -450,14 +457,14 @@ class AttendanceGridPdfGenerator {
           ),
           // If both service and khoros selected, show khoros logo centered below
           if (showKhorosInCenter && khorosLogo != null) ...[
-            pw.SizedBox(height: 5),
-            pw.Center(child: pw.Image(khorosLogo, width: 40, height: 40)),
+            pw.SizedBox(height: 2),
+            pw.Center(child: pw.Image(khorosLogo, width: 24, height: 24)),
           ],
-          pw.SizedBox(height: 5),
+          pw.SizedBox(height: 3),
           if (headerData != null && headerData.isNotEmpty)
             pw.Wrap(
-              spacing: 15,
-              runSpacing: 5,
+              spacing: 8,
+              runSpacing: 2,
               alignment: pw.WrapAlignment.center,
               children: headerData.entries
                   .map(
@@ -465,19 +472,19 @@ class AttendanceGridPdfGenerator {
                       '${e.key}: ${e.value}',
                       style: pw.TextStyle(
                         font: font,
-                        fontSize: 10,
+                        fontSize: 7,
                         color: PdfColors.grey700,
                       ),
                     ),
                   )
                   .toList(),
             ),
-          pw.SizedBox(height: 5),
+          pw.SizedBox(height: 2),
           pw.Text(
             'تاريخ التقرير: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}',
             style: pw.TextStyle(
               font: font,
-              fontSize: 10,
+              fontSize: 7,
               color: PdfColors.grey700,
             ),
           ),
@@ -803,7 +810,8 @@ class AttendanceGridPdfGenerator {
     List<Map<String, String>> columns,
     List<String> sortedDates,
   ) {
-    return sortedDates.isNotEmpty && columns.any((col) => col['id'] == 'points');
+    return sortedDates.isNotEmpty &&
+        columns.any((col) => col['id'] == 'points');
   }
 
   static String attendanceCellLabel({
@@ -986,8 +994,11 @@ class AttendanceGridPdfGenerator {
 
       final rowCells = <pw.Widget>[];
       // Total (far left)
-      final totalCell =
-          _textCellWidget(atts.length.toString(), font, fontSize: tableFontSize);
+      final totalCell = _textCellWidget(
+        atts.length.toString(),
+        font,
+        fontSize: tableFontSize,
+      );
       rowCells.add(
         reportRows
             ? PdfProgressMarker(
@@ -1017,7 +1028,9 @@ class AttendanceGridPdfGenerator {
         final colId = col['id'] ?? '';
         final parts = colId.split('|');
         final baseId = parts[0];
-        final String? dateServiceKey = parts.length > 1 ? parts.sublist(1).join('|') : null;
+        final String? dateServiceKey = parts.length > 1
+            ? parts.sublist(1).join('|')
+            : null;
 
         AttendanceDTO? targetRec;
         if (dateServiceKey != null) {
@@ -1135,7 +1148,11 @@ class AttendanceGridPdfGenerator {
       );
       for (var d in dates.reversed) {
         footerCells.add(
-          _textCellWidget((dateTotals[d] ?? 0).toString(), boldFont, bold: true),
+          _textCellWidget(
+            (dateTotals[d] ?? 0).toString(),
+            boldFont,
+            bold: true,
+          ),
         );
       }
       for (var col in columns.reversed) {

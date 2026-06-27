@@ -274,10 +274,20 @@ class PersonReportService {
             serviceName,
             serviceLogoImage,
           ),
-          footer: (context) =>
-              _buildFooter(regular, bold, context.pageNumber, context.pagesCount),
+          footer: (context) => _buildFooter(
+            regular,
+            bold,
+            context.pageNumber,
+            context.pagesCount,
+          ),
           build: (_) => [
-            _buildSinglePersonSummary(regular, bold, person, fields, personPhoto),
+            _buildSinglePersonSummary(
+              regular,
+              bold,
+              person,
+              fields,
+              personPhoto,
+            ),
             if (documents.isNotEmpty) ...[
               pw.SizedBox(height: 18),
               _buildDocumentsList(regular, bold, documents),
@@ -963,6 +973,36 @@ class PersonReportService {
     return null;
   }
 
+  static pw.Widget _buildDoneCheckbox(String name) {
+    return pw.Center(
+      child: pw.Checkbox(
+        name: name,
+        value: false,
+        width: 13,
+        height: 13,
+        activeColor: PdfColors.green700,
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey700, width: 1.2),
+          borderRadius: pw.BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _cellText(
+    pw.Font font,
+    double fontSize,
+    String value, {
+    PdfColor color = PdfColors.black,
+    pw.TextAlign align = pw.TextAlign.right,
+  }) {
+    return pw.Text(
+      value,
+      style: pw.TextStyle(font: font, fontSize: fontSize, color: color),
+      textAlign: align,
+    );
+  }
+
   static pw.Widget _buildTable(
     pw.Font font,
     pw.Font boldFont,
@@ -973,70 +1013,112 @@ class PersonReportService {
     int Function() allocateRowNumber,
     double tableFontSize,
   ) {
-    final rtlColumns = columns.reversed.toList();
-    final headers = rtlColumns.map((c) => c['title']!).toList();
+    final rtlColumns = columns
+        .where((col) {
+          final id = col['id'] ?? '';
+          return !id.startsWith('call_') && !id.startsWith('whatsapp_');
+        })
+        .toList()
+        .reversed
+        .toList();
 
-    return pw.TableHelper.fromTextArray(
-      headers: headers,
-      data: data.map((r) {
-        final rowNumber = allocateRowNumber();
-        final cells = rtlColumns.map<dynamic>((col) {
-          switch (col['id']) {
-            case 'name':
-              return r.name;
-            case 'id':
-              return r.id.toString();
-            case 'area':
-              return r.areaName;
-            case 'stage':
-              return r.stageName;
-            case 'father':
-              return r.fatherName;
-            case 'mobile':
-              return r.mobile;
-            case 'phone':
-              return r.phone;
-            case 'address':
-              return r.streetName;
-            case 'gender':
-              return r.jenderName ?? '';
-            case 'birthday':
-              return (r.day != null && r.month != null)
-                  ? '${r.year ?? ""}-${r.month}-${r.day}'
-                  : '';
-            case 'relationship':
-              return r.relationship ?? '';
-            default:
-              return '';
+    String valueFor(PersonListDTO r, String columnId) {
+      switch (columnId) {
+        case 'name':
+          return r.name;
+        case 'id':
+          return r.id.toString();
+        case 'area':
+          return r.areaName;
+        case 'stage':
+          return r.stageName;
+        case 'father':
+          return r.fatherName;
+        case 'mobile':
+          return r.mobile;
+        case 'phone':
+          return r.phone;
+        case 'street':
+        case 'address':
+          return r.streetName;
+        case 'gender':
+          return r.jenderName ?? '';
+        case 'birthday':
+          return (r.day != null && r.month != null)
+              ? '${r.year ?? ""}-${r.month}-${r.day}'
+              : '';
+        case 'relationship':
+          return r.relationship ?? '';
+        default:
+          if (columnId.startsWith('custom_')) {
+            return _getValue(r, columnId) ?? '';
           }
-        }).toList();
-        if (cells.isNotEmpty) {
-          cells[0] = PdfProgressMarker(
-            child: pw.Text(
-              cells[0].toString(),
-              style: pw.TextStyle(font: font, fontSize: tableFontSize),
-            ),
-            onPaint: () => reporter.update(
-              rowNumber,
-              total,
-              'جاري رسم بيانات الأشخاص داخل ملف PDF...',
-            ),
-          );
-        }
-        return cells;
-      }).toList(),
-      headerStyle: pw.TextStyle(
-        font: boldFont,
-        fontWeight: pw.FontWeight.bold,
-        color: PdfColors.white,
-        fontSize: tableFontSize + 1,
-      ),
-      headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
-      cellStyle: pw.TextStyle(font: font, fontSize: tableFontSize),
-      oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
+          return '';
+      }
+    }
+
+    pw.Widget buildCell(PersonListDTO r, Map<String, String> col, int rowNumber) {
+      if ((col['id'] ?? '') == 'done_checkbox') {
+        return _buildDoneCheckbox('done_${r.id}_$rowNumber');
+      }
+      return _cellText(font, tableFontSize, valueFor(r, col['id'] ?? ''));
+    }
+
+    return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
-      cellAlignment: pw.Alignment.centerRight,
-      headerAlignment: pw.Alignment.center,
+      defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+      children: [
+        pw.TableRow(
+          repeat: true,
+          decoration: const pw.BoxDecoration(color: PdfColors.blue800),
+          children: rtlColumns
+              .map(
+                (col) => pw.Padding(
+                  padding: const pw.EdgeInsets.all(4),
+                  child: pw.Text(
+                    col['title'] ?? '',
+                    style: pw.TextStyle(
+                      font: boldFont,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.white,
+                      fontSize: tableFontSize + 1,
+                    ),
+                    textAlign: pw.TextAlign.center,
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+        ...data.map((r) {
+          final rowNumber = allocateRowNumber();
+          final cells = rtlColumns
+              .map((col) => buildCell(r, col, rowNumber))
+              .toList();
+          if (cells.isNotEmpty) {
+            cells[0] = PdfProgressMarker(
+              child: cells[0],
+              onPaint: () => reporter.update(
+                rowNumber,
+                total,
+                'جاري رسم بيانات الأشخاص داخل ملف PDF...',
+              ),
+            );
+          }
+          return pw.TableRow(
+            decoration: rowNumber.isOdd
+                ? const pw.BoxDecoration(color: PdfColors.grey100)
+                : null,
+            children: cells
+                .map(
+                  (cell) => pw.Padding(
+                    padding: const pw.EdgeInsets.all(4),
+                    child: cell,
+                  ),
+                )
+                .toList(),
+          );
+        }),
+      ],
     );
   }
 

@@ -331,10 +331,12 @@ class AttendanceReportService {
       leftmostWidget = pw.Row(
         mainAxisSize: pw.MainAxisSize.min,
         children: serviceLogos
-            .map((img) => pw.Padding(
-                  padding: const pw.EdgeInsets.symmetric(horizontal: 2),
-                  child: pw.Image(img, width: 45, height: 45),
-                ))
+            .map(
+              (img) => pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 2),
+                child: pw.Image(img, width: 45, height: 45),
+              ),
+            )
             .toList(),
       );
       if (khorosLogo != null) {
@@ -461,29 +463,22 @@ class AttendanceReportService {
     List<AttendanceDTO> currentGroup = [];
 
     void flushGroup(AttendanceDTO? nextRecord) {
-      // 1. Add table for the previous group (chunked)
+      // Add one spanning table so its header can repeat at page boundaries.
       if (currentGroup.isNotEmpty) {
-        const int chunkSize = 30;
-        for (int chunkStart = 0; chunkStart < currentGroup.length; chunkStart += chunkSize) {
-          final chunkEnd = (chunkStart + chunkSize < currentGroup.length)
-              ? chunkStart + chunkSize
-              : currentGroup.length;
-          final chunkData = currentGroup.sublist(chunkStart, chunkEnd);
-          widgets.add(
-            _buildTable(
-              font,
-              boldFont,
-              chunkData,
-              columns,
-              serviceMinsMap,
-              reporter,
-              data.length,
-              allocateRowNumber,
-              tableFontSize,
-            ),
-          );
-          widgets.add(pw.SizedBox(height: 10));
-        }
+        widgets.add(
+          _buildTable(
+            font,
+            boldFont,
+            currentGroup,
+            columns,
+            serviceMinsMap,
+            reporter,
+            data.length,
+            allocateRowNumber,
+            tableFontSize,
+          ),
+        );
+        widgets.add(pw.SizedBox(height: 10));
         currentGroup = [];
       }
 
@@ -567,27 +562,19 @@ class AttendanceReportService {
     }
 
     if (currentGroup.isNotEmpty) {
-      const int chunkSize = 30;
-      for (int chunkStart = 0; chunkStart < currentGroup.length; chunkStart += chunkSize) {
-        final chunkEnd = (chunkStart + chunkSize < currentGroup.length)
-            ? chunkStart + chunkSize
-            : currentGroup.length;
-        final chunkData = currentGroup.sublist(chunkStart, chunkEnd);
-        widgets.add(
-          _buildTable(
-            font,
-            boldFont,
-            chunkData,
-            columns,
-            serviceMinsMap,
-            reporter,
-            data.length,
-            allocateRowNumber,
-            tableFontSize,
-          ),
-        );
-        widgets.add(pw.SizedBox(height: 10));
-      }
+      widgets.add(
+        _buildTable(
+          font,
+          boldFont,
+          currentGroup,
+          columns,
+          serviceMinsMap,
+          reporter,
+          data.length,
+          allocateRowNumber,
+          tableFontSize,
+        ),
+      );
     }
 
     return widgets;
@@ -631,6 +618,36 @@ class AttendanceReportService {
     return null;
   }
 
+  static pw.Widget _buildDoneCheckbox(String name) {
+    return pw.Center(
+      child: pw.Checkbox(
+        name: name,
+        value: false,
+        width: 13,
+        height: 13,
+        activeColor: PdfColors.green700,
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey700, width: 1.2),
+          borderRadius: pw.BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _cellText(
+    pw.Font font,
+    double fontSize,
+    String value, {
+    PdfColor color = PdfColors.black,
+    pw.TextAlign align = pw.TextAlign.right,
+  }) {
+    return pw.Text(
+      value,
+      style: pw.TextStyle(font: font, fontSize: fontSize, color: color),
+      textAlign: align,
+    );
+  }
+
   static pw.Widget _buildTable(
     pw.Font font,
     pw.Font boldFont,
@@ -644,100 +661,144 @@ class AttendanceReportService {
   ) {
     // Reverse the list because the PDF package renders Index 0 on the left,
     // but the user expects the top of the list in the dialog to be the rightmost column.
-    final rtlColumns = columns.reversed.toList();
-    final headers = rtlColumns.map((c) => c['title']!).toList();
+    final rtlColumns = columns
+        .where((col) {
+          final id = col['id'] ?? '';
+          return !id.startsWith('call_') &&
+              !id.startsWith('whatsapp_') &&
+              id != 'visited' &&
+              id != 'visitType';
+        })
+        .toList()
+        .reversed
+        .toList();
+    String valueFor(AttendanceDTO r, String columnId) {
+      switch (columnId) {
+        case 'name':
+          return r.personName;
+        case 'id':
+          return r.personId.toString();
+        case 'area':
+          return r.areaName ?? '';
+        case 'stage':
+          return r.stageName ?? '';
+        case 'father':
+          return r.fatherName ?? '';
+        case 'mobile':
+          return r.mobile ?? '';
+        case 'phone':
+          return r.phone ?? '';
+        case 'street':
+        case 'address':
+          return r.address ?? '';
+        case 'date':
+          return r.dateWeek ?? '';
+        case 'points':
+          return r.point?.toString() ?? '';
+        case 'time':
+          return r.attendTime ?? '';
+        case 'checkout':
+          return r.checkoutTime ?? '';
+        case 'earlyLate':
+          if (r.serviceId != null &&
+              r.attendTime != null &&
+              serviceMinsMap != null &&
+              serviceMinsMap.containsKey(r.serviceId)) {
+            try {
+              final parts = r.attendTime!.split(' ');
+              if (parts.length >= 2) {
+                final timeParts = parts[0].split(':');
+                int h = int.parse(timeParts[0]);
+                final int m = int.parse(timeParts[1]);
+                final isPm = parts[1] == 'م';
+                if (isPm && h < 12) h += 12;
+                if (!isPm && h == 12) h = 0;
 
-    return pw.TableHelper.fromTextArray(
-      headers: headers,
-      data: data.map((r) {
-        final rowNumber = allocateRowNumber();
-        final cells = rtlColumns.map<dynamic>((col) {
-          switch (col['id']) {
-            case 'name':
-              return r.personName ?? '';
-            case 'id':
-              return r.personId?.toString() ?? '';
-            case 'area':
-              return r.areaName ?? '';
-            case 'stage':
-              return r.stageName ?? '';
-            case 'father':
-              return r.fatherName ?? '';
-            case 'mobile':
-              return r.mobile ?? '';
-            case 'phone':
-              return r.phone ?? '';
-            case 'address':
-              return r.address ?? '';
-            case 'date':
-              return r.dateWeek ?? '';
-            case 'points':
-              return r.point?.toString() ?? '';
-            case 'time':
-              return r.attendTime ?? '';
-            case 'checkout':
-              return r.checkoutTime ?? '';
-            case 'earlyLate':
-              if (r.serviceId != null &&
-                  r.attendTime != null &&
-                  serviceMinsMap != null &&
-                  serviceMinsMap.containsKey(r.serviceId)) {
-                try {
-                  final parts = r.attendTime!.split(' ');
-                  if (parts.length >= 2) {
-                    final timeParts = parts[0].split(':');
-                    int h = int.parse(timeParts[0]);
-                    final int m = int.parse(timeParts[1]);
-                    final isPm = parts[1] == 'م';
-                    if (isPm && h < 12) h += 12;
-                    if (!isPm && h == 12) h = 0;
+                final attendMins = h * 60 + m;
+                final serviceMins = serviceMinsMap[r.serviceId]!;
+                final diff = attendMins - serviceMins;
 
-                    final attendMins = h * 60 + m;
-                    final serviceMins = serviceMinsMap[r.serviceId]!;
-                    final diff = attendMins - serviceMins;
-
-                    if (diff > 0) return 'تأخير ${diff} ق';
-                    if (diff < 0) return 'تبكير ${diff.abs()} ق';
-                    return '-';
-                  }
-                } catch (_) {}
+                if (diff > 0) return 'تأخير ${diff} ق';
+                if (diff < 0) return 'تبكير ${diff.abs()} ق';
+                return '-';
               }
-              return '';
-            case 'service':
-              return r.serviceName ?? '';
-            case 'visitNotes':
-              return r.visitNotes ?? '';
-            default:
-              return '';
+            } catch (_) {}
           }
-        }).toList();
-        if (cells.isNotEmpty) {
-          cells[0] = PdfProgressMarker(
-            child: pw.Text(
-              cells[0].toString(),
-              style: pw.TextStyle(font: font, fontSize: tableFontSize),
-            ),
-            onPaint: () => reporter.update(
-              rowNumber,
-              total,
-              'جاري رسم سجلات الحضور داخل ملف PDF...',
-            ),
-          );
-        }
-        return cells;
-      }).toList(),
-      headerStyle: pw.TextStyle(
-        font: boldFont,
-        fontWeight: pw.FontWeight.bold,
-        color: PdfColors.white,
-        fontSize: tableFontSize + 1,
-      ),
-      headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
-      cellStyle: pw.TextStyle(font: font, fontSize: tableFontSize),
-      oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
+          return '';
+        case 'service':
+          return r.serviceName ?? '';
+        case 'visitNotes':
+          return r.visitNotes ?? '';
+        default:
+          if (columnId.startsWith('custom_')) {
+            return _getValue(r, columnId) ?? '';
+          }
+          return '';
+      }
+    }
+
+    pw.Widget buildCell(AttendanceDTO r, Map<String, String> col, int rowNumber) {
+      if ((col['id'] ?? '') == 'done_checkbox') {
+        return _buildDoneCheckbox('done_${r.personId}_$rowNumber');
+      }
+      return _cellText(font, tableFontSize, valueFor(r, col['id'] ?? ''));
+    }
+
+    return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
-      cellAlignment: pw.Alignment.centerRight,
-      headerAlignment: pw.Alignment.center,
+      defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+      children: [
+        pw.TableRow(
+          repeat: true,
+          decoration: const pw.BoxDecoration(color: PdfColors.blue800),
+          children: rtlColumns
+              .map(
+                (col) => pw.Padding(
+                  padding: const pw.EdgeInsets.all(4),
+                  child: pw.Text(
+                    col['title'] ?? '',
+                    style: pw.TextStyle(
+                      font: boldFont,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.white,
+                      fontSize: tableFontSize + 1,
+                    ),
+                    textAlign: pw.TextAlign.center,
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+        ...data.map((r) {
+          final rowNumber = allocateRowNumber();
+          final cells = rtlColumns
+              .map((col) => buildCell(r, col, rowNumber))
+              .toList();
+          if (cells.isNotEmpty) {
+            cells[0] = PdfProgressMarker(
+              child: cells[0],
+              onPaint: () => reporter.update(
+                rowNumber,
+                total,
+                'جاري رسم سجلات الحضور داخل ملف PDF...',
+              ),
+            );
+          }
+          return pw.TableRow(
+            decoration: rowNumber.isOdd
+                ? const pw.BoxDecoration(color: PdfColors.grey100)
+                : null,
+            children: cells
+                .map(
+                  (cell) => pw.Padding(
+                    padding: const pw.EdgeInsets.all(4),
+                    child: cell,
+                  ),
+                )
+                .toList(),
+          );
+        }),
+      ],
     );
   }
 

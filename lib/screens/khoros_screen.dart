@@ -13,11 +13,19 @@ class KhorosScreen extends ConsumerStatefulWidget {
   ConsumerState<KhorosScreen> createState() => _KhorosScreenState();
 }
 
+class _ServiceName {
+  const _ServiceName(this.name);
+  final String name;
+}
+
 class _KhorosScreenState extends ConsumerState<KhorosScreen> {
   final TextEditingController _nameController = TextEditingController();
   KhorosModel? _selected;
   Uint8List? _currentLogo;
   List<int> _selectedServiceIds = [];
+  final Set<int> _selectedBulkIds = {};
+  List<int> _bulkServiceIds = [];
+  bool _isBulkSaving = false;
   int? get _selectedServiceId =>
       _selectedServiceIds.isEmpty ? null : _selectedServiceIds.first;
   set _selectedServiceId(int? value) {
@@ -37,6 +45,43 @@ class _KhorosScreenState extends ConsumerState<KhorosScreen> {
       _currentLogo = null;
       _selectedServiceIds = [];
     });
+  }
+
+  void _clearBulkSelection() {
+    setState(() {
+      _selectedBulkIds.clear();
+      _bulkServiceIds = [];
+    });
+  }
+
+  void _toggleSelectAll(List<KhorosModel> list) {
+    final ids = list.map((item) => item.id).toSet();
+    final allSelected =
+        ids.isNotEmpty && ids.every((id) => _selectedBulkIds.contains(id));
+    setState(() {
+      if (allSelected) {
+        _selectedBulkIds.removeAll(ids);
+      } else {
+        _selectedBulkIds.addAll(ids);
+      }
+    });
+  }
+
+  Future<void> _applyBulkServices() async {
+    if (_selectedBulkIds.isEmpty || _isBulkSaving) return;
+    setState(() => _isBulkSaving = true);
+    try {
+      final count = await ref
+          .read(khorosRepositoryProvider.notifier)
+          .updateKhorosServicesForIds(_selectedBulkIds, _bulkServiceIds);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('تم ربط الخدمات بـ $count خورس')));
+      _clearBulkSelection();
+    } finally {
+      if (mounted) setState(() => _isBulkSaving = false);
+    }
   }
 
   void _save() async {
@@ -331,6 +376,7 @@ class _KhorosScreenState extends ConsumerState<KhorosScreen> {
     AsyncValue<List<KhorosModel>> async, {
     bool mobile = false,
   }) {
+    final servicesList = ref.watch(servicesRepositoryProvider).value ?? [];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -348,6 +394,11 @@ class _KhorosScreenState extends ConsumerState<KhorosScreen> {
               ],
             ),
             const SizedBox(height: 16),
+            async.maybeWhen(
+              data: (list) => _buildBulkServicesBar(list, servicesList),
+              orElse: () => const SizedBox.shrink(),
+            ),
+            const SizedBox(height: 12),
             mobile
                 ? async.when(
                     data: (list) => ListView.separated(
@@ -379,31 +430,137 @@ class _KhorosScreenState extends ConsumerState<KhorosScreen> {
     );
   }
 
+  Widget _buildBulkServicesBar(
+    List<KhorosModel> list,
+    List<ServiceDTO> servicesList,
+  ) {
+    if (list.isEmpty) return const SizedBox.shrink();
+    final allSelected = list.every(
+      (item) => _selectedBulkIds.contains(item.id),
+    );
+    final selectedCount = list
+        .where((item) => _selectedBulkIds.contains(item.id))
+        .length;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: selectedCount == 0 ? Colors.grey.shade50 : Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selectedCount == 0
+              ? Colors.grey.shade200
+              : Colors.blue.shade100,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _toggleSelectAll(list),
+                icon: Icon(
+                  allSelected ? Icons.check_box : Icons.check_box_outline_blank,
+                  size: 18,
+                ),
+                label: Text(allSelected ? 'إلغاء تحديد الكل' : 'تحديد الكل'),
+              ),
+              if (selectedCount > 0)
+                Chip(
+                  label: Text('$selectedCount خورس محدد'),
+                  visualDensity: VisualDensity.compact,
+                ),
+              if (selectedCount > 0)
+                IconButton(
+                  onPressed: _clearBulkSelection,
+                  icon: const Icon(Icons.close),
+                  tooltip: 'مسح التحديد',
+                ),
+            ],
+          ),
+          if (selectedCount > 0) ...[
+            const SizedBox(height: 8),
+            MultiSelectFilter(
+              label: 'الخدمات التي سيتم ربطها بالمحدد',
+              hintText: 'بدون خدمات',
+              selectedIds: _bulkServiceIds,
+              allItems: servicesList
+                  .map((s) => SelectableItem(id: s.id, name: s.name))
+                  .toList(),
+              onChanged: (ids) {
+                setState(() => _bulkServiceIds = ids.cast<int>());
+              },
+            ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: _isBulkSaving ? null : _applyBulkServices,
+              icon: _isBulkSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.link_rounded),
+              label: const Text('ربط الخدمات بالمحدد'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildTile(KhorosModel t) {
     final servicesList = ref.watch(servicesRepositoryProvider).value ?? [];
-    final service = servicesList
-        .where((ser) => ser.id == t.serviceId)
-        .firstOrNull;
+    final linkedServices = servicesList
+        .where((ser) => t.serviceIds.contains(ser.id))
+        .map((ser) => ser.name)
+        .toList();
+    final service = linkedServices.isEmpty
+        ? null
+        : _ServiceName(linkedServices.join('، '));
+    final isBulkSelected = _selectedBulkIds.contains(t.id);
 
     return ListTile(
       selected: _selected?.id == t.id,
       selectedTileColor: Theme.of(context).primaryColor.withAlpha(12),
-      leading: CircleAvatar(
-        radius: 18,
-        backgroundColor: Theme.of(context).primaryColor.withAlpha(25),
-        backgroundImage: t.logo != null ? MemoryImage(t.logo!) : null,
-        child: t.logo == null
-            ? Icon(
-                Icons.library_music,
-                color: Theme.of(context).primaryColor,
-                size: 18,
-              )
-            : null,
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Checkbox(
+            value: isBulkSelected,
+            visualDensity: VisualDensity.compact,
+            onChanged: (selected) {
+              setState(() {
+                if (selected == true) {
+                  _selectedBulkIds.add(t.id);
+                } else {
+                  _selectedBulkIds.remove(t.id);
+                }
+              });
+            },
+          ),
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: Theme.of(context).primaryColor.withAlpha(25),
+            backgroundImage: t.logo != null ? MemoryImage(t.logo!) : null,
+            child: t.logo == null
+                ? Icon(
+                    Icons.library_music,
+                    color: Theme.of(context).primaryColor,
+                    size: 18,
+                  )
+                : null,
+          ),
+        ],
       ),
       title: Text(t.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: service != null
+      subtitle: linkedServices.isNotEmpty
           ? Text(
-              'الخدمة: ${service.name}',
+              'الخدمة: ${service!.name}',
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             )
           : null,

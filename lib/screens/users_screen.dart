@@ -33,6 +33,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
   bool _canMeetings = false;
   bool _canRohot = false;
   bool _canMonthlyFund = false;
+  bool _canVisitation = false;
 
   bool _obscurePassword = true;
 
@@ -42,6 +43,11 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
       'attendance',
       'تسجيل الحضور',
       Icons.calendar_month_outlined,
+    ),
+    _FeatureDefinition(
+      'visitation',
+      'الافتقاد',
+      Icons.volunteer_activism_outlined,
     ),
     _FeatureDefinition(
       'behavior',
@@ -107,6 +113,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
       _canMeetings = false;
       _canRohot = false;
       _canMonthlyFund = false;
+      _canVisitation = false;
     });
   }
 
@@ -134,6 +141,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
       _canMeetings = _granularFeatureEnabled(user, 'meetings');
       _canRohot = _granularFeatureEnabled(user, 'rohot');
       _canMonthlyFund = _granularFeatureEnabled(user, 'monthlyFund');
+      _canVisitation = _granularFeatureEnabled(user, 'visitation');
     });
   }
 
@@ -178,6 +186,8 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
         return _canRohot;
       case 'monthlyFund':
         return _canMonthlyFund;
+      case 'visitation':
+        return _canVisitation;
     }
     return false;
   }
@@ -234,6 +244,9 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
         break;
       case 'monthlyFund':
         _canMonthlyFund = value;
+        break;
+      case 'visitation':
+        _canVisitation = value;
         break;
     }
   }

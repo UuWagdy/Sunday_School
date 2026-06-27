@@ -155,6 +155,38 @@ class KhorosRepository extends _$KhorosRepository {
     return true;
   }
 
+  Future<int> updateKhorosServicesForIds(
+    Iterable<int> ids,
+    Iterable<int> serviceIds,
+  ) async {
+    final khorosIds = ids.toSet().toList();
+    if (khorosIds.isEmpty) return 0;
+
+    final db = ref.read(appDatabaseProvider);
+    final resolvedServiceIds = serviceIds.toSet();
+    final legacyServiceId = resolvedServiceIds.isEmpty
+        ? null
+        : resolvedServiceIds.first;
+
+    await db.transaction(() async {
+      await (db.update(db.khoroses)..where((t) => t.khorosId.isIn(khorosIds)))
+          .write(KhorosesCompanion(serviceId: drift.Value(legacyServiceId)));
+      for (final khorosId in khorosIds) {
+        await _replaceKhorosServiceLinks(db, khorosId, resolvedServiceIds);
+      }
+
+      final persons = await (db.select(
+        db.persons,
+      )..where((t) => t.khorosId.isIn(khorosIds))).get();
+      await ServiceEligibilityRepository(
+        db,
+      ).syncResolvedServicesForPeople(persons.map((person) => person.personId));
+    });
+
+    ref.invalidateSelf();
+    return khorosIds.length;
+  }
+
   Future<void> _replaceKhorosServiceLinks(
     AppDatabase db,
     int khorosId,

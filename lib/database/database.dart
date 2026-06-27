@@ -10,46 +10,51 @@ import 'tables.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(tables: [
-  AbsentPersons,
-  AbsentPrint,
-  Adding,
-  Areas,
-  Coming,
-  Credit,
-  Fathers,
-  Jender,
-  Pass,
-  Persons,
-  Stages,
-  Settings,
-  TayoCards,
-  PersonTayoPoints,
-  Services,
-  Khoroses,
-  KhorosServices,
-  StageServices,
-  PersonServices,
-  UserPermissionsExt,
-  UserVisibilityFilters,
-  CustomFieldDefinitions,
-  PersonCustomFieldValues,
-  PersonDocuments,
-  FamilyRelationships,
-])
+@DriftDatabase(
+  tables: [
+    AbsentPersons,
+    AbsentPrint,
+    Adding,
+    Areas,
+    Coming,
+    Visitations,
+    Credit,
+    Fathers,
+    Jender,
+    Pass,
+    Persons,
+    Stages,
+    Settings,
+    TayoCards,
+    PersonTayoPoints,
+    Services,
+    Khoroses,
+    KhorosServices,
+    StageServices,
+    PersonServices,
+    UserPermissionsExt,
+    UserVisibilityFilters,
+    CustomFieldDefinitions,
+    PersonCustomFieldValues,
+    PersonDocuments,
+    FamilyRelationships,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 34;
+  int get schemaVersion => 36;
 
   Future<void> _createTableSafely(Migrator m, TableInfo table) async {
     try {
       await m.createTable(table);
     } catch (e) {
       if (e.toString().contains('already exists')) {
-        print('FLUTTER DB: Table ${table.actualTableName} already exists, skipping create.');
+        print(
+          'FLUTTER DB: Table ${table.actualTableName} already exists, skipping create.',
+        );
       } else {
         rethrow;
       }
@@ -58,129 +63,169 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) async {
-          await m.createAll();
-          await _ensureServiceLinkTablesExist();
-          await _seedLegacyServiceLinks();
-          await _seedNativeFields();
-          await _seedAdminUser();
-        },
-        onUpgrade: (m, from, to) async {
-          print('FLUTTER DB: Upgrading from $from to $to');
-          
-          if (from < 14) {
-             await _createTableSafely(m, personTayoPoints);
-             await _createTableSafely(m, tayoCards);
-             await _addColumnSafely(m, personTayoPoints, personTayoPoints.serviceId);
-          }
-          if (from < 15) {
-            await _addColumnSafely(m, pass, pass.canServices);
-          }
-          if (from < 16) {
-            await _createTableSafely(m, khoroses);
-            await _addColumnSafely(m, persons, persons.khorosId);
-            await _addColumnSafely(m, absentPrint, absentPrint.khorosId);
-            await _addColumnSafely(m, pass, pass.canKhoros);
-          }
-          if (from < 19) {
-            await _createTableSafely(m, personServices);
-            await _createTableSafely(m, userPermissionsExt);
-            await _createTableSafely(m, userVisibilityFilters);
-            await _addColumnSafely(m, pass, pass.isAdvanced);
-          }
-          if (from < 20) {
-            await _addColumnSafely(m, coming, coming.checkoutTime);
-            await _addColumnSafely(m, services, services.endHour);
-            await _addColumnSafely(m, services, services.endMinute);
-          }
-          if (from < 21) {
-            await _createTableSafely(m, customFieldDefinitions);
-            await _createTableSafely(m, personCustomFieldValues);
-            await _seedNativeFields();
-          }
+    onCreate: (m) async {
+      await m.createAll();
+      await _ensureServiceLinkTablesExist();
+      await _seedLegacyServiceLinks();
+      await _seedNativeFields();
+      await _seedAdminUser();
+    },
+    onUpgrade: (m, from, to) async {
+      print('FLUTTER DB: Upgrading from $from to $to');
 
-          if (from < 22) {
-            await _createTableSafely(m, personDocuments);
-          }
+      if (from < 14) {
+        await _createTableSafely(m, personTayoPoints);
+        await _createTableSafely(m, tayoCards);
+        await _addColumnSafely(m, personTayoPoints, personTayoPoints.serviceId);
+      }
+      if (from < 15) {
+        await _addColumnSafely(m, pass, pass.canServices);
+      }
+      if (from < 16) {
+        await _createTableSafely(m, khoroses);
+        await _addColumnSafely(m, persons, persons.khorosId);
+        await _addColumnSafely(m, absentPrint, absentPrint.khorosId);
+        await _addColumnSafely(m, pass, pass.canKhoros);
+      }
+      if (from < 19) {
+        await _createTableSafely(m, personServices);
+        await _createTableSafely(m, userPermissionsExt);
+        await _createTableSafely(m, userVisibilityFilters);
+        await _addColumnSafely(m, pass, pass.isAdvanced);
+      }
+      if (from < 20) {
+        await _addColumnSafely(m, coming, coming.checkoutTime);
+        await _addColumnSafely(m, services, services.endHour);
+        await _addColumnSafely(m, services, services.endMinute);
+      }
+      if (from < 21) {
+        await _createTableSafely(m, customFieldDefinitions);
+        await _createTableSafely(m, personCustomFieldValues);
+        await _seedNativeFields();
+      }
 
-          if (from < 23) {
-            await _createTableSafely(m, familyRelationships);
-          }
+      if (from < 22) {
+        await _createTableSafely(m, personDocuments);
+      }
 
-          if (from < 24) {
-            await _addColumnSafely(m, areas, areas.parentId);
-            await _addColumnSafely(m, areas, areas.level);
-            await _addColumnSafely(m, areas, areas.areaPath);
-            await customStatement("UPDATE Areas SET Parent_ID = NULL, Level = 0, Area_Path = '/' || Area_ID || '/';").catchError((_) => null);
-          }
+      if (from < 23) {
+        await _createTableSafely(m, familyRelationships);
+      }
 
-          if (from < 29) {
-            // Version 29: Final Ultra Repair
-            await _repairPassTableRaw();
-            await _ensureAllColumnsAndTablesExist(m);
-          }
+      if (from < 24) {
+        await _addColumnSafely(m, areas, areas.parentId);
+        await _addColumnSafely(m, areas, areas.level);
+        await _addColumnSafely(m, areas, areas.areaPath);
+        await customStatement(
+          "UPDATE Areas SET Parent_ID = NULL, Level = 0, Area_Path = '/' || Area_ID || '/';",
+        ).catchError((_) => null);
+      }
 
-          if (from < 30) {
-            await _addColumnSafely(m, stages, stages.serviceId);
-            await _addColumnSafely(m, khoroses, khoroses.serviceId);
-            await _addColumnSafely(m, stages, stages.nextStageId);
-            await _addColumnSafely(m, coming, coming.behavior);
-          }
+      if (from < 29) {
+        // Version 29: Final Ultra Repair
+        await _repairPassTableRaw();
+        await _ensureAllColumnsAndTablesExist(m);
+      }
 
-          if (from < 31) {
-            await _addColumnSafely(m, pass, pass.canBehavior);
-          }
+      if (from < 30) {
+        await _addColumnSafely(m, stages, stages.serviceId);
+        await _addColumnSafely(m, khoroses, khoroses.serviceId);
+        await _addColumnSafely(m, stages, stages.nextStageId);
+        await _addColumnSafely(m, coming, coming.behavior);
+      }
 
-          if (from < 32) {
-            await _ensureServiceLinkTablesExist();
-            await _seedLegacyServiceLinks();
-          }
+      if (from < 31) {
+        await _addColumnSafely(m, pass, pass.canBehavior);
+      }
 
-          if (from < 33) {
-            await _addColumnSafely(m, persons, persons.rohot);
-            await _seedNativeFields();
-          }
+      if (from < 32) {
+        await _ensureServiceLinkTablesExist();
+        await _seedLegacyServiceLinks();
+      }
 
-          if (from < 34) {
-            await _addColumnSafely(m, persons, persons.leader as GeneratedColumn<Object>);
-            await _seedNativeFields();
-          }
-          // Repair phase: Fix any null IDs that might cause crashes during mapping
-          await _repairBrokenIds();
-        },
-        beforeOpen: (details) async {
-          // Extra safety: Every time we open, we check the Pass table specifically
-          // using RAW SQL because Drift Migrator might fail if the schema is too old.
-          await _repairPassTableRaw();
-          await customStatement('PRAGMA foreign_keys = ON');
-          await _ensureServiceLinkTablesExist();
-          await _seedLegacyServiceLinks();
-          await _seedNativeFields();
-        },
-      );
+      if (from < 33) {
+        await _addColumnSafely(m, persons, persons.rohot);
+        await _ensureCustomFieldDefinitionTableExists();
+        await _seedNativeFields();
+      }
+
+      if (from < 34) {
+        await _addColumnSafely(
+          m,
+          persons,
+          persons.leader as GeneratedColumn<Object>,
+        );
+        await _ensureCustomFieldDefinitionTableExists();
+        await _seedNativeFields();
+      }
+
+      if (from < 35) {
+        await _createTableSafely(m, visitations);
+        await _ensureAdminExtendedPermissions();
+      }
+      if (from < 36) {
+        await _ensureCustomFieldDefinitionTableExists();
+        await _addColumnSafely(
+          m,
+          customFieldDefinitions,
+          customFieldDefinitions.isPhone,
+        );
+      }
+      // Repair phase: Fix any null IDs that might cause crashes during mapping
+      await _repairBrokenIds();
+    },
+    beforeOpen: (details) async {
+      // Extra safety: Every time we open, we check the Pass table specifically
+      // using RAW SQL because Drift Migrator might fail if the schema is too old.
+      await _repairPassTableRaw();
+      await customStatement('PRAGMA foreign_keys = ON');
+      await _ensureServiceLinkTablesExist();
+      await _seedLegacyServiceLinks();
+      await _ensureCustomFieldDefinitionTableExists();
+      await _seedNativeFields();
+      await _ensureVisitationTablesExist();
+      await _ensureAdminExtendedPermissions();
+    },
+  );
 
   Future<void> _repairPassTableRaw() async {
     print('FLUTTER DB: Verifying Pass table schema...');
     try {
       // 1. Get existing columns via PRAGMA
       final result = await customSelect('PRAGMA table_info("Pass")').get();
-      final existingColumns = result.map((row) => (row.data['name'] as String).toLowerCase()).toList();
+      final existingColumns = result
+          .map((row) => (row.data['name'] as String).toLowerCase())
+          .toList();
 
       final columnsToAdd = [
-        'can_persons', 'can_stages', 'can_areas', 'can_fathers', 'can_reports',
-        'can_users', 'can_absence', 'can_maintenance', 'can_id_card', 'can_tayo',
-        'can_transfer', 'can_services', 'can_khoros', 'can_behavior', 'is_advanced'
+        'can_persons',
+        'can_stages',
+        'can_areas',
+        'can_fathers',
+        'can_reports',
+        'can_users',
+        'can_absence',
+        'can_maintenance',
+        'can_id_card',
+        'can_tayo',
+        'can_transfer',
+        'can_services',
+        'can_khoros',
+        'can_behavior',
+        'is_advanced',
       ];
-      
+
       for (final col in columnsToAdd) {
         if (!existingColumns.contains(col.toLowerCase())) {
           try {
-            await customStatement('ALTER TABLE "Pass" ADD COLUMN "$col" INTEGER DEFAULT 0;');
+            await customStatement(
+              'ALTER TABLE "Pass" ADD COLUMN "$col" INTEGER DEFAULT 0;',
+            );
             print('FLUTTER DB: Safely added missing column: $col');
           } catch (_) {}
         }
       }
-      
+
       // 2. Force refresh admin permissions to "Regular" with all flags
       await customStatement('''
         UPDATE "Pass" SET 
@@ -194,15 +239,33 @@ class AppDatabase extends _$AppDatabase {
       print('FLUTTER DB IRRECOVERABLE REPAIR ERROR: $e');
     }
   }
-  
+
   Future<void> _ensureAllColumnsAndTablesExist(Migrator m) async {
     final List<TableInfo> tables = [
-      personTayoPoints, tayoCards, khoroses,
+      personTayoPoints,
+      tayoCards,
+      khoroses,
       personServices,
-      userPermissionsExt, userVisibilityFilters, customFieldDefinitions,
-      personCustomFieldValues, personDocuments, familyRelationships,
-      absentPersons, absentPrint, credit, jender, stages, areas, fathers,
-      persons, coming, pass, services, adding, settings,
+      userPermissionsExt,
+      userVisibilityFilters,
+      customFieldDefinitions,
+      personCustomFieldValues,
+      personDocuments,
+      familyRelationships,
+      visitations,
+      absentPersons,
+      absentPrint,
+      credit,
+      jender,
+      stages,
+      areas,
+      fathers,
+      persons,
+      coming,
+      pass,
+      services,
+      adding,
+      settings,
     ];
     for (final table in tables) {
       await _createTableSafely(m, table);
@@ -248,9 +311,98 @@ class AppDatabase extends _$AppDatabase {
     await _addColumnSafely(m, stages, stages.nextStageId);
     await _addColumnSafely(m, coming, coming.behavior);
     await _addColumnSafely(m, persons, persons.rohot);
-    await _addColumnSafely(m, persons, persons.leader as GeneratedColumn<Object>);
+    await _addColumnSafely(
+      m,
+      persons,
+      persons.leader as GeneratedColumn<Object>,
+    );
     await _ensureServiceLinkTablesExist();
+    await _ensureVisitationTablesExist();
+    await _ensureAdminExtendedPermissions();
     await _seedLegacyServiceLinks();
+  }
+
+  Future<void> _ensureVisitationTablesExist() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS "Visitations" (
+        "ID" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "Person_ID" INTEGER NOT NULL,
+        "Service_ID" INTEGER NULL,
+        "Visit_Date" TEXT NOT NULL,
+        "Is_Visited" INTEGER NOT NULL DEFAULT 0,
+        "Visit_Type" TEXT NOT NULL DEFAULT 'تليفون',
+        "Notes" TEXT NULL,
+        "Created_At" INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        "Updated_At" INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        FOREIGN KEY ("Person_ID") REFERENCES "Persons" ("Person_ID") ON DELETE CASCADE,
+        FOREIGN KEY ("Service_ID") REFERENCES "Services" ("Service_ID") ON DELETE SET NULL
+      );
+    ''');
+  }
+
+  Future<void> _ensureCustomFieldDefinitionTableExists() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS "custom_field_definitions" (
+        "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "Field_Key" TEXT NULL UNIQUE,
+        "Name" TEXT NOT NULL,
+        "Type" TEXT NOT NULL,
+        "Options" TEXT NULL,
+        "Field_Order" INTEGER NOT NULL,
+        "Is_Visible" INTEGER NOT NULL DEFAULT 1,
+        "Is_Filter" INTEGER NOT NULL DEFAULT 0,
+        "Is_Phone" INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+    await _ensureColumnExists(
+      tableName: 'custom_field_definitions',
+      columnName: 'Is_Phone',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+
+  Future<void> _ensureColumnExists({
+    required String tableName,
+    required String columnName,
+    required String definition,
+  }) async {
+    final columns = await customSelect('PRAGMA table_info("$tableName")').get();
+    final exists = columns.any(
+      (row) =>
+          (row.data['name'] as String?)?.toLowerCase() ==
+          columnName.toLowerCase(),
+    );
+    if (!exists) {
+      await customStatement(
+        'ALTER TABLE "$tableName" ADD COLUMN "$columnName" $definition;',
+      );
+    }
+  }
+
+  Future<void> _ensureAdminExtendedPermissions() async {
+    try {
+      final existingTables = await customSelect(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('Pass', 'User_Permissions_Ext')",
+      ).get();
+      final tableNames = existingTables
+          .map((row) => row.data['name'] as String?)
+          .whereType<String>()
+          .toSet();
+      if (!tableNames.contains('Pass') ||
+          !tableNames.contains('User_Permissions_Ext')) {
+        return;
+      }
+
+      await customStatement('''
+        INSERT OR REPLACE INTO "User_Permissions_Ext"
+          ("User_ID", "Feature_Key", "can_add", "can_edit", "can_delete")
+        SELECT "Pass_ID", 'visitation', 1, 1, 1
+        FROM "Pass"
+        WHERE "Person_Name" = 'admin';
+      ''');
+    } catch (e) {
+      print('FLUTTER DB ERROR seeding admin extended permissions: $e');
+    }
   }
 
   Future<void> _ensureServiceLinkTablesExist() async {
@@ -311,13 +463,17 @@ class AppDatabase extends _$AppDatabase {
         final tableName = table[0];
         final idColumn = table[1];
         await customStatement(
-          'UPDATE "$tableName" SET "$idColumn" = rowid WHERE "$idColumn" IS NULL OR "$idColumn" = 0;'
+          'UPDATE "$tableName" SET "$idColumn" = rowid WHERE "$idColumn" IS NULL OR "$idColumn" = 0;',
         );
       }
     } catch (_) {}
   }
 
-  Future<void> _addColumnSafely(Migrator m, TableInfo table, GeneratedColumn column) async {
+  Future<void> _addColumnSafely(
+    Migrator m,
+    TableInfo table,
+    GeneratedColumn column,
+  ) async {
     try {
       await m.addColumn(table, column);
     } catch (e) {
@@ -332,31 +488,116 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> _seedNativeFields() async {
     final nativeFields = [
-      {'key': 'name', 'name': 'الاسم رباعي', 'order': 0, 'filter': false, 'visible': true},
-      {'key': 'gender', 'name': 'النوع', 'order': 1, 'filter': true, 'visible': true},
-      {'key': 'stage', 'name': 'المرحلة', 'order': 2, 'filter': true, 'visible': true},
-      {'key': 'mobile', 'name': 'الموبايل', 'order': 3, 'filter': false, 'visible': true},
-      {'key': 'phone', 'name': 'التليفون الأرضي', 'order': 4, 'filter': false, 'visible': true},
-      {'key': 'area', 'name': 'المنطقة', 'order': 5, 'filter': true, 'visible': true},
-      {'key': 'street', 'name': 'العنوان/الشارع', 'order': 6, 'filter': false, 'visible': true},
-      {'key': 'father', 'name': 'أب الاعتراف', 'order': 7, 'filter': true, 'visible': true},
-      {'key': 'khoros', 'name': 'الخورس', 'order': 8, 'filter': true, 'visible': true},
-      {'key': 'services', 'name': 'الخدمات', 'order': 9, 'filter': true, 'visible': true},
-      {'key': 'birthday', 'name': 'تاريخ الميلاد', 'order': 10, 'filter': true, 'visible': true},
-      {'key': 'rohot', 'name': 'الرهط', 'order': 11, 'filter': true, 'visible': false},
-      {'key': 'leader', 'name': 'القائد', 'order': 12, 'filter': true, 'visible': false},
+      {
+        'key': 'name',
+        'name': 'الاسم رباعي',
+        'order': 0,
+        'filter': false,
+        'visible': true,
+      },
+      {
+        'key': 'gender',
+        'name': 'النوع',
+        'order': 1,
+        'filter': true,
+        'visible': true,
+      },
+      {
+        'key': 'stage',
+        'name': 'المرحلة',
+        'order': 2,
+        'filter': true,
+        'visible': true,
+      },
+      {
+        'key': 'mobile',
+        'name': 'الموبايل',
+        'order': 3,
+        'filter': false,
+        'visible': true,
+      },
+      {
+        'key': 'phone',
+        'name': 'التليفون الأرضي',
+        'order': 4,
+        'filter': false,
+        'visible': true,
+      },
+      {
+        'key': 'area',
+        'name': 'المنطقة',
+        'order': 5,
+        'filter': true,
+        'visible': true,
+      },
+      {
+        'key': 'street',
+        'name': 'العنوان/الشارع',
+        'order': 6,
+        'filter': false,
+        'visible': true,
+      },
+      {
+        'key': 'father',
+        'name': 'أب الاعتراف',
+        'order': 7,
+        'filter': true,
+        'visible': true,
+      },
+      {
+        'key': 'khoros',
+        'name': 'الخورس',
+        'order': 8,
+        'filter': true,
+        'visible': true,
+      },
+      {
+        'key': 'services',
+        'name': 'الخدمات',
+        'order': 9,
+        'filter': true,
+        'visible': true,
+      },
+      {
+        'key': 'birthday',
+        'name': 'تاريخ الميلاد',
+        'order': 10,
+        'filter': true,
+        'visible': true,
+      },
+      {
+        'key': 'rohot',
+        'name': 'الرهط',
+        'order': 11,
+        'filter': true,
+        'visible': false,
+      },
+      {
+        'key': 'leader',
+        'name': 'القائد',
+        'order': 12,
+        'filter': true,
+        'visible': false,
+      },
     ];
 
     for (final f in nativeFields) {
-      await into(customFieldDefinitions).insert(CustomFieldDefinitionsCompanion.insert(
-        fieldKey: Value(f['key'] as String),
-        name: f['name'] as String,
-        type: 'native',
-        fieldOrder: f['order'] as int,
-        isVisible: Value(f['visible'] as bool),
-        isFilter: Value(f['filter'] as bool),
-      ), mode: InsertMode.insertOrIgnore);
+      await into(customFieldDefinitions).insert(
+        CustomFieldDefinitionsCompanion.insert(
+          fieldKey: Value(f['key'] as String),
+          name: f['name'] as String,
+          type: 'native',
+          fieldOrder: f['order'] as int,
+          isVisible: Value(f['visible'] as bool),
+          isFilter: Value(f['filter'] as bool),
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
     }
+
+    await (update(customFieldDefinitions)
+          ..where((tbl) => tbl.fieldKey.isIn(['mobile', 'phone'])))
+        .write(const CustomFieldDefinitionsCompanion(isPhone: Value(true)));
   }
 
   Future<void> _seedAdminUser() async {
@@ -366,7 +607,7 @@ class AppDatabase extends _$AppDatabase {
       print('FLUTTER DB: Pass table not empty, skipping admin seeding.');
       return;
     }
-    
+
     final companion = PassCompanion.insert(
       personName: const Value('admin'),
       passWord: const Value('1234'),
@@ -393,10 +634,14 @@ class AppDatabase extends _$AppDatabase {
 
   Future<Uint8List?> pickImage() async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
       if (result != null) {
         if (result.files.single.bytes != null) return result.files.single.bytes;
-        if (result.files.single.path != null) return await File(result.files.single.path!).readAsBytes();
+        if (result.files.single.path != null)
+          return await File(result.files.single.path!).readAsBytes();
       }
     } catch (e) {
       print('DEBUG: Error picking image: $e');
@@ -405,21 +650,27 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<List<int>> getAreaAndDescendantIds(int areaId) async {
-    final area = await (select(areas)..where((t) => t.areaId.equals(areaId))).getSingleOrNull();
+    final area = await (select(
+      areas,
+    )..where((t) => t.areaId.equals(areaId))).getSingleOrNull();
     if (area == null || (area.areaPath ?? '').isEmpty) return [areaId];
-    
-    final descendants = await (select(areas)..where((t) => t.areaPath.like('${area.areaPath}%'))).get();
+
+    final descendants = await (select(
+      areas,
+    )..where((t) => t.areaPath.like('${area.areaPath}%'))).get();
     return descendants.map((e) => e.areaId).toList();
   }
 
   Future<List<int>> getMultipleAreasAndDescendantIds(List<int> areaIds) async {
     if (areaIds.isEmpty) return [];
-    
-    final areaList = await (select(areas)..where((t) => t.areaId.isIn(areaIds))).get();
+
+    final areaList = await (select(
+      areas,
+    )..where((t) => t.areaId.isIn(areaIds))).get();
     if (areaList.isEmpty) return areaIds;
 
     final query = select(areas);
-    
+
     // Construct a composite WHERE clause to match any of the paths
     Expression<bool>? composite;
     for (final area in areaList) {
@@ -452,26 +703,32 @@ LazyDatabase _openConnection() {
     if (pointerFile.existsSync()) {
       dbName = pointerFile.readAsStringSync();
     }
-    
+
     final file = File(p.join(dbFolder.path, dbName));
-    
+
     // Copy from assets if it doesn't exist
     if (!file.existsSync()) {
       try {
         final data = await rootBundle.load('assets/database/Betros_Bols.db');
-        final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+        final bytes = data.buffer.asUint8List(
+          data.offsetInBytes,
+          data.lengthInBytes,
+        );
         file.writeAsBytesSync(bytes);
         print('FLUTTER DB: Copied from assets to ${file.path}');
       } catch (e) {
         print('FLUTTER DB ERROR: Could not copy asset database: $e');
       }
     }
-    
+
     // Clean up old database files from previous restores
     try {
       final files = dbFolder.listSync();
       for (var f in files) {
-        if (f is File && f.path.endsWith('.db') && p.basename(f.path).startsWith('Betros_Bols') && p.basename(f.path) != dbName) {
+        if (f is File &&
+            f.path.endsWith('.db') &&
+            p.basename(f.path).startsWith('Betros_Bols') &&
+            p.basename(f.path) != dbName) {
           try {
             f.deleteSync();
           } catch (_) {} // Ignore locked files

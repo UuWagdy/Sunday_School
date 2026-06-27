@@ -154,6 +154,38 @@ class StagesRepository extends _$StagesRepository {
     return true;
   }
 
+  Future<int> updateStageServicesForIds(
+    Iterable<int> ids,
+    Iterable<int> serviceIds,
+  ) async {
+    final stageIds = ids.toSet().toList();
+    if (stageIds.isEmpty) return 0;
+
+    final db = ref.read(appDatabaseProvider);
+    final resolvedServiceIds = serviceIds.toSet();
+    final legacyServiceId = resolvedServiceIds.isEmpty
+        ? null
+        : resolvedServiceIds.first;
+
+    await db.transaction(() async {
+      await (db.update(db.stages)..where((t) => t.stageId.isIn(stageIds)))
+          .write(StagesCompanion(serviceId: drift.Value(legacyServiceId)));
+      for (final stageId in stageIds) {
+        await _replaceStageServiceLinks(db, stageId, resolvedServiceIds);
+      }
+
+      final persons = await (db.select(
+        db.persons,
+      )..where((t) => t.stageId.isIn(stageIds))).get();
+      await ServiceEligibilityRepository(
+        db,
+      ).syncResolvedServicesForPeople(persons.map((person) => person.personId));
+    });
+
+    ref.invalidateSelf();
+    return stageIds.length;
+  }
+
   Future<void> _replaceStageServiceLinks(
     AppDatabase db,
     int stageId,

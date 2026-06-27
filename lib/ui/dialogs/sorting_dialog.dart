@@ -6,9 +6,15 @@ import '../../repositories/fields_repository.dart';
 class ReportColumn {
   final String id;
   final String title;
+  final bool isPhone;
   bool isSelected;
 
-  ReportColumn({required this.id, required this.title, this.isSelected = true});
+  ReportColumn({
+    required this.id,
+    required this.title,
+    this.isSelected = true,
+    this.isPhone = false,
+  });
 }
 
 class SortingCriterion {
@@ -25,7 +31,12 @@ class SortingCriterion {
 
 class SortingDialog extends ConsumerStatefulWidget {
   final bool isAttendance;
-  const SortingDialog({super.key, this.isAttendance = true});
+  final bool isVisitation;
+  const SortingDialog({
+    super.key,
+    this.isAttendance = true,
+    this.isVisitation = false,
+  });
 
   @override
   ConsumerState<SortingDialog> createState() => _SortingDialogState();
@@ -56,12 +67,13 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
       final visitationIds = {
         'name',
         'id',
+        'done_checkbox',
         'area',
         'stage',
         'father',
         'mobile',
         'phone',
-        'street',
+        'visitNotes',
       };
       for (var col in _columns) {
         if (visitationIds.contains(col.id)) {
@@ -81,19 +93,20 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
     final visitationIds = {
       'name',
       'id',
+      'done_checkbox',
       'area',
       'stage',
       'father',
       'mobile',
       'phone',
-      'street',
+      'visitNotes',
     };
 
     if (selectedIds.length == 2 &&
         selectedIds.contains('name') &&
         selectedIds.contains('id')) {
       _shortcutType = 'name_code';
-    } else if (selectedIds.length == 8 &&
+    } else if (selectedIds.length == visitationIds.length &&
         selectedIds.every((id) => visitationIds.contains(id))) {
       _shortcutType = 'visitation';
     } else {
@@ -147,11 +160,13 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
       ),
       ...fields
           .where((f) => f.type == 'dropdown' || f.type == 'multi_select')
-          .map((f) => SortingCriterion(
-                id: 'custom_${f.id}_${f.name}',
-                title: f.name,
-                isSelected: false,
-              )),
+          .map(
+            (f) => SortingCriterion(
+              id: 'custom_${f.id}_${f.name}',
+              title: f.name,
+              isSelected: false,
+            ),
+          ),
       SortingCriterion(id: 'name', title: 'الاسم', isSelected: false),
     ];
 
@@ -193,6 +208,11 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
       ReportColumn(id: 'name', title: 'الاسم', isSelected: true),
       ReportColumn(id: 'id', title: 'الكود', isSelected: true),
       ReportColumn(
+        id: 'done_checkbox',
+        title: 'تم',
+        isSelected: widget.isVisitation,
+      ),
+      ReportColumn(
         id: 'area',
         title: getLabel('area', 'المنطقة'),
         isSelected: false,
@@ -211,11 +231,13 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
         id: 'mobile',
         title: getLabel('mobile', 'موبايل'),
         isSelected: false,
+        isPhone: true,
       ),
       ReportColumn(
         id: 'phone',
         title: getLabel('phone', 'تليفون أرضي'),
         isSelected: false,
+        isPhone: true,
       ),
       ReportColumn(
         id: 'street',
@@ -239,7 +261,7 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
           isSelected: false,
         ),
       ],
-      if (widget.isAttendance) ...[
+      if (widget.isAttendance && !widget.isVisitation) ...[
         ReportColumn(id: 'date', title: 'التاريخ', isSelected: false),
         ReportColumn(id: 'points', title: 'النقاط', isSelected: false),
         ReportColumn(id: 'time', title: 'وقت الحضور', isSelected: false),
@@ -256,6 +278,26 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
           isSelected: false,
         ),
       ],
+      if (widget.isVisitation) ...[
+        ReportColumn(id: 'date', title: 'تاريخ الافتقاد', isSelected: true),
+        ReportColumn(id: 'service', title: 'الخدمة', isSelected: false),
+        ReportColumn(
+          id: 'visitNotes',
+          title: 'ملاحظات الافتقاد',
+          isSelected: true,
+        ),
+      ],
+      ...fields.where((f) => f.type != 'native' && f.type != 'document').expand(
+        (field) sync* {
+          final customId = 'custom_${field.id}_${field.name}';
+          yield ReportColumn(
+            id: customId,
+            title: field.name,
+            isSelected: false,
+            isPhone: field.isPhone,
+          );
+        },
+      ),
     ];
     _isInit = true;
   }
@@ -273,7 +315,9 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
             child: AlertDialog(
               title: Text(
                 widget.isAttendance
-                    ? 'إعدادات تقرير الحضور'
+                    ? (widget.isVisitation
+                          ? 'إعدادات تقرير الافتقاد'
+                          : 'إعدادات تقرير الحضور')
                     : 'إعدادات التقرير',
               ),
               contentPadding: EdgeInsets.zero,
@@ -379,7 +423,9 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
         const Divider(height: 1),
         CheckboxListTile(
           title: const Text('فصل كل تجميع جديد في صفحة خاصة به جديدة'),
-          value: _separatePages || _groupExportMode == PdfGroupExportMode.separatePdfPerGroup,
+          value:
+              _separatePages ||
+              _groupExportMode == PdfGroupExportMode.separatePdfPerGroup,
           onChanged: (val) {
             setState(() {
               final isChecked = val ?? false;
@@ -395,11 +441,14 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
           controlAffinity: ListTileControlAffinity.leading,
           dense: true,
         ),
-        if (_separatePages || _groupExportMode == PdfGroupExportMode.separatePdfPerGroup)
+        if (_separatePages ||
+            _groupExportMode == PdfGroupExportMode.separatePdfPerGroup)
           Padding(
             padding: const EdgeInsets.only(right: 24.0),
             child: CheckboxListTile(
-              title: const Text('كل تجميع في ملف لوحده (ملف PDF منفصل لكل تجميع)'),
+              title: const Text(
+                'كل تجميع في ملف لوحده (ملف PDF منفصل لكل تجميع)',
+              ),
               value: _groupExportMode == PdfGroupExportMode.separatePdfPerGroup,
               onChanged: (val) {
                 setState(() {

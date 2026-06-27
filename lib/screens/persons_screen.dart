@@ -412,9 +412,9 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
             const SnackBar(content: Text('تم تعديل البيانات بنجاح')),
           );
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('فشل تعديل البيانات')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('فشل تعديل البيانات')));
         }
       }
     }
@@ -428,7 +428,9 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Text('تأكيد الحذف الجماعي'),
-          content: Text('هل أنت متأكد من حذف ${_selectedIds.length} من الأشخاص المحددين؟'),
+          content: Text(
+            'هل أنت متأكد من حذف ${_selectedIds.length} من الأشخاص المحددين؟',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -436,7 +438,10 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('حذف الكل', style: TextStyle(color: Colors.red)),
+              child: const Text(
+                'حذف الكل',
+                style: TextStyle(color: Colors.red),
+              ),
             ),
           ],
         ),
@@ -469,11 +474,13 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
     if (_selectedIds.isEmpty) return;
     try {
       final repo = ref.read(personsRepositoryProvider.notifier);
-      final fields = await ref.read(fieldsRepositoryProvider.notifier).fetchAll();
+      final fields = await ref
+          .read(fieldsRepositoryProvider.notifier)
+          .fetchAll();
       final services = await ref.read(servicesRepositoryProvider.future);
-      
+
       if (!mounted) return;
-      
+
       final serviceChoice = await _pickPersonPrintService(services);
       if (serviceChoice == null) return;
 
@@ -491,13 +498,17 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
       int count = 0;
       for (final id in _selectedIds) {
         count++;
-        progress.update('جاري جلب بيانات الشخص $count من ${_selectedIds.length}...', current: count, total: _selectedIds.length);
-        
+        progress.update(
+          'جاري جلب بيانات الشخص $count من ${_selectedIds.length}...',
+          current: count,
+          total: _selectedIds.length,
+        );
+
         final fullPerson = await repo.fetchPersonById(id);
         if (fullPerson == null) continue;
-        
+
         final customValues = await repo.fetchCustomFieldValues(id);
-        
+
         final reportFields = <SinglePersonReportField>[];
         final documents = <SinglePersonReportDocument>[];
 
@@ -549,7 +560,11 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
         documentsList.add(documents);
       }
 
-      progress.update('جاري إنشاء ملف استمارات PDF...', current: count, total: _selectedIds.length);
+      progress.update(
+        'جاري إنشاء ملف استمارات PDF...',
+        current: count,
+        total: _selectedIds.length,
+      );
 
       final bytes = await PersonReportService.generateMultiplePeopleFormsPDF(
         persons: selectedPersonsList,
@@ -660,7 +675,8 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
         !user.isAdvanced ||
         (user.granularPermissions['persons']?['add'] ?? false);
 
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    final viewport = MediaQuery.sizeOf(context);
+    final isMobile = viewport.width < 700 || viewport.height < 600;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -679,21 +695,16 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
                         children: [
                           _buildMobileFilterToggle(),
                           if (_mobileFiltersExpanded)
-                            ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxHeight:
-                                    MediaQuery.of(context).size.height * 0.5,
-                              ),
-                              child: _buildFilterPanel(),
-                            ),
+                            Expanded(child: _buildFilterPanel()),
                           const SizedBox(height: 8),
-                          Expanded(
-                            child: _isLoading && _allPersons.isEmpty
-                                ? const Center(
-                                    child: CircularProgressIndicator(),
-                                  )
-                                : _buildPersonsList(user),
-                          ),
+                          if (!_mobileFiltersExpanded)
+                            Expanded(
+                              child: _isLoading && _allPersons.isEmpty
+                                  ? const Center(
+                                      child: CircularProgressIndicator(),
+                                    )
+                                  : _buildPersonsList(user),
+                            ),
                         ],
                       )
                     : Row(
@@ -735,7 +746,8 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
 
   Widget _buildSelectAllBar() {
     if (_allPersons.isEmpty) return const SizedBox.shrink();
-    final bool isAllSelected = _selectedIds.length == _allPersons.length && _selectedIds.isNotEmpty;
+    final bool isAllSelected =
+        _selectedIds.length == _allPersons.length && _selectedIds.isNotEmpty;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
@@ -752,12 +764,18 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
               });
             },
           ),
-          const Text('تحديد الكل في الصفحة الحالية', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          const Text(
+            'تحديد الكل في الصفحة الحالية',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          ),
           const Spacer(),
           if (_selectedIds.isNotEmpty)
             TextButton(
               onPressed: () => setState(() => _selectedIds.clear()),
-              child: const Text('إلغاء التحديد', style: TextStyle(color: Colors.red, fontSize: 12)),
+              child: const Text(
+                'إلغاء التحديد',
+                style: TextStyle(color: Colors.red, fontSize: 12),
+              ),
             ),
         ],
       ),
@@ -782,17 +800,26 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
                       Expanded(child: _buildTitleAndCount()),
                       if (_selectedIds.isNotEmpty) ...[
                         IconButton(
-                          icon: const Icon(Icons.edit_outlined, color: Colors.blue),
+                          icon: const Icon(
+                            Icons.edit_outlined,
+                            color: Colors.blue,
+                          ),
                           onPressed: _bulkEditSelected,
                           tooltip: 'تعديل جماعي',
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                          ),
                           onPressed: _deleteSelected,
                           tooltip: 'مسح لهم',
                         ),
                         IconButton(
-                          icon: const Icon(Icons.print_outlined, color: Colors.deepPurple),
+                          icon: const Icon(
+                            Icons.print_outlined,
+                            color: Colors.deepPurple,
+                          ),
                           onPressed: _printSelectedForms,
                           tooltip: 'طباعة استمارات المحددين',
                         ),
@@ -819,18 +846,28 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Checkbox(
-                            value: _selectedIds.length == _allPersons.length && _selectedIds.isNotEmpty,
+                            value:
+                                _selectedIds.length == _allPersons.length &&
+                                _selectedIds.isNotEmpty,
                             onChanged: (val) {
                               setState(() {
                                 if (val == true) {
-                                  _selectedIds.addAll(_allPersons.map((p) => p.id));
+                                  _selectedIds.addAll(
+                                    _allPersons.map((p) => p.id),
+                                  );
                                 } else {
                                   _selectedIds.clear();
                                 }
                               });
                             },
                           ),
-                          const Text('تحديد الكل', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          const Text(
+                            'تحديد الكل',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -839,45 +876,68 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
                       ElevatedButton.icon(
                         onPressed: _bulkEditSelected,
                         icon: const Icon(Icons.edit_outlined, size: 16),
-                        label: const Text('تعديل جماعي', style: TextStyle(fontSize: 11)),
+                        label: const Text(
+                          'تعديل جماعي',
+                          style: TextStyle(fontSize: 11),
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.blue,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         onPressed: _deleteSelected,
                         icon: const Icon(Icons.delete_outline, size: 16),
-                        label: const Text('مسح لهم', style: TextStyle(fontSize: 11)),
+                        label: const Text(
+                          'مسح لهم',
+                          style: TextStyle(fontSize: 11),
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         onPressed: _printSelectedForms,
                         icon: const Icon(Icons.print_outlined, size: 16),
-                        label: const Text('طباعة الاستمارات', style: TextStyle(fontSize: 11)),
+                        label: const Text(
+                          'طباعة الاستمارات',
+                          style: TextStyle(fontSize: 11),
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.deepPurple,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       TextButton(
                         onPressed: () => setState(() => _selectedIds.clear()),
-                        child: const Text('إلغاء التحديد', style: TextStyle(color: Colors.red, fontSize: 12)),
+                        child: const Text(
+                          'إلغاء التحديد',
+                          style: TextStyle(color: Colors.red, fontSize: 12),
+                        ),
                       ),
                     ],
                     const SizedBox(width: 16),
                     IconButton(
                       icon: Icon(
-                        _showFilters ? Icons.filter_list_off : Icons.filter_list,
+                        _showFilters
+                            ? Icons.filter_list_off
+                            : Icons.filter_list,
                         color: _showFilters
                             ? Colors.red
                             : Theme.of(context).primaryColor,
@@ -926,6 +986,7 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
                           (c) => {
                             'id': c.id.toString(),
                             'title': c.title.toString(),
+                            'isPhone': c.isPhone.toString(),
                           },
                         )
                         .toList();
@@ -1003,15 +1064,27 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
                     limit: 5000,
                     offset: 0,
                     stageIds: _selectedIds.isNotEmpty ? null : _filterStageIds,
-                    khorosIds: _selectedIds.isNotEmpty ? null : _filterKhorosIds,
+                    khorosIds: _selectedIds.isNotEmpty
+                        ? null
+                        : _filterKhorosIds,
                     areaIds: _selectedIds.isNotEmpty ? null : _filterAreaIds,
-                    fatherIds: _selectedIds.isNotEmpty ? null : _filterFatherIds,
+                    fatherIds: _selectedIds.isNotEmpty
+                        ? null
+                        : _filterFatherIds,
                     genders: _selectedIds.isNotEmpty ? null : _filterGenders,
-                    birthdayDay: _selectedIds.isNotEmpty ? null : _filterBirthdayDay,
-                    birthdayMonth: _selectedIds.isNotEmpty ? null : _filterBirthdayMonth,
-                    birthdayYear: _selectedIds.isNotEmpty ? null : _filterBirthdayYear,
+                    birthdayDay: _selectedIds.isNotEmpty
+                        ? null
+                        : _filterBirthdayDay,
+                    birthdayMonth: _selectedIds.isNotEmpty
+                        ? null
+                        : _filterBirthdayMonth,
+                    birthdayYear: _selectedIds.isNotEmpty
+                        ? null
+                        : _filterBirthdayYear,
                     rohots: _selectedIds.isNotEmpty ? null : _filterRohots,
-                    personIds: _selectedIds.isNotEmpty ? _selectedIds.toList() : null,
+                    personIds: _selectedIds.isNotEmpty
+                        ? _selectedIds.toList()
+                        : null,
                     includeServices: false,
                   );
                   if (progress.isCancelled) {
@@ -1070,8 +1143,8 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
             },
       icon: Icon(Icons.table_view_outlined, size: isMobile ? 16 : 18),
       label: Text(
-        _selectedIds.isNotEmpty 
-            ? (isMobile ? 'تصدير المحددين' : 'تصدير المحددين للإكسل') 
+        _selectedIds.isNotEmpty
+            ? (isMobile ? 'تصدير المحددين' : 'تصدير المحددين للإكسل')
             : (isMobile ? 'تصدير' : 'تصدير إكسل'),
         style: TextStyle(fontSize: isMobile ? 11 : 12),
       ),
@@ -1113,6 +1186,7 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
                           (c) => {
                             'id': c.id.toString(),
                             'title': c.title.toString(),
+                            'isPhone': c.isPhone.toString(),
                           },
                         )
                         .toList();
@@ -1204,15 +1278,27 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
                     limit: 5000,
                     offset: 0,
                     stageIds: _selectedIds.isNotEmpty ? null : _filterStageIds,
-                    khorosIds: _selectedIds.isNotEmpty ? null : _filterKhorosIds,
+                    khorosIds: _selectedIds.isNotEmpty
+                        ? null
+                        : _filterKhorosIds,
                     areaIds: _selectedIds.isNotEmpty ? null : _filterAreaIds,
-                    fatherIds: _selectedIds.isNotEmpty ? null : _filterFatherIds,
+                    fatherIds: _selectedIds.isNotEmpty
+                        ? null
+                        : _filterFatherIds,
                     genders: _selectedIds.isNotEmpty ? null : _filterGenders,
-                    birthdayDay: _selectedIds.isNotEmpty ? null : _filterBirthdayDay,
-                    birthdayMonth: _selectedIds.isNotEmpty ? null : _filterBirthdayMonth,
-                    birthdayYear: _selectedIds.isNotEmpty ? null : _filterBirthdayYear,
+                    birthdayDay: _selectedIds.isNotEmpty
+                        ? null
+                        : _filterBirthdayDay,
+                    birthdayMonth: _selectedIds.isNotEmpty
+                        ? null
+                        : _filterBirthdayMonth,
+                    birthdayYear: _selectedIds.isNotEmpty
+                        ? null
+                        : _filterBirthdayYear,
                     rohots: _selectedIds.isNotEmpty ? null : _filterRohots,
-                    personIds: _selectedIds.isNotEmpty ? _selectedIds.toList() : null,
+                    personIds: _selectedIds.isNotEmpty
+                        ? _selectedIds.toList()
+                        : null,
                     includeServices: false,
                   );
                   if (progress.isCancelled) {
@@ -1892,11 +1978,11 @@ class _PersonsScreenState extends ConsumerState<PersonsScreen> {
     );
   }
 
-
-
   Widget _buildRohotFilter() {
     return FutureBuilder<String?>(
-      future: ref.read(settingsRepositoryProvider).getSetting('rohot_groups_json'),
+      future: ref
+          .read(settingsRepositoryProvider)
+          .getSetting('rohot_groups_json'),
       builder: (context, snap) {
         final raw = snap.data;
         List<String> rohotNames = [];
