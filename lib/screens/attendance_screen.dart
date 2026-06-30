@@ -425,23 +425,95 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   List<AttendanceDTO> get _selectedRecords =>
       _records.where((r) => _selectedPersonIds.contains(r.personId)).toList();
 
-  List<int> get _selectedAttendanceIds =>
-      _selectedRecords.map((r) => r.id).whereType<int>().toSet().toList();
+  List<AttendanceServiceRecord> _serviceRecordsFor(AttendanceDTO record) {
+    if (record.serviceRecords.isNotEmpty) return record.serviceRecords;
+    final id = record.id;
+    if (id == null) return const [];
+    return [
+      AttendanceServiceRecord(
+        id: id,
+        serviceId: record.serviceId,
+        serviceName: record.serviceName,
+        dateWeek: record.dateWeek,
+        attendTime: record.attendTime,
+        checkoutTime: record.checkoutTime,
+        point: record.point ?? 0,
+        attendancePoint: null,
+        checkoutPoint: null,
+      ),
+    ];
+  }
+
+  List<int> get _selectedAttendanceIds => _selectedRecords
+      .expand(_serviceRecordsFor)
+      .where(
+        (record) =>
+            _selectedServiceId == null ||
+            record.serviceId == _selectedServiceId,
+      )
+      .map((record) => record.id)
+      .toSet()
+      .toList();
 
   int get _currentPoints =>
       int.tryParse(_pointsController.text) ?? _defaultAttendancePoints;
 
-  void _toggleSelectAllVisible() {
+  Future<void> _toggleSelectAllVisible() async {
     final visibleIds = _records.map((r) => r.personId).toSet();
     final allSelected =
         visibleIds.isNotEmpty && visibleIds.every(_selectedPersonIds.contains);
-    setState(() {
-      if (allSelected) {
+    if (allSelected) {
+      setState(() {
         _selectedPersonIds.removeAll(visibleIds);
-      } else {
-        _selectedPersonIds.addAll(visibleIds);
+      });
+      return;
+    }
+
+    if (_hasMore) {
+      setState(() => _isBulkActionRunning = true);
+      DateTime? dateFrom = _filterDateFrom;
+      DateTime? dateTo = _filterDateTo;
+      if (_filterSpecificDateOnly) {
+        dateFrom = _selectedDate;
+        dateTo = _selectedDate;
       }
-    });
+      final allRecords = await ref
+          .read(attendanceRepositoryProvider.notifier)
+          .fetchAttendance(
+            month: _filterMonth,
+            year: _filterYear,
+            search: _searchQuery,
+            dateFrom: dateFrom,
+            dateTo: dateTo,
+            stageIds: _filterStageIds,
+            khorosIds: _filterKhorosIds,
+            areaIds: _filterAreaIds,
+            fatherIds: _filterFatherIds,
+            genders: _filterGenders,
+            birthdayDay: _filterBirthdayDay,
+            birthdayMonth: _filterBirthdayMonth,
+            birthdayYear: _filterBirthdayYear,
+            serviceId: _filterServiceId,
+            visitedStatus: _filterVisitedStatus,
+            notesFilter: _filterNotesStatus,
+            lateAfterTime: _lateAfterTimeString(),
+            status: _filterStatus,
+            customFilters: _customFilters,
+          );
+      if (!mounted) return;
+      setState(() {
+        _records
+          ..clear()
+          ..addAll(allRecords);
+        _selectedPersonIds.addAll(allRecords.map((r) => r.personId));
+        _hasMore = false;
+        _offset = allRecords.length;
+        _isBulkActionRunning = false;
+      });
+      return;
+    }
+
+    setState(() => _selectedPersonIds.addAll(visibleIds));
   }
 
   void _clearSelection() {
@@ -1559,10 +1631,13 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           ),
         ),
       ],
-      onChanged: (v) {
+      onChanged: (v) async {
         setState(() {
           _selectedServiceId = v;
+          _filterServiceId = v;
+          _selectedPersonIds.clear();
         });
+        await _loadInitialData();
       },
     );
   }
@@ -1906,12 +1981,18 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     final allSelected =
         visibleIds.isNotEmpty && visibleIds.every(_selectedPersonIds.contains);
     final hasSelectedRecords = _selectedAttendanceIds.isNotEmpty;
-    final hasPendingCheckout = _selectedRecords.any(
-      (r) =>
-          r.id != null &&
-          r.attendTime != null &&
-          (r.checkoutTime == null || r.checkoutTime!.isEmpty),
-    );
+    final hasPendingCheckout = _selectedRecords
+        .expand(_serviceRecordsFor)
+        .where(
+          (record) =>
+              _selectedServiceId == null ||
+              record.serviceId == _selectedServiceId,
+        )
+        .any(
+          (record) =>
+              record.attendTime != null &&
+              (record.checkoutTime == null || record.checkoutTime!.isEmpty),
+        );
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1930,7 +2011,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           OutlinedButton.icon(
-            onPressed: _toggleSelectAllVisible,
+            onPressed: _isBulkActionRunning ? null : _toggleSelectAllVisible,
             icon: Icon(
               allSelected ? Icons.check_box : Icons.check_box_outline_blank,
               size: 18,
@@ -3914,6 +3995,92 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     );
   }
 
+  Widget _buildServiceAttendanceLine(AttendanceServiceRecord record) {
+    final serviceName = (record.serviceName?.trim().isNotEmpty ?? false)
+        ? record.serviceName!
+        : 'خدمة غير محددة';
+    final checkout = (record.checkoutTime?.trim().isNotEmpty ?? false)
+        ? ' • انصراف: ${record.checkoutTime}'
+        : '';
+    final hasCheckout = record.checkoutTime?.trim().isNotEmpty ?? false;
+    final fallbackAttendancePoints = hasCheckout
+        ? (record.point < 0
+              ? 0
+              : (record.point > _defaultAttendancePoints
+                    ? _defaultAttendancePoints
+                    : record.point))
+        : record.point;
+    final attendancePoints = record.attendancePoint ?? fallbackAttendancePoints;
+    final checkoutPoints =
+        record.checkoutPoint ??
+        (hasCheckout && record.point > attendancePoints
+            ? record.point - attendancePoints
+            : 0);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.indigo.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.indigo.withOpacity(0.12)),
+      ),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 2,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            serviceName,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+          ),
+          Text(
+            '${record.dateWeek ?? ''} • حضور: ${record.attendTime ?? '-'}$checkout',
+            style: TextStyle(
+              color: Colors.grey[700],
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          Chip(
+            avatar: const Icon(Icons.login, size: 14, color: Colors.green),
+            label: Text('نقاط الحضور: $attendancePoints'),
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            labelStyle: TextStyle(
+              color: Colors.green.shade800,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          if (hasCheckout)
+            Chip(
+              avatar: const Icon(Icons.logout, size: 14, color: Colors.red),
+              label: Text('نقاط الانصراف: $checkoutPoints'),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              labelStyle: TextStyle(
+                color: Colors.red.shade800,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          if (hasCheckout)
+            Chip(
+              label: Text('الإجمالي: ${record.point}'),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              labelStyle: TextStyle(
+                color: Theme.of(context).primaryColor,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAttendanceCard(
     AttendanceDTO r, {
     bool canEdit = true,
@@ -4212,13 +4379,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                       ),
                       const SizedBox(height: 6),
                       if (isPresent)
-                        Text(
-                          '${r.dateWeek ?? ""} ${r.attendTime != null ? "• حضور: ${r.attendTime}" : ""} ${r.checkoutTime != null ? " • انصراف: ${r.checkoutTime}" : ""} ${r.serviceName != null ? " • ${r.serviceName}" : ""}',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: _serviceRecordsFor(
+                            r,
+                          ).map(_buildServiceAttendanceLine).toList(),
                         )
                       else
                         Text(
@@ -4238,26 +4403,9 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${r.point ?? 0} نقطة',
-                      style: TextStyle(
-                        color: Theme.of(context).primaryColor,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  if (isPresent && canAdd) ...[
-                    const SizedBox(width: 8),
+                  if (isPresent &&
+                      canAdd &&
+                      _serviceRecordsFor(r).length == 1) ...[
                     ElevatedButton.icon(
                       onPressed: () => _checkoutPerson(r),
                       icon: Icon(

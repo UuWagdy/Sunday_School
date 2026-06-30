@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:drift/drift.dart';
@@ -45,7 +46,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 36;
+  int get schemaVersion => 38;
 
   Future<void> _createTableSafely(Migrator m, TableInfo table) async {
     try {
@@ -171,6 +172,12 @@ class AppDatabase extends _$AppDatabase {
           customFieldDefinitions.isPhone,
         );
       }
+      if (from < 37) {
+        await consolidateImportedGuardianPhoneFields();
+      }
+      if (from < 38) {
+        await _ensureAttendancePointColumns();
+      }
       // Repair phase: Fix any null IDs that might cause crashes during mapping
       await _repairBrokenIds();
     },
@@ -183,10 +190,47 @@ class AppDatabase extends _$AppDatabase {
       await _seedLegacyServiceLinks();
       await _ensureCustomFieldDefinitionTableExists();
       await _seedNativeFields();
+      await consolidateImportedGuardianPhoneFields();
+      await _ensureAttendancePointColumns();
       await _ensureVisitationTablesExist();
       await _ensureAdminExtendedPermissions();
     },
   );
+
+  Future<void> _ensureAttendancePointColumns() async {
+    final columns = await customSelect('PRAGMA table_info("Coming")').get();
+    final names = columns
+        .map((row) => (row.data['name'] as String).toLowerCase())
+        .toSet();
+    if (!names.contains('attendance_point')) {
+      await customStatement(
+        'ALTER TABLE "Coming" ADD COLUMN "Attendance_Point" INTEGER',
+      );
+    }
+    if (!names.contains('checkout_point')) {
+      await customStatement(
+        'ALTER TABLE "Coming" ADD COLUMN "Checkout_Point" INTEGER',
+      );
+    }
+    await customStatement('''
+      UPDATE "Coming"
+      SET "Attendance_Point" = CASE
+            WHEN "Checkout_Time" IS NOT NULL AND TRIM("Checkout_Time") <> ''
+              THEN MIN(COALESCE("Point", 0), 2)
+            ELSE COALESCE("Point", 0)
+          END
+      WHERE "Attendance_Point" IS NULL;
+    ''');
+    await customStatement('''
+      UPDATE "Coming"
+      SET "Checkout_Point" = CASE
+            WHEN "Checkout_Time" IS NOT NULL AND TRIM("Checkout_Time") <> ''
+              THEN MAX(COALESCE("Point", 0) - COALESCE("Attendance_Point", 0), 0)
+            ELSE 0
+          END
+      WHERE "Checkout_Point" IS NULL;
+    ''');
+  }
 
   Future<void> _repairPassTableRaw() async {
     print('FLUTTER DB: Verifying Pass table schema...');
@@ -402,6 +446,86 @@ class AppDatabase extends _$AppDatabase {
       ''');
     } catch (e) {
       print('FLUTTER DB ERROR seeding admin extended permissions: $e');
+    }
+  }
+
+  /// Older Excel imports created custom copies of the two native guardian
+  /// phone fields. Consolidate those copies without discarding conflicts.
+  Future<void> consolidateImportedGuardianPhoneFields() async {
+    Future<void> consolidate({
+      required String importedFieldKey,
+      required String nativeColumn,
+    }) async {
+      await customStatement('''
+        UPDATE "Persons"
+        SET "$nativeColumn" = (
+          SELECT NULLIF(TRIM(values_row."Value"), '')
+          FROM "person_custom_field_values" AS values_row
+          INNER JOIN "custom_field_definitions" AS definitions
+            ON definitions."id" = values_row."Field_ID"
+          WHERE definitions."Field_Key" = '$importedFieldKey'
+            AND values_row."Person_ID" = "Persons"."Person_ID"
+          LIMIT 1
+        )
+        WHERE NULLIF(TRIM("$nativeColumn"), '') IS NULL
+          AND EXISTS (
+            SELECT 1
+            FROM "person_custom_field_values" AS values_row
+            INNER JOIN "custom_field_definitions" AS definitions
+              ON definitions."id" = values_row."Field_ID"
+            WHERE definitions."Field_Key" = '$importedFieldKey'
+              AND values_row."Person_ID" = "Persons"."Person_ID"
+              AND NULLIF(TRIM(values_row."Value"), '') IS NOT NULL
+          );
+      ''');
+
+      final conflictRow = await customSelect('''
+        SELECT COUNT(*) AS conflict_count
+        FROM "person_custom_field_values" AS values_row
+        INNER JOIN "custom_field_definitions" AS definitions
+          ON definitions."id" = values_row."Field_ID"
+        INNER JOIN "Persons"
+          ON "Persons"."Person_ID" = values_row."Person_ID"
+        WHERE definitions."Field_Key" = '$importedFieldKey'
+          AND NULLIF(TRIM(values_row."Value"), '') IS NOT NULL
+          AND NULLIF(TRIM("Persons"."$nativeColumn"), '') IS NOT NULL
+          AND TRIM(values_row."Value") <> TRIM("Persons"."$nativeColumn");
+      ''').getSingle();
+      final conflictCount = conflictRow.read<int>('conflict_count');
+      if (conflictCount != 0) return;
+
+      await customStatement('''
+        DELETE FROM "person_custom_field_values"
+        WHERE "Field_ID" IN (
+          SELECT "id"
+          FROM "custom_field_definitions"
+          WHERE "Field_Key" = '$importedFieldKey'
+        );
+      ''');
+      await customStatement('''
+        DELETE FROM "custom_field_definitions"
+        WHERE "Field_Key" = '$importedFieldKey';
+      ''');
+    }
+
+    try {
+      await transaction(() async {
+        await consolidate(
+          importedFieldKey: 'excel_guardian_phone_1',
+          nativeColumn: 'Phone',
+        );
+        await consolidate(
+          importedFieldKey: 'excel_guardian_phone_2',
+          nativeColumn: 'Mobile',
+        );
+      });
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to consolidate duplicate guardian phone fields.',
+        name: 'AppDatabase',
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
   }
 

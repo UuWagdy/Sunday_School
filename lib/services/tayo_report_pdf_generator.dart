@@ -67,7 +67,11 @@ class TayoReportPdfGenerator {
           child: pw.Text(
             'صفحة ${context.pageNumber} من ${context.pagesCount}',
             textDirection: pw.TextDirection.rtl,
-            style: pw.TextStyle(font: regularFont, fontSize: 8, color: PdfColors.grey500),
+            style: pw.TextStyle(
+              font: regularFont,
+              fontSize: 8,
+              color: PdfColors.grey500,
+            ),
           ),
         ),
         build: (context) {
@@ -88,7 +92,9 @@ class TayoReportPdfGenerator {
               cellStyle: pw.TextStyle(font: regularFont, fontSize: 10),
               cellAlignments: {
                 for (var i = 0; i < columns.length; i++)
-                  i: columns[i] == 'الاسم' ? pw.Alignment.centerRight : pw.Alignment.center,
+                  i: columns[i] == 'الاسم'
+                      ? pw.Alignment.centerRight
+                      : pw.Alignment.center,
               },
               columnWidths: {
                 for (var i = 0; i < columns.length; i++)
@@ -104,14 +110,28 @@ class TayoReportPdfGenerator {
                 final d = data[i];
                 final row = columns.map((col) {
                   switch (col) {
-                    case '#': return '${i + 1}';
-                    case 'الاسم': return d.personName;
-                    case 'المرحلة': return d.stageName ?? '-';
-                    case 'المنطقة': return d.areaName ?? '-';
-                    case 'إجمالي النقاط': return d.totalPoints.toString();
-                    case 'نقاط الطايو': return d.tayoPoints.toString();
-                    case 'نقاط الحضور': return d.attendancePoints.toString();
-                    default: return (d.cardPoints[col] ?? 0).toString();
+                    case '#':
+                      return '${i + 1}';
+                    case 'الاسم':
+                      return d.personName;
+                    case 'المرحلة':
+                      return d.stageName ?? '-';
+                    case 'المنطقة':
+                      return d.areaName ?? '-';
+                    case 'إجمالي النقاط':
+                      return d.totalPoints.toString();
+                    case 'إجمالي المكتسب':
+                      return d.totalPoints.toString();
+                    case 'النقاط المستبدلة':
+                      return d.redeemedPoints.toString();
+                    case 'صافي النقاط':
+                      return d.netPoints.toString();
+                    case 'نقاط الطايو':
+                      return d.tayoPoints.toString();
+                    case 'نقاط الحضور':
+                      return d.attendancePoints.toString();
+                    default:
+                      return (d.cardPoints[col] ?? 0).toString();
                   }
                 }).toList();
                 return row.reversed.toList();

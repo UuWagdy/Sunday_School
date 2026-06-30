@@ -63,6 +63,9 @@ class Coming extends Table {
   IntColumn get personId => integer().nullable().named('Person_ID')();
   TextColumn get dateWeek => text().nullable().named('date_Week')();
   IntColumn get point => integer().nullable().named('Point')();
+  IntColumn get attendancePoint =>
+      integer().nullable().named('Attendance_Point')();
+  IntColumn get checkoutPoint => integer().nullable().named('Checkout_Point')();
   IntColumn get mont1 => integer().nullable().named('Mont_1')();
   IntColumn get year1 => integer().nullable().named('Year_1')();
   IntColumn get serviceId => integer().nullable().named('Service_ID')();

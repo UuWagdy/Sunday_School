@@ -2032,6 +2032,28 @@ class $ComingTable extends Coming with TableInfo<$ComingTable, ComingData> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _attendancePointMeta = const VerificationMeta(
+    'attendancePoint',
+  );
+  @override
+  late final GeneratedColumn<int> attendancePoint = GeneratedColumn<int>(
+    'Attendance_Point',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _checkoutPointMeta = const VerificationMeta(
+    'checkoutPoint',
+  );
+  @override
+  late final GeneratedColumn<int> checkoutPoint = GeneratedColumn<int>(
+    'Checkout_Point',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _mont1Meta = const VerificationMeta('mont1');
   @override
   late final GeneratedColumn<int> mont1 = GeneratedColumn<int>(
@@ -2123,6 +2145,8 @@ class $ComingTable extends Coming with TableInfo<$ComingTable, ComingData> {
     personId,
     dateWeek,
     point,
+    attendancePoint,
+    checkoutPoint,
     mont1,
     year1,
     serviceId,
@@ -2163,6 +2187,24 @@ class $ComingTable extends Coming with TableInfo<$ComingTable, ComingData> {
       context.handle(
         _pointMeta,
         point.isAcceptableOrUnknown(data['Point']!, _pointMeta),
+      );
+    }
+    if (data.containsKey('Attendance_Point')) {
+      context.handle(
+        _attendancePointMeta,
+        attendancePoint.isAcceptableOrUnknown(
+          data['Attendance_Point']!,
+          _attendancePointMeta,
+        ),
+      );
+    }
+    if (data.containsKey('Checkout_Point')) {
+      context.handle(
+        _checkoutPointMeta,
+        checkoutPoint.isAcceptableOrUnknown(
+          data['Checkout_Point']!,
+          _checkoutPointMeta,
+        ),
       );
     }
     if (data.containsKey('Mont_1')) {
@@ -2241,6 +2283,14 @@ class $ComingTable extends Coming with TableInfo<$ComingTable, ComingData> {
         DriftSqlType.int,
         data['${effectivePrefix}Point'],
       ),
+      attendancePoint: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}Attendance_Point'],
+      ),
+      checkoutPoint: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}Checkout_Point'],
+      ),
       mont1: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}Mont_1'],
@@ -2287,6 +2337,8 @@ class ComingData extends DataClass implements Insertable<ComingData> {
   final int? personId;
   final String? dateWeek;
   final int? point;
+  final int? attendancePoint;
+  final int? checkoutPoint;
   final int? mont1;
   final int? year1;
   final int? serviceId;
@@ -2300,6 +2352,8 @@ class ComingData extends DataClass implements Insertable<ComingData> {
     this.personId,
     this.dateWeek,
     this.point,
+    this.attendancePoint,
+    this.checkoutPoint,
     this.mont1,
     this.year1,
     this.serviceId,
@@ -2323,6 +2377,12 @@ class ComingData extends DataClass implements Insertable<ComingData> {
     }
     if (!nullToAbsent || point != null) {
       map['Point'] = Variable<int>(point);
+    }
+    if (!nullToAbsent || attendancePoint != null) {
+      map['Attendance_Point'] = Variable<int>(attendancePoint);
+    }
+    if (!nullToAbsent || checkoutPoint != null) {
+      map['Checkout_Point'] = Variable<int>(checkoutPoint);
     }
     if (!nullToAbsent || mont1 != null) {
       map['Mont_1'] = Variable<int>(mont1);
@@ -2363,6 +2423,12 @@ class ComingData extends DataClass implements Insertable<ComingData> {
       point: point == null && nullToAbsent
           ? const Value.absent()
           : Value(point),
+      attendancePoint: attendancePoint == null && nullToAbsent
+          ? const Value.absent()
+          : Value(attendancePoint),
+      checkoutPoint: checkoutPoint == null && nullToAbsent
+          ? const Value.absent()
+          : Value(checkoutPoint),
       mont1: mont1 == null && nullToAbsent
           ? const Value.absent()
           : Value(mont1),
@@ -2400,6 +2466,8 @@ class ComingData extends DataClass implements Insertable<ComingData> {
       personId: serializer.fromJson<int?>(json['personId']),
       dateWeek: serializer.fromJson<String?>(json['dateWeek']),
       point: serializer.fromJson<int?>(json['point']),
+      attendancePoint: serializer.fromJson<int?>(json['attendancePoint']),
+      checkoutPoint: serializer.fromJson<int?>(json['checkoutPoint']),
       mont1: serializer.fromJson<int?>(json['mont1']),
       year1: serializer.fromJson<int?>(json['year1']),
       serviceId: serializer.fromJson<int?>(json['serviceId']),
@@ -2418,6 +2486,8 @@ class ComingData extends DataClass implements Insertable<ComingData> {
       'personId': serializer.toJson<int?>(personId),
       'dateWeek': serializer.toJson<String?>(dateWeek),
       'point': serializer.toJson<int?>(point),
+      'attendancePoint': serializer.toJson<int?>(attendancePoint),
+      'checkoutPoint': serializer.toJson<int?>(checkoutPoint),
       'mont1': serializer.toJson<int?>(mont1),
       'year1': serializer.toJson<int?>(year1),
       'serviceId': serializer.toJson<int?>(serviceId),
@@ -2434,6 +2504,8 @@ class ComingData extends DataClass implements Insertable<ComingData> {
     Value<int?> personId = const Value.absent(),
     Value<String?> dateWeek = const Value.absent(),
     Value<int?> point = const Value.absent(),
+    Value<int?> attendancePoint = const Value.absent(),
+    Value<int?> checkoutPoint = const Value.absent(),
     Value<int?> mont1 = const Value.absent(),
     Value<int?> year1 = const Value.absent(),
     Value<int?> serviceId = const Value.absent(),
@@ -2447,6 +2519,12 @@ class ComingData extends DataClass implements Insertable<ComingData> {
     personId: personId.present ? personId.value : this.personId,
     dateWeek: dateWeek.present ? dateWeek.value : this.dateWeek,
     point: point.present ? point.value : this.point,
+    attendancePoint: attendancePoint.present
+        ? attendancePoint.value
+        : this.attendancePoint,
+    checkoutPoint: checkoutPoint.present
+        ? checkoutPoint.value
+        : this.checkoutPoint,
     mont1: mont1.present ? mont1.value : this.mont1,
     year1: year1.present ? year1.value : this.year1,
     serviceId: serviceId.present ? serviceId.value : this.serviceId,
@@ -2462,6 +2540,12 @@ class ComingData extends DataClass implements Insertable<ComingData> {
       personId: data.personId.present ? data.personId.value : this.personId,
       dateWeek: data.dateWeek.present ? data.dateWeek.value : this.dateWeek,
       point: data.point.present ? data.point.value : this.point,
+      attendancePoint: data.attendancePoint.present
+          ? data.attendancePoint.value
+          : this.attendancePoint,
+      checkoutPoint: data.checkoutPoint.present
+          ? data.checkoutPoint.value
+          : this.checkoutPoint,
       mont1: data.mont1.present ? data.mont1.value : this.mont1,
       year1: data.year1.present ? data.year1.value : this.year1,
       serviceId: data.serviceId.present ? data.serviceId.value : this.serviceId,
@@ -2486,6 +2570,8 @@ class ComingData extends DataClass implements Insertable<ComingData> {
           ..write('personId: $personId, ')
           ..write('dateWeek: $dateWeek, ')
           ..write('point: $point, ')
+          ..write('attendancePoint: $attendancePoint, ')
+          ..write('checkoutPoint: $checkoutPoint, ')
           ..write('mont1: $mont1, ')
           ..write('year1: $year1, ')
           ..write('serviceId: $serviceId, ')
@@ -2504,6 +2590,8 @@ class ComingData extends DataClass implements Insertable<ComingData> {
     personId,
     dateWeek,
     point,
+    attendancePoint,
+    checkoutPoint,
     mont1,
     year1,
     serviceId,
@@ -2521,6 +2609,8 @@ class ComingData extends DataClass implements Insertable<ComingData> {
           other.personId == this.personId &&
           other.dateWeek == this.dateWeek &&
           other.point == this.point &&
+          other.attendancePoint == this.attendancePoint &&
+          other.checkoutPoint == this.checkoutPoint &&
           other.mont1 == this.mont1 &&
           other.year1 == this.year1 &&
           other.serviceId == this.serviceId &&
@@ -2536,6 +2626,8 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
   final Value<int?> personId;
   final Value<String?> dateWeek;
   final Value<int?> point;
+  final Value<int?> attendancePoint;
+  final Value<int?> checkoutPoint;
   final Value<int?> mont1;
   final Value<int?> year1;
   final Value<int?> serviceId;
@@ -2550,6 +2642,8 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
     this.personId = const Value.absent(),
     this.dateWeek = const Value.absent(),
     this.point = const Value.absent(),
+    this.attendancePoint = const Value.absent(),
+    this.checkoutPoint = const Value.absent(),
     this.mont1 = const Value.absent(),
     this.year1 = const Value.absent(),
     this.serviceId = const Value.absent(),
@@ -2565,6 +2659,8 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
     this.personId = const Value.absent(),
     this.dateWeek = const Value.absent(),
     this.point = const Value.absent(),
+    this.attendancePoint = const Value.absent(),
+    this.checkoutPoint = const Value.absent(),
     this.mont1 = const Value.absent(),
     this.year1 = const Value.absent(),
     this.serviceId = const Value.absent(),
@@ -2580,6 +2676,8 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
     Expression<int>? personId,
     Expression<String>? dateWeek,
     Expression<int>? point,
+    Expression<int>? attendancePoint,
+    Expression<int>? checkoutPoint,
     Expression<int>? mont1,
     Expression<int>? year1,
     Expression<int>? serviceId,
@@ -2595,6 +2693,8 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
       if (personId != null) 'Person_ID': personId,
       if (dateWeek != null) 'date_Week': dateWeek,
       if (point != null) 'Point': point,
+      if (attendancePoint != null) 'Attendance_Point': attendancePoint,
+      if (checkoutPoint != null) 'Checkout_Point': checkoutPoint,
       if (mont1 != null) 'Mont_1': mont1,
       if (year1 != null) 'Year_1': year1,
       if (serviceId != null) 'Service_ID': serviceId,
@@ -2612,6 +2712,8 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
     Value<int?>? personId,
     Value<String?>? dateWeek,
     Value<int?>? point,
+    Value<int?>? attendancePoint,
+    Value<int?>? checkoutPoint,
     Value<int?>? mont1,
     Value<int?>? year1,
     Value<int?>? serviceId,
@@ -2627,6 +2729,8 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
       personId: personId ?? this.personId,
       dateWeek: dateWeek ?? this.dateWeek,
       point: point ?? this.point,
+      attendancePoint: attendancePoint ?? this.attendancePoint,
+      checkoutPoint: checkoutPoint ?? this.checkoutPoint,
       mont1: mont1 ?? this.mont1,
       year1: year1 ?? this.year1,
       serviceId: serviceId ?? this.serviceId,
@@ -2653,6 +2757,12 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
     }
     if (point.present) {
       map['Point'] = Variable<int>(point.value);
+    }
+    if (attendancePoint.present) {
+      map['Attendance_Point'] = Variable<int>(attendancePoint.value);
+    }
+    if (checkoutPoint.present) {
+      map['Checkout_Point'] = Variable<int>(checkoutPoint.value);
     }
     if (mont1.present) {
       map['Mont_1'] = Variable<int>(mont1.value);
@@ -2691,6 +2801,8 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
           ..write('personId: $personId, ')
           ..write('dateWeek: $dateWeek, ')
           ..write('point: $point, ')
+          ..write('attendancePoint: $attendancePoint, ')
+          ..write('checkoutPoint: $checkoutPoint, ')
           ..write('mont1: $mont1, ')
           ..write('year1: $year1, ')
           ..write('serviceId: $serviceId, ')
@@ -12917,6 +13029,8 @@ typedef $$ComingTableCreateCompanionBuilder =
       Value<int?> personId,
       Value<String?> dateWeek,
       Value<int?> point,
+      Value<int?> attendancePoint,
+      Value<int?> checkoutPoint,
       Value<int?> mont1,
       Value<int?> year1,
       Value<int?> serviceId,
@@ -12933,6 +13047,8 @@ typedef $$ComingTableUpdateCompanionBuilder =
       Value<int?> personId,
       Value<String?> dateWeek,
       Value<int?> point,
+      Value<int?> attendancePoint,
+      Value<int?> checkoutPoint,
       Value<int?> mont1,
       Value<int?> year1,
       Value<int?> serviceId,
@@ -12970,6 +13086,16 @@ class $$ComingTableFilterComposer
 
   ColumnFilters<int> get point => $composableBuilder(
     column: $table.point,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attendancePoint => $composableBuilder(
+    column: $table.attendancePoint,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get checkoutPoint => $composableBuilder(
+    column: $table.checkoutPoint,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13043,6 +13169,16 @@ class $$ComingTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get attendancePoint => $composableBuilder(
+    column: $table.attendancePoint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get checkoutPoint => $composableBuilder(
+    column: $table.checkoutPoint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get mont1 => $composableBuilder(
     column: $table.mont1,
     builder: (column) => ColumnOrderings(column),
@@ -13104,6 +13240,16 @@ class $$ComingTableAnnotationComposer
 
   GeneratedColumn<int> get point =>
       $composableBuilder(column: $table.point, builder: (column) => column);
+
+  GeneratedColumn<int> get attendancePoint => $composableBuilder(
+    column: $table.attendancePoint,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get checkoutPoint => $composableBuilder(
+    column: $table.checkoutPoint,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get mont1 =>
       $composableBuilder(column: $table.mont1, builder: (column) => column);
@@ -13168,6 +13314,8 @@ class $$ComingTableTableManager
                 Value<int?> personId = const Value.absent(),
                 Value<String?> dateWeek = const Value.absent(),
                 Value<int?> point = const Value.absent(),
+                Value<int?> attendancePoint = const Value.absent(),
+                Value<int?> checkoutPoint = const Value.absent(),
                 Value<int?> mont1 = const Value.absent(),
                 Value<int?> year1 = const Value.absent(),
                 Value<int?> serviceId = const Value.absent(),
@@ -13182,6 +13330,8 @@ class $$ComingTableTableManager
                 personId: personId,
                 dateWeek: dateWeek,
                 point: point,
+                attendancePoint: attendancePoint,
+                checkoutPoint: checkoutPoint,
                 mont1: mont1,
                 year1: year1,
                 serviceId: serviceId,
@@ -13198,6 +13348,8 @@ class $$ComingTableTableManager
                 Value<int?> personId = const Value.absent(),
                 Value<String?> dateWeek = const Value.absent(),
                 Value<int?> point = const Value.absent(),
+                Value<int?> attendancePoint = const Value.absent(),
+                Value<int?> checkoutPoint = const Value.absent(),
                 Value<int?> mont1 = const Value.absent(),
                 Value<int?> year1 = const Value.absent(),
                 Value<int?> serviceId = const Value.absent(),
@@ -13212,6 +13364,8 @@ class $$ComingTableTableManager
                 personId: personId,
                 dateWeek: dateWeek,
                 point: point,
+                attendancePoint: attendancePoint,
+                checkoutPoint: checkoutPoint,
                 mont1: mont1,
                 year1: year1,
                 serviceId: serviceId,

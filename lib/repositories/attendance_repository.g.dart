@@ -34,7 +34,7 @@ final class AttendanceRepositoryProvider
 }
 
 String _$attendanceRepositoryHash() =>
-    r'520e9a53af700dd97a869bc6181e769ef9bd7171';
+    r'96c89f5583bee7523971b81f7a4bed26dc05c557';
 
 abstract class _$AttendanceRepository
     extends $AsyncNotifier<List<AttendanceDTO>> {

@@ -687,6 +687,11 @@ class AttendanceGridPdfGenerator {
     return null;
   }
 
+  static String customFieldValue(AttendanceDTO record, String columnId) {
+    if (!columnId.startsWith('custom_')) return '';
+    return _getValue(record, columnId) ?? '';
+  }
+
   static List<pw.Widget> _buildGroupTables(
     pw.Font font,
     pw.Font boldFont,
@@ -1111,6 +1116,11 @@ class AttendanceGridPdfGenerator {
               break;
             case 'visitNotes':
               txt = targetRec.visitNotes ?? '';
+              break;
+            default:
+              if (baseId.startsWith('custom_')) {
+                txt = customFieldValue(targetRec, baseId);
+              }
               break;
           }
         }

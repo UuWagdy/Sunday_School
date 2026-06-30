@@ -32,6 +32,8 @@ class PersonPointsDTO {
   final int totalPoints;
   final int tayoPoints;
   final int attendancePoints;
+  final int redeemedPoints;
+  final int netPoints;
   final Map<String, int> cardPoints;
 
   PersonPointsDTO({
@@ -42,6 +44,8 @@ class PersonPointsDTO {
     required this.totalPoints,
     required this.tayoPoints,
     required this.attendancePoints,
+    required this.redeemedPoints,
+    required this.netPoints,
     required this.cardPoints,
   });
 }
@@ -68,9 +72,25 @@ class PointLogDTO {
   });
 }
 
+class PersonPointBalance {
+  final int tayoEarned;
+  final int attendancePoints;
+  final int totalEarned;
+  final int redeemed;
+
+  const PersonPointBalance({
+    required this.tayoEarned,
+    required this.attendancePoints,
+    required this.totalEarned,
+    required this.redeemed,
+  });
+
+  int get net => totalEarned - redeemed;
+}
+
 // ─── Repository ────────────────────────────────────────
 
-@riverpod
+@Riverpod(keepAlive: true)
 class TayoRepository extends _$TayoRepository {
   @override
   FutureOr<List<TayoCardDTO>> build() async {
@@ -83,12 +103,14 @@ class TayoRepository extends _$TayoRepository {
     final db = ref.read(appDatabaseProvider);
     final rows = await db.select(db.tayoCards).get();
     return rows
-        .map((r) => TayoCardDTO(
-              cardId: r.cardId,
-              cardName: r.cardName ?? '',
-              cardPoints: r.cardPoints ?? 0,
-              cardImage: r.cardImage,
-            ))
+        .map(
+          (r) => TayoCardDTO(
+            cardId: r.cardId,
+            cardName: r.cardName ?? '',
+            cardPoints: r.cardPoints ?? 0,
+            cardImage: r.cardImage,
+          ),
+        )
         .toList();
   }
 
@@ -98,11 +120,17 @@ class TayoRepository extends _$TayoRepository {
     Uint8List? image,
   }) async {
     final db = ref.read(appDatabaseProvider);
-    await db.into(db.tayoCards).insert(TayoCardsCompanion(
-          cardName: drift.Value(name),
-          cardPoints: drift.Value(points),
-          cardImage: image != null ? drift.Value(image) : const drift.Value.absent(),
-        ));
+    await db
+        .into(db.tayoCards)
+        .insert(
+          TayoCardsCompanion(
+            cardName: drift.Value(name),
+            cardPoints: drift.Value(points),
+            cardImage: image != null
+                ? drift.Value(image)
+                : const drift.Value.absent(),
+          ),
+        );
     ref.invalidateSelf();
   }
 
@@ -114,11 +142,15 @@ class TayoRepository extends _$TayoRepository {
     bool clearImage = false,
   }) async {
     final db = ref.read(appDatabaseProvider);
-    await (db.update(db.tayoCards)..where((t) => t.cardId.equals(cardId))).write(
+    await (db.update(
+      db.tayoCards,
+    )..where((t) => t.cardId.equals(cardId))).write(
       TayoCardsCompanion(
         cardName: drift.Value(name),
         cardPoints: drift.Value(points),
-        cardImage: clearImage ? const drift.Value(null) : (image != null ? drift.Value(image) : const drift.Value.absent()),
+        cardImage: clearImage
+            ? const drift.Value(null)
+            : (image != null ? drift.Value(image) : const drift.Value.absent()),
       ),
     );
     ref.invalidateSelf();
@@ -128,7 +160,9 @@ class TayoRepository extends _$TayoRepository {
     final db = ref.read(appDatabaseProvider);
     await (db.delete(db.tayoCards)..where((t) => t.cardId.equals(cardId))).go();
     // Also remove associated point logs
-    await (db.delete(db.personTayoPoints)..where((t) => t.cardId.equals(cardId))).go();
+    await (db.delete(
+      db.personTayoPoints,
+    )..where((t) => t.cardId.equals(cardId))).go();
     ref.invalidateSelf();
   }
 
@@ -145,15 +179,23 @@ class TayoRepository extends _$TayoRepository {
   }) async {
     try {
       final db = ref.read(appDatabaseProvider);
-      await db.into(db.personTayoPoints).insert(PersonTayoPointsCompanion(
-            personId: drift.Value(personId),
-            cardId: drift.Value(cardId),
-            points: drift.Value(points),
-            awardDate: drift.Value(date),
-            isAttendance: drift.Value(isAttendance),
-            notes: notes != null ? drift.Value(notes) : const drift.Value.absent(),
-            serviceId: serviceId != null ? drift.Value(serviceId) : const drift.Value.absent(),
-          ));
+      await db
+          .into(db.personTayoPoints)
+          .insert(
+            PersonTayoPointsCompanion(
+              personId: drift.Value(personId),
+              cardId: drift.Value(cardId),
+              points: drift.Value(points),
+              awardDate: drift.Value(date),
+              isAttendance: drift.Value(isAttendance),
+              notes: notes != null
+                  ? drift.Value(notes)
+                  : const drift.Value.absent(),
+              serviceId: serviceId != null
+                  ? drift.Value(serviceId)
+                  : const drift.Value.absent(),
+            ),
+          );
       return null;
     } catch (e) {
       return 'خطأ: $e';
@@ -161,18 +203,98 @@ class TayoRepository extends _$TayoRepository {
   }
 
   Future<int> getPersonTotalPoints(int personId) async {
+    return (await getPersonPointBalance(personId: personId)).net;
+  }
+
+  Future<PersonPointBalance> getPersonPointBalance({
+    required int personId,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
     final db = ref.read(appDatabaseProvider);
-    final sumExpr = db.personTayoPoints.points.sum();
-    final query = db.selectOnly(db.personTayoPoints)
-      ..addColumns([sumExpr])
-      ..where(db.personTayoPoints.personId.equals(personId));
-    final row = await query.getSingle();
-    return row.read(sumExpr) ?? 0;
+    final query = db.select(db.personTayoPoints)
+      ..where((table) => table.personId.equals(personId));
+    final fmt = DateFormat('yyyy-MM-dd');
+    if (dateFrom != null) {
+      query.where(
+        (table) => table.awardDate.isBiggerOrEqualValue(fmt.format(dateFrom)),
+      );
+    }
+    if (dateTo != null) {
+      query.where(
+        (table) => table.awardDate.isSmallerOrEqualValue(fmt.format(dateTo)),
+      );
+    }
+    final rows = await query.get();
+    var tayoEarned = 0;
+    var redeemed = 0;
+    for (final row in rows) {
+      final value = row.points ?? 0;
+      if (value >= 0) {
+        tayoEarned += value;
+      } else {
+        redeemed += value.abs();
+      }
+    }
+
+    final attendanceQuery = db.select(db.coming)
+      ..where((table) => table.personId.equals(personId));
+    if (dateFrom != null) {
+      attendanceQuery.where(
+        (table) => table.dateWeek.isBiggerOrEqualValue(fmt.format(dateFrom)),
+      );
+    }
+    if (dateTo != null) {
+      attendanceQuery.where(
+        (table) => table.dateWeek.isSmallerOrEqualValue(fmt.format(dateTo)),
+      );
+    }
+    final attendanceRows = await attendanceQuery.get();
+    final attendancePoints = attendanceRows.fold<int>(
+      0,
+      (sum, row) => sum + (row.point ?? 0),
+    );
+    return PersonPointBalance(
+      tayoEarned: tayoEarned,
+      attendancePoints: attendancePoints,
+      totalEarned: tayoEarned + attendancePoints,
+      redeemed: redeemed,
+    );
+  }
+
+  Future<String?> redeemPoints({
+    required int personId,
+    required int points,
+    required String date,
+    DateTime? balanceDateFrom,
+    DateTime? balanceDateTo,
+    String? notes,
+  }) async {
+    if (points <= 0) return 'عدد نقاط الاستبدال يجب أن يكون أكبر من صفر';
+    final balance = await getPersonPointBalance(
+      personId: personId,
+      dateFrom: balanceDateFrom,
+      dateTo: balanceDateTo,
+    );
+    if (points > balance.net) {
+      return 'نقاط الاستبدال أكبر من صافي الرصيد المتاح (${balance.net})';
+    }
+    return addPointsToPerson(
+      personId: personId,
+      cardId: 0,
+      points: -points,
+      date: date,
+      notes: notes?.trim().isNotEmpty == true
+          ? 'استبدال نقاط: ${notes!.trim()}'
+          : 'استبدال نقاط',
+    );
   }
 
   Future<void> deletePointLog(int logId) async {
     final db = ref.read(appDatabaseProvider);
-    await (db.delete(db.personTayoPoints)..where((t) => t.id.equals(logId))).go();
+    await (db.delete(
+      db.personTayoPoints,
+    )..where((t) => t.id.equals(logId))).go();
   }
 
   Future<void> updatePointLog({
@@ -184,12 +306,18 @@ class TayoRepository extends _$TayoRepository {
     bool clearNotes = false,
   }) async {
     final db = ref.read(appDatabaseProvider);
-    await (db.update(db.personTayoPoints)..where((t) => t.id.equals(logId))).write(
+    await (db.update(
+      db.personTayoPoints,
+    )..where((t) => t.id.equals(logId))).write(
       PersonTayoPointsCompanion(
         awardDate: drift.Value(date),
         cardId: drift.Value(cardId ?? 0), // 0 means extra points without card
-        points: points != null ? drift.Value(points) : const drift.Value.absent(),
-        notes: clearNotes ? const drift.Value(null) : (notes != null ? drift.Value(notes) : const drift.Value.absent()),
+        points: points != null
+            ? drift.Value(points)
+            : const drift.Value.absent(),
+        notes: clearNotes
+            ? const drift.Value(null)
+            : (notes != null ? drift.Value(notes) : const drift.Value.absent()),
       ),
     );
   }
@@ -206,42 +334,68 @@ class TayoRepository extends _$TayoRepository {
     List<int>? attendanceServiceIds,
   }) async {
     final db = ref.read(appDatabaseProvider);
+    final user = ref.read(authServiceProvider).value;
     final fmt = DateFormat('yyyy-MM-dd');
 
     // 1. Fetch Tayo Points Map and Card Breakdown
     final tayoQuery = db.select(db.personTayoPoints).join([
-      drift.leftOuterJoin(db.tayoCards, db.tayoCards.cardId.equalsExp(db.personTayoPoints.cardId)),
+      drift.leftOuterJoin(
+        db.tayoCards,
+        db.tayoCards.cardId.equalsExp(db.personTayoPoints.cardId),
+      ),
     ]);
-    if (dateFrom != null) tayoQuery.where(db.personTayoPoints.awardDate.isBiggerOrEqualValue(fmt.format(dateFrom)));
-    if (dateTo != null) tayoQuery.where(db.personTayoPoints.awardDate.isSmallerOrEqualValue(fmt.format(dateTo)));
+    if (dateFrom != null)
+      tayoQuery.where(
+        db.personTayoPoints.awardDate.isBiggerOrEqualValue(
+          fmt.format(dateFrom),
+        ),
+      );
+    if (dateTo != null)
+      tayoQuery.where(
+        db.personTayoPoints.awardDate.isSmallerOrEqualValue(fmt.format(dateTo)),
+      );
     final tayoRows = await tayoQuery.get();
-    
+
     final tayoMap = <int, int>{};
+    final redeemedMap = <int, int>{};
     final cardBreakdownMap = <int, Map<String, int>>{};
 
     for (var r in tayoRows) {
       final pt = r.readTable(db.personTayoPoints);
       final card = r.readTableOrNull(db.tayoCards);
-      
+
       final pId = pt.personId;
       if (pId == null) continue;
-      
+
       final pts = pt.points ?? 0;
       final cName = card?.cardName ?? 'نقاط إضافية';
 
+      if (pts < 0) {
+        redeemedMap[pId] = (redeemedMap[pId] ?? 0) + pts.abs();
+        continue;
+      }
+
       tayoMap[pId] = (tayoMap[pId] ?? 0) + pts;
       cardBreakdownMap[pId] ??= {};
-      cardBreakdownMap[pId]![cName] = (cardBreakdownMap[pId]![cName] ?? 0) + pts;
+      cardBreakdownMap[pId]![cName] =
+          (cardBreakdownMap[pId]![cName] ?? 0) + pts;
     }
 
     // 2. Fetch Attendance Map (optionally filtered by service)
     final attMap = <int, int>{};
     if (includeAttendance) {
+      final attendancePointsSum = db.coming.point.sum();
       final attQuery = db.selectOnly(db.coming)
-        ..addColumns([db.coming.personId, db.coming.id.count()])
+        ..addColumns([db.coming.personId, attendancePointsSum])
         ..groupBy([db.coming.personId]);
-      if (dateFrom != null) attQuery.where(db.coming.dateWeek.isBiggerOrEqualValue(fmt.format(dateFrom)));
-      if (dateTo != null) attQuery.where(db.coming.dateWeek.isSmallerOrEqualValue(fmt.format(dateTo)));
+      if (dateFrom != null)
+        attQuery.where(
+          db.coming.dateWeek.isBiggerOrEqualValue(fmt.format(dateFrom)),
+        );
+      if (dateTo != null)
+        attQuery.where(
+          db.coming.dateWeek.isSmallerOrEqualValue(fmt.format(dateTo)),
+        );
       if (attendanceServiceIds != null && attendanceServiceIds.isNotEmpty) {
         attQuery.where(db.coming.serviceId.isIn(attendanceServiceIds));
       }
@@ -249,15 +403,21 @@ class TayoRepository extends _$TayoRepository {
       for (var r in attRows) {
         final pId = r.read(db.coming.personId);
         if (pId != null) {
-          attMap[pId] = r.read(db.coming.id.count())!;
+          attMap[pId] = r.read(attendancePointsSum) ?? 0;
         }
       }
     }
 
     // 3. Fetch Persons and merge
     final pQuery = db.select(db.persons).join([
-      drift.leftOuterJoin(db.stages, db.stages.stageId.equalsExp(db.persons.stageId)),
-      drift.leftOuterJoin(db.areas, db.areas.areaId.equalsExp(db.persons.areaId)),
+      drift.leftOuterJoin(
+        db.stages,
+        db.stages.stageId.equalsExp(db.persons.stageId),
+      ),
+      drift.leftOuterJoin(
+        db.areas,
+        db.areas.areaId.equalsExp(db.persons.areaId),
+      ),
     ]);
     if (stageId != null) pQuery.where(db.persons.stageId.equals(stageId));
     if (areaId != null) {
@@ -266,7 +426,6 @@ class TayoRepository extends _$TayoRepository {
     }
 
     // Apply visibility filters
-    final user = ref.read(authServiceProvider).value;
     if (user != null && user.isAdvanced) {
       final filters = user.visibilityFilters;
       for (final type in filters.keys) {
@@ -282,7 +441,8 @@ class TayoRepository extends _$TayoRepository {
             break;
           case 'area':
             final descendants = <int>[];
-            for (final id in values) descendants.addAll(await db.getAreaAndDescendantIds(id));
+            for (final id in values)
+              descendants.addAll(await db.getAreaAndDescendantIds(id));
             pQuery.where(db.persons.areaId.isIn(descendants));
             break;
           case 'father':
@@ -304,28 +464,34 @@ class TayoRepository extends _$TayoRepository {
       final pid = person.personId;
       final tPts = tayoMap[pid] ?? 0;
       final aPts = attMap[pid] ?? 0;
+      final redeemed = redeemedMap[pid] ?? 0;
       final total = tPts + aPts;
+      final net = total - redeemed;
 
-      if (total > 0) {
+      if (total > 0 || redeemed > 0) {
         final stage = r.readTableOrNull(db.stages);
         final area = r.readTableOrNull(db.areas);
-        results.add(PersonPointsDTO(
-          personId: pid,
-          personName: person.personName ?? 'غير معروف',
-          stageName: stage?.stageName,
-          areaName: area?.areaName,
-          totalPoints: total,
-          tayoPoints: tPts,
-          attendancePoints: aPts,
-          cardPoints: cardBreakdownMap[pid] ?? {},
-        ));
+        results.add(
+          PersonPointsDTO(
+            personId: pid,
+            personName: person.personName ?? 'غير معروف',
+            stageName: stage?.stageName,
+            areaName: area?.areaName,
+            totalPoints: total,
+            tayoPoints: tPts,
+            attendancePoints: aPts,
+            redeemedPoints: redeemed,
+            netPoints: net,
+            cardPoints: cardBreakdownMap[pid] ?? {},
+          ),
+        );
       }
     }
 
     if (ascending) {
-      results.sort((a, b) => a.totalPoints.compareTo(b.totalPoints));
+      results.sort((a, b) => a.netPoints.compareTo(b.netPoints));
     } else {
-      results.sort((a, b) => b.totalPoints.compareTo(a.totalPoints));
+      results.sort((a, b) => b.netPoints.compareTo(a.netPoints));
     }
 
     return results;
@@ -342,24 +508,39 @@ class TayoRepository extends _$TayoRepository {
     int? areaId,
   }) async {
     final db = ref.read(appDatabaseProvider);
+    final user = ref.read(authServiceProvider).value;
     final fmt = DateFormat('yyyy-MM-dd');
 
     final query = db.select(db.personTayoPoints).join([
-      drift.leftOuterJoin(db.persons, db.persons.personId.equalsExp(db.personTayoPoints.personId)),
-      drift.leftOuterJoin(db.tayoCards, db.tayoCards.cardId.equalsExp(db.personTayoPoints.cardId)),
+      drift.leftOuterJoin(
+        db.persons,
+        db.persons.personId.equalsExp(db.personTayoPoints.personId),
+      ),
+      drift.leftOuterJoin(
+        db.tayoCards,
+        db.tayoCards.cardId.equalsExp(db.personTayoPoints.cardId),
+      ),
     ]);
 
-    if (personId != null) query.where(db.personTayoPoints.personId.equals(personId));
+    if (personId != null)
+      query.where(db.personTayoPoints.personId.equals(personId));
     if (stageId != null) query.where(db.persons.stageId.equals(stageId));
     if (areaId != null) {
       final descendantIds = await db.getAreaAndDescendantIds(areaId);
       query.where(db.persons.areaId.isIn(descendantIds));
     }
-    if (dateFrom != null) query.where(db.personTayoPoints.awardDate.isBiggerOrEqualValue(fmt.format(dateFrom)));
-    if (dateTo != null) query.where(db.personTayoPoints.awardDate.isSmallerOrEqualValue(fmt.format(dateTo)));
+    if (dateFrom != null)
+      query.where(
+        db.personTayoPoints.awardDate.isBiggerOrEqualValue(
+          fmt.format(dateFrom),
+        ),
+      );
+    if (dateTo != null)
+      query.where(
+        db.personTayoPoints.awardDate.isSmallerOrEqualValue(fmt.format(dateTo)),
+      );
 
     // Apply visibility filters
-    final user = ref.read(authServiceProvider).value;
     if (user != null && user.isAdvanced) {
       final filters = user.visibilityFilters;
       for (final type in filters.keys) {
@@ -375,7 +556,8 @@ class TayoRepository extends _$TayoRepository {
             break;
           case 'area':
             final descendants = <int>[];
-            for (final id in values) descendants.addAll(await db.getAreaAndDescendantIds(id));
+            for (final id in values)
+              descendants.addAll(await db.getAreaAndDescendantIds(id));
             query.where(db.persons.areaId.isIn(descendants));
             break;
           case 'father':

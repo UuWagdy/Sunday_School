@@ -39,6 +39,7 @@ class AttendanceDTO {
   final String? leader;
   final String? services;
   final Map<int, String> customValues;
+  final List<AttendanceServiceRecord> serviceRecords;
 
   AttendanceDTO({
     this.id,
@@ -68,6 +69,31 @@ class AttendanceDTO {
     this.leader,
     this.services,
     this.customValues = const {},
+    this.serviceRecords = const [],
+  });
+}
+
+class AttendanceServiceRecord {
+  final int id;
+  final int? serviceId;
+  final String? serviceName;
+  final String? dateWeek;
+  final String? attendTime;
+  final String? checkoutTime;
+  final int point;
+  final int? attendancePoint;
+  final int? checkoutPoint;
+
+  const AttendanceServiceRecord({
+    required this.id,
+    this.serviceId,
+    this.serviceName,
+    this.dateWeek,
+    this.attendTime,
+    this.checkoutTime,
+    required this.point,
+    this.attendancePoint,
+    this.checkoutPoint,
   });
 }
 
@@ -299,7 +325,7 @@ class AttendanceRepository extends _$AttendanceRepository {
         for (final row in rows) {
           final person = row.readTable(db.persons);
           final coming = row.readTableOrNull(db.coming);
-          if (!uniqueResults.containsKey(person.personId) || coming != null) {
+          if (!uniqueResults.containsKey(person.personId)) {
             uniqueResults[person.personId] = AttendanceDTO(
               id: coming?.id,
               personId: person.personId,
@@ -327,7 +353,28 @@ class AttendanceRepository extends _$AttendanceRepository {
               leader: person.leader,
               services: personServicesNames[person.personId]?.join('، ') ?? '',
               customValues: personCustomValues[person.personId] ?? {},
+              serviceRecords: <AttendanceServiceRecord>[],
             );
+          }
+          if (coming != null) {
+            final comingId = coming.id;
+            if (comingId == null) continue;
+            final records = uniqueResults[person.personId]!.serviceRecords;
+            if (!records.any((record) => record.id == comingId)) {
+              records.add(
+                AttendanceServiceRecord(
+                  id: comingId,
+                  serviceId: coming.serviceId,
+                  serviceName: row.readTableOrNull(db.services)?.serviceName,
+                  dateWeek: coming.dateWeek,
+                  attendTime: coming.attendTime,
+                  checkoutTime: coming.checkoutTime,
+                  point: coming.point ?? 0,
+                  attendancePoint: coming.attendancePoint,
+                  checkoutPoint: coming.checkoutPoint,
+                ),
+              );
+            }
           }
         }
         resultList.addAll(uniqueResults.values);
@@ -636,7 +683,13 @@ class AttendanceRepository extends _$AttendanceRepository {
           db.coming,
         )..where((t) => t.id.equals(pending.id!))).write(
           ComingCompanion(
-            point: drift.Value((pending.point ?? 0) + (point ?? 0)),
+            point: drift.Value(
+              (pending.attendancePoint ?? pending.point ?? 0) + (point ?? 0),
+            ),
+            attendancePoint: drift.Value(
+              pending.attendancePoint ?? pending.point ?? 0,
+            ),
+            checkoutPoint: drift.Value(point ?? 0),
             checkoutTime: drift.Value(
               attendTime ?? DateFormat('HH:mm').format(DateTime.now()),
             ),
@@ -656,6 +709,8 @@ class AttendanceRepository extends _$AttendanceRepository {
             )..where((t) => t.id.equals(exists.id!))).write(
               ComingCompanion(
                 point: drift.Value(point ?? 0),
+                attendancePoint: drift.Value(point ?? 0),
+                checkoutPoint: const drift.Value(0),
                 attendTime: drift.Value(
                   attendTime ?? DateFormat('HH:mm').format(DateTime.now()),
                 ),
@@ -680,6 +735,8 @@ class AttendanceRepository extends _$AttendanceRepository {
                 personId: drift.Value(personId),
                 dateWeek: drift.Value(dateWeek),
                 point: drift.Value(point ?? 0),
+                attendancePoint: drift.Value(point ?? 0),
+                checkoutPoint: const drift.Value(0),
                 mont1: drift.Value(month),
                 year1: drift.Value(year),
                 serviceId: drift.Value(serviceId),
@@ -724,7 +781,13 @@ class AttendanceRepository extends _$AttendanceRepository {
         updatedCount +=
             await (db.update(db.coming)..where((t) => t.id.equals(id))).write(
               ComingCompanion(
-                point: drift.Value((record.point ?? 0) + points),
+                point: drift.Value(
+                  (record.attendancePoint ?? record.point ?? 0) + points,
+                ),
+                attendancePoint: drift.Value(
+                  record.attendancePoint ?? record.point ?? 0,
+                ),
+                checkoutPoint: drift.Value(points),
                 checkoutTime: drift.Value(checkoutTime),
               ),
             );
@@ -757,12 +820,16 @@ class AttendanceRepository extends _$AttendanceRepository {
         final totalPoints = record.point ?? 0;
         final hasCheckout =
             record.checkoutTime != null && record.checkoutTime!.isNotEmpty;
-        final attendancePoints = hasCheckout
+        final legacyAttendancePoints = hasCheckout
             ? (totalPoints <= defaultAttendancePoints
                   ? totalPoints
                   : defaultAttendancePoints)
             : totalPoints;
-        final checkoutPoints = hasCheckout ? totalPoints - attendancePoints : 0;
+        final attendancePoints =
+            record.attendancePoint ?? legacyAttendancePoints;
+        final checkoutPoints =
+            record.checkoutPoint ??
+            (hasCheckout ? totalPoints - legacyAttendancePoints : 0);
         final normalizedCheckoutPoints = checkoutPoints < 0
             ? 0
             : checkoutPoints;
@@ -772,7 +839,15 @@ class AttendanceRepository extends _$AttendanceRepository {
 
         updatedCount +=
             await (db.update(db.coming)..where((t) => t.id.equals(id))).write(
-              ComingCompanion(point: drift.Value(newTotalPoints)),
+              ComingCompanion(
+                point: drift.Value(newTotalPoints),
+                attendancePoint: drift.Value(
+                  isCheckoutMode ? attendancePoints : points,
+                ),
+                checkoutPoint: drift.Value(
+                  isCheckoutMode ? points : normalizedCheckoutPoints,
+                ),
+              ),
             );
       }
 
@@ -785,9 +860,25 @@ class AttendanceRepository extends _$AttendanceRepository {
     if (idList.isEmpty) return 0;
 
     final db = ref.read(appDatabaseProvider);
-    return (db.update(db.coming)..where((t) => t.id.isIn(idList))).write(
-      const ComingCompanion(checkoutTime: drift.Value(null)),
-    );
+    final records = await (db.select(
+      db.coming,
+    )..where((t) => t.id.isIn(idList))).get();
+    var updatedCount = 0;
+    for (final record in records) {
+      final id = record.id;
+      if (id == null) continue;
+      final attendancePoints = record.attendancePoint ?? record.point ?? 0;
+      updatedCount +=
+          await (db.update(db.coming)..where((t) => t.id.equals(id))).write(
+            ComingCompanion(
+              point: drift.Value(attendancePoints),
+              attendancePoint: drift.Value(attendancePoints),
+              checkoutPoint: const drift.Value(0),
+              checkoutTime: const drift.Value(null),
+            ),
+          );
+    }
+    return updatedCount;
   }
 
   Future<int> deleteAttendanceForIds(Iterable<int> ids) async {

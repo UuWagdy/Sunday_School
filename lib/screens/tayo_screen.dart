@@ -28,7 +28,8 @@ class TayoScreen extends ConsumerStatefulWidget {
   ConsumerState<TayoScreen> createState() => _TayoScreenState();
 }
 
-class _TayoScreenState extends ConsumerState<TayoScreen> with SingleTickerProviderStateMixin {
+class _TayoScreenState extends ConsumerState<TayoScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   @override
@@ -65,7 +66,14 @@ class _TayoScreenState extends ConsumerState<TayoScreen> with SingleTickerProvid
                   children: [
                     Icon(Icons.card_giftcard, color: cs.onPrimary, size: 28),
                     const SizedBox(width: 10),
-                    Text('الطايو', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: cs.onPrimary)),
+                    Text(
+                      'الطايو',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: cs.onPrimary,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -76,7 +84,10 @@ class _TayoScreenState extends ConsumerState<TayoScreen> with SingleTickerProvid
                   unselectedLabelColor: Colors.white60,
                   tabs: const [
                     Tab(icon: Icon(Icons.credit_card), text: 'إدارة الكروت'),
-                    Tab(icon: Icon(Icons.add_circle_outline), text: 'إضافة نقاط'),
+                    Tab(
+                      icon: Icon(Icons.add_circle_outline),
+                      text: 'إضافة نقاط',
+                    ),
                     Tab(icon: Icon(Icons.assessment), text: 'التقارير'),
                   ],
                 ),
@@ -107,7 +118,8 @@ class _TayoScreenState extends ConsumerState<TayoScreen> with SingleTickerProvid
 class _CardsManagementTab extends ConsumerStatefulWidget {
   const _CardsManagementTab();
   @override
-  ConsumerState<_CardsManagementTab> createState() => _CardsManagementTabState();
+  ConsumerState<_CardsManagementTab> createState() =>
+      _CardsManagementTabState();
 }
 
 class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
@@ -129,18 +141,19 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
   Future<void> _loadPrintSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-       _printCodeType = prefs.getString('tayo_print_code_type') ?? 'qr';
-       _colsController.text = prefs.getString('tayo_print_cols') ?? '3';
-       _rowsController.text = prefs.getString('tayo_print_rows') ?? '4';
-       _printBackSide = prefs.getBool('tayo_print_back_side') ?? false;
-       _backTopTextController.text = prefs.getString('tayo_back_top_text') ?? '';
-       _backBottomTextController.text = prefs.getString('tayo_back_bottom_text') ?? '';
-       final logoBase64 = prefs.getString('tayo_back_logo_base64');
-       if (logoBase64 != null) {
-         _backLogoBytes = base64Decode(logoBase64);
-       }
+      _printCodeType = prefs.getString('tayo_print_code_type') ?? 'qr';
+      _colsController.text = prefs.getString('tayo_print_cols') ?? '3';
+      _rowsController.text = prefs.getString('tayo_print_rows') ?? '4';
+      _printBackSide = prefs.getBool('tayo_print_back_side') ?? false;
+      _backTopTextController.text = prefs.getString('tayo_back_top_text') ?? '';
+      _backBottomTextController.text =
+          prefs.getString('tayo_back_bottom_text') ?? '';
+      final logoBase64 = prefs.getString('tayo_back_logo_base64');
+      if (logoBase64 != null) {
+        _backLogoBytes = base64Decode(logoBase64);
+      }
     });
-    
+
     _backTopTextController.addListener(_savePrintSettings);
     _backBottomTextController.addListener(_savePrintSettings);
     _colsController.addListener(_savePrintSettings);
@@ -154,9 +167,15 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
     await prefs.setString('tayo_print_rows', _rowsController.text);
     await prefs.setBool('tayo_print_back_side', _printBackSide);
     await prefs.setString('tayo_back_top_text', _backTopTextController.text);
-    await prefs.setString('tayo_back_bottom_text', _backBottomTextController.text);
+    await prefs.setString(
+      'tayo_back_bottom_text',
+      _backBottomTextController.text,
+    );
     if (_backLogoBytes != null) {
-      await prefs.setString('tayo_back_logo_base64', base64Encode(_backLogoBytes!));
+      await prefs.setString(
+        'tayo_back_logo_base64',
+        base64Encode(_backLogoBytes!),
+      );
     } else {
       await prefs.remove('tayo_back_logo_base64');
     }
@@ -177,12 +196,12 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
       setState(() => _backLogoBytes = result.files.single.bytes!);
       _savePrintSettings();
     } else if (result != null && result.files.single.path != null) {
-       try {
-         final file = File(result.files.single.path!);
-         final bytes = await file.readAsBytes();
-         setState(() => _backLogoBytes = bytes);
-         _savePrintSettings();
-       } catch(_) {}
+      try {
+        final file = File(result.files.single.path!);
+        final bytes = await file.readAsBytes();
+        setState(() => _backLogoBytes = bytes);
+        _savePrintSettings();
+      } catch (_) {}
     }
   }
 
@@ -194,9 +213,18 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authServiceProvider).value;
-    final canAdd = user == null || !user.isAdvanced || (user.granularPermissions['tayo']?['add'] ?? false);
-    final canEdit = user == null || !user.isAdvanced || (user.granularPermissions['tayo']?['edit'] ?? false);
-    final canDelete = user == null || !user.isAdvanced || (user.granularPermissions['tayo']?['delete'] ?? false);
+    final canAdd =
+        user == null ||
+        !user.isAdvanced ||
+        (user.granularPermissions['tayo']?['add'] ?? false);
+    final canEdit =
+        user == null ||
+        !user.isAdvanced ||
+        (user.granularPermissions['tayo']?['edit'] ?? false);
+    final canDelete =
+        user == null ||
+        !user.isAdvanced ||
+        (user.granularPermissions['tayo']?['delete'] ?? false);
 
     final cardsAsync = ref.watch(tayoRepositoryProvider);
     return Directionality(
@@ -214,11 +242,12 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                 runSpacing: 8,
                 alignment: WrapAlignment.start,
                 children: [
-                  if (canAdd) FilledButton.icon(
-                    onPressed: () => _showCardDialog(context),
-                    icon: const Icon(Icons.add),
-                    label: const Text('إضافة كارت'),
-                  ),
+                  if (canAdd)
+                    FilledButton.icon(
+                      onPressed: () => _showCardDialog(context),
+                      icon: const Icon(Icons.add),
+                      label: const Text('إضافة كارت'),
+                    ),
                   if (cards.isNotEmpty)
                     OutlinedButton.icon(
                       onPressed: () => _printCards(cards),
@@ -242,7 +271,11 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                       child: TextField(
                         controller: _colsController,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'الأعمدة', isDense: true, border: OutlineInputBorder()),
+                        decoration: const InputDecoration(
+                          labelText: 'الأعمدة',
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                     ),
                     SizedBox(
@@ -250,7 +283,11 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                       child: TextField(
                         controller: _rowsController,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'الصفوف', isDense: true, border: OutlineInputBorder()),
+                        decoration: const InputDecoration(
+                          labelText: 'الصفوف',
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                     ),
                   ],
@@ -263,7 +300,10 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                 child: Column(
                   children: [
                     CheckboxListTile(
-                      title: const Text('طباعة ظهر الكارنيه', style: TextStyle(fontWeight: FontWeight.bold)),
+                      title: const Text(
+                        'طباعة ظهر الكارنيه',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       value: _printBackSide,
                       onChanged: (val) {
                         setState(() => _printBackSide = val ?? false);
@@ -279,14 +319,22 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                           Expanded(
                             child: TextField(
                               controller: _backTopTextController,
-                              decoration: const InputDecoration(labelText: 'النص العلوي', isDense: true, border: OutlineInputBorder()),
+                              decoration: const InputDecoration(
+                                labelText: 'النص العلوي',
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
                               controller: _backBottomTextController,
-                              decoration: const InputDecoration(labelText: 'النص السفلي', isDense: true, border: OutlineInputBorder()),
+                              decoration: const InputDecoration(
+                                labelText: 'النص السفلي',
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -327,25 +375,42 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.credit_card_off, size: 64, color: Colors.grey.shade400),
+                          Icon(
+                            Icons.credit_card_off,
+                            size: 64,
+                            color: Colors.grey.shade400,
+                          ),
                           const SizedBox(height: 8),
-                          Text('لا توجد كروت بعد', style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
+                          Text(
+                            'لا توجد كروت بعد',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 16,
+                            ),
+                          ),
                         ],
                       ),
                     )
                   : LayoutBuilder(
                       builder: (ctx, constraints) {
-                        final crossCount = constraints.maxWidth > 900 ? 4 : (constraints.maxWidth > 600 ? 3 : 2);
+                        final crossCount = constraints.maxWidth > 900
+                            ? 4
+                            : (constraints.maxWidth > 600 ? 3 : 2);
                         return GridView.builder(
                           padding: const EdgeInsets.all(12),
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: crossCount,
-                            childAspectRatio: 0.85,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
-                          ),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: crossCount,
+                                childAspectRatio: 0.85,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                              ),
                           itemCount: cards.length,
-                          itemBuilder: (ctx, i) => _buildCardTile(cards[i], canEdit: canEdit, canDelete: canDelete),
+                          itemBuilder: (ctx, i) => _buildCardTile(
+                            cards[i],
+                            canEdit: canEdit,
+                            canDelete: canDelete,
+                          ),
                         );
                       },
                     ),
@@ -356,7 +421,11 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
     );
   }
 
-  Widget _buildCardTile(TayoCardDTO card, {required bool canEdit, required bool canDelete}) {
+  Widget _buildCardTile(
+    TayoCardDTO card, {
+    required bool canEdit,
+    required bool canDelete,
+  }) {
     final cs = Theme.of(context).colorScheme;
     return Card(
       elevation: 3,
@@ -373,15 +442,26 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
               child: Container(
                 decoration: BoxDecoration(
                   color: cs.primaryContainer.withOpacity(0.3),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(14),
+                  ),
                 ),
                 child: card.cardImage != null && card.cardImage!.isNotEmpty
                     ? ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-                        child: Image.memory(Uint8List.fromList(card.cardImage!), fit: BoxFit.cover),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(14),
+                        ),
+                        child: Image.memory(
+                          Uint8List.fromList(card.cardImage!),
+                          fit: BoxFit.cover,
+                        ),
                       )
                     : Center(
-                        child: Icon(Icons.image_outlined, size: 48, color: cs.primary.withOpacity(0.4)),
+                        child: Icon(
+                          Icons.image_outlined,
+                          size: 48,
+                          color: cs.primary.withOpacity(0.4),
+                        ),
                       ),
               ),
             ),
@@ -389,45 +469,65 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
             Expanded(
               flex: 2,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       '${card.cardName} (كود: ${card.cardId})',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                       textAlign: TextAlign.center,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: cs.primary,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         '${card.cardPoints} نقطة',
-                        style: TextStyle(color: cs.onPrimary, fontWeight: FontWeight.bold, fontSize: 12),
+                        style: TextStyle(
+                          color: cs.onPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 4),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        if (canEdit) IconButton(
-                          icon: Icon(Icons.edit, size: 18, color: cs.primary),
-                          onPressed: () => _showCardDialog(context, card: card),
-                          tooltip: 'تعديل',
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        if (canDelete) IconButton(
-                          icon: const Icon(Icons.delete, size: 18, color: Colors.red),
-                          onPressed: () => _deleteCard(card),
-                          tooltip: 'حذف',
-                          visualDensity: VisualDensity.compact,
-                        ),
+                        if (canEdit)
+                          IconButton(
+                            icon: Icon(Icons.edit, size: 18, color: cs.primary),
+                            onPressed: () =>
+                                _showCardDialog(context, card: card),
+                            tooltip: 'تعديل',
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        if (canDelete)
+                          IconButton(
+                            icon: const Icon(
+                              Icons.delete,
+                              size: 18,
+                              color: Colors.red,
+                            ),
+                            onPressed: () => _deleteCard(card),
+                            tooltip: 'حذف',
+                            visualDensity: VisualDensity.compact,
+                          ),
                       ],
                     ),
                   ],
@@ -442,8 +542,12 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
 
   void _showCardDialog(BuildContext context, {TayoCardDTO? card}) {
     final nameCtrl = TextEditingController(text: card?.cardName ?? '');
-    final pointsCtrl = TextEditingController(text: card?.cardPoints.toString() ?? '');
-    Uint8List? imageBytes = card?.cardImage != null ? Uint8List.fromList(card!.cardImage!) : null;
+    final pointsCtrl = TextEditingController(
+      text: card?.cardPoints.toString() ?? '',
+    );
+    Uint8List? imageBytes = card?.cardImage != null
+        ? Uint8List.fromList(card!.cardImage!)
+        : null;
 
     showDialog(
       context: context,
@@ -459,21 +563,33 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                   children: [
                     if (card != null) ...[
                       TextField(
-                        controller: TextEditingController(text: card.cardId.toString()),
+                        controller: TextEditingController(
+                          text: card.cardId.toString(),
+                        ),
                         readOnly: true,
-                        decoration: const InputDecoration(labelText: 'كود الكارت', border: OutlineInputBorder(), filled: true),
+                        decoration: const InputDecoration(
+                          labelText: 'كود الكارت',
+                          border: OutlineInputBorder(),
+                          filled: true,
+                        ),
                       ),
                       const SizedBox(height: 12),
                     ],
                     TextField(
                       controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'اسم الكارت', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: 'اسم الكارت',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: pointsCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'عدد النقاط', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: 'عدد النقاط',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     // Image preview + picker
@@ -491,7 +607,10 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                               children: [
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(7),
-                                  child: Image.memory(imageBytes!, fit: BoxFit.contain),
+                                  child: Image.memory(
+                                    imageBytes!,
+                                    fit: BoxFit.contain,
+                                  ),
                                 ),
                                 Positioned(
                                   top: 4,
@@ -500,8 +619,14 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                                     radius: 14,
                                     backgroundColor: Colors.red,
                                     child: IconButton(
-                                      icon: const Icon(Icons.close, size: 14, color: Colors.white),
-                                      onPressed: () => setDialogState(() => imageBytes = null),
+                                      icon: const Icon(
+                                        Icons.close,
+                                        size: 14,
+                                        color: Colors.white,
+                                      ),
+                                      onPressed: () => setDialogState(
+                                        () => imageBytes = null,
+                                      ),
                                       padding: EdgeInsets.zero,
                                     ),
                                   ),
@@ -512,7 +637,10 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                               child: TextButton.icon(
                                 onPressed: () async {
                                   final picker = ImagePicker();
-                                  final file = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800);
+                                  final file = await picker.pickImage(
+                                    source: ImageSource.gallery,
+                                    maxWidth: 800,
+                                  );
                                   if (file != null) {
                                     final bytes = await file.readAsBytes();
                                     setDialogState(() => imageBytes = bytes);
@@ -527,7 +655,10 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('إلغاء'),
+                ),
                 FilledButton(
                   onPressed: () async {
                     final name = nameCtrl.text.trim();
@@ -536,7 +667,11 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
 
                     final repo = ref.read(tayoRepositoryProvider.notifier);
                     if (card == null) {
-                      await repo.addCard(name: name, points: pts, image: imageBytes);
+                      await repo.addCard(
+                        name: name,
+                        points: pts,
+                        image: imageBytes,
+                      );
                     } else {
                       await repo.updateCard(
                         cardId: card.cardId,
@@ -565,13 +700,20 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Text('تأكيد الحذف'),
-          content: Text('هل تريد حذف كارت "${card.cardName}"؟\nسيتم حذف جميع سجلات النقاط المرتبطة.'),
+          content: Text(
+            'هل تريد حذف كارت "${card.cardName}"؟\nسيتم حذف جميع سجلات النقاط المرتبطة.',
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () async {
-                await ref.read(tayoRepositoryProvider.notifier).deleteCard(card.cardId);
+                await ref
+                    .read(tayoRepositoryProvider.notifier)
+                    .deleteCard(card.cardId);
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               child: const Text('حذف'),
@@ -601,7 +743,9 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
       await Printing.layoutPdf(onLayout: (_) => pdfBytes);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ في الطباعة: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('خطأ في الطباعة: $e')));
       }
     }
   }
@@ -627,7 +771,9 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
   final _cardSearchCtrl = TextEditingController();
   TayoCardDTO? _selectedCard;
   int _cardQuantity = 1;
-  final TextEditingController _cardQuantityCtrl = TextEditingController(text: '1');
+  final TextEditingController _cardQuantityCtrl = TextEditingController(
+    text: '1',
+  );
   FocusNode? _cardFieldFocus;
   List<TayoCardDTO> _cardOptions = [];
 
@@ -650,7 +796,17 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
   List<PointLogDTO> _recentLogs = [];
 
   // Person balance
-  int _personBalance = 0;
+  PersonPointBalance _personBalance = const PersonPointBalance(
+    tayoEarned: 0,
+    attendancePoints: 0,
+    totalEarned: 0,
+    redeemed: 0,
+  );
+  DateTime? _balanceDateFrom;
+  DateTime? _balanceDateTo;
+  final _redemptionPointsCtrl = TextEditingController();
+  final _redemptionNotesCtrl = TextEditingController();
+  bool _isRedeeming = false;
 
   // Controllers captured from Autocomplete fieldViewBuilder
   TextEditingController? _personFieldCtrl;
@@ -672,12 +828,15 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
     _cardSearchCtrl.dispose();
     _extraPointsNameCtrl.dispose();
     _cardQuantityCtrl.dispose();
+    _redemptionPointsCtrl.dispose();
+    _redemptionNotesCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _loadPersonOptions() async {
     final db = ref.read(appDatabaseProvider);
     final rows = await db.select(db.persons).get();
+    if (!mounted) return;
     setState(() {
       _personOptions = rows
           .map((r) => PersonOption(id: r.personId, name: r.personName ?? ''))
@@ -686,14 +845,43 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
   }
 
   Future<void> _loadRecentLogs() async {
-    final logs = await ref.read(tayoRepositoryProvider.notifier).getPointLogs(
+    final logs = await ref
+        .read(tayoRepositoryProvider.notifier)
+        .getPointLogs(
           limit: 50,
           stageId: _filterStageId,
           areaId: _filterAreaId,
           dateFrom: _filterDateFrom,
           dateTo: _filterDateTo,
         );
-    setState(() => _recentLogs = logs);
+    if (mounted) setState(() => _recentLogs = logs);
+  }
+
+  void _selectPersonFromQuery(String value) {
+    final query = value.trim().toLowerCase();
+    if (query.isEmpty) return;
+    final id = int.tryParse(query);
+    PersonOption? match;
+    for (final person in _personOptions) {
+      if (person.id == id || person.name.toLowerCase() == query) {
+        match = person;
+        break;
+      }
+    }
+    match ??= _personOptions
+        .where((person) => person.name.toLowerCase().contains(query))
+        .firstOrNull;
+    if (match == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('لم يتم العثور على مخدوم بهذا الاسم أو الكود'),
+        ),
+      );
+      return;
+    }
+    setState(() => _selectedPerson = match);
+    _personFieldCtrl?.text = '${match.name} (${match.id})';
+    _loadPersonBalance();
   }
 
   Future<void> _deleteLog(PointLogDTO log) async {
@@ -701,9 +889,14 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('تأكيد الحذف'),
-        content: Text('هل أنت متأكد من حذف النقاط الخاصة بـ ${log.personName}؟'),
+        content: Text(
+          'هل أنت متأكد من حذف النقاط الخاصة بـ ${log.personName}؟',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -725,19 +918,22 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
     int? editedCardId;
     String editedNotes = log.notes ?? '';
     int editedPoints = log.points;
-    
+
     if (log.cardName != null) {
       try {
-        editedCardId = allCards.firstWhere((c) => c.cardName == log.cardName).cardId;
+        editedCardId = allCards
+            .firstWhere((c) => c.cardName == log.cardName)
+            .cardId;
       } catch (_) {}
     } else if (!log.isAttendance) {
-      editedCardId = null; 
+      editedCardId = null;
     }
-    
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) {
-         return StatefulBuilder(builder: (c, setLocalState) {
+        return StatefulBuilder(
+          builder: (c, setLocalState) {
             final isCustom = (editedCardId == null);
             return AlertDialog(
               title: const Text('تعديل النقاط'),
@@ -748,16 +944,18 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('التاريخ'),
-                      subtitle: Text(DateFormat('yyyy-MM-dd').format(editedDate)),
+                      subtitle: Text(
+                        DateFormat('yyyy-MM-dd').format(editedDate),
+                      ),
                       trailing: const Icon(Icons.calendar_today),
                       onTap: () async {
-                         final d = await showDatePicker(
-                           context: ctx,
-                           initialDate: editedDate,
-                           firstDate: DateTime(2020),
-                           lastDate: DateTime(2030),
-                         );
-                         if (d != null) setLocalState(() => editedDate = d);
+                        final d = await showDatePicker(
+                          context: ctx,
+                          initialDate: editedDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2030),
+                        );
+                        if (d != null) setLocalState(() => editedDate = d);
                       },
                     ),
                     const SizedBox(height: 12),
@@ -765,17 +963,34 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                       DropdownButtonFormField<int?>(
                         value: editedCardId,
                         isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'الكارت', border: OutlineInputBorder(), isDense: true),
+                        decoration: const InputDecoration(
+                          labelText: 'الكارت',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
                         items: [
-                          const DropdownMenuItem(value: null, child: Text('نقاط مخصصة (إضافية / محددة مسبقاً)')),
-                          ...allCards.map((c) => DropdownMenuItem(value: c.cardId, child: Text('${c.cardName} (${c.cardPoints} نقطة)', overflow: TextOverflow.ellipsis))),
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('نقاط مخصصة (إضافية / محددة مسبقاً)'),
+                          ),
+                          ...allCards.map(
+                            (c) => DropdownMenuItem(
+                              value: c.cardId,
+                              child: Text(
+                                '${c.cardName} (${c.cardPoints} نقطة)',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
                         ],
                         onChanged: (v) {
                           setLocalState(() {
                             editedCardId = v;
                             if (v != null) {
                               try {
-                                editedPoints = allCards.firstWhere((c) => c.cardId == v).cardPoints;
+                                editedPoints = allCards
+                                    .firstWhere((c) => c.cardId == v)
+                                    .cardPoints;
                               } catch (_) {}
                             }
                           });
@@ -785,27 +1000,42 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                         const SizedBox(height: 12),
                         TextFormField(
                           initialValue: editedNotes,
-                          decoration: const InputDecoration(labelText: 'البند (السبب)', border: OutlineInputBorder(), isDense: true),
+                          decoration: const InputDecoration(
+                            labelText: 'البند (السبب)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
                           onChanged: (v) => editedNotes = v,
                         ),
                         const SizedBox(height: 12),
                         TextFormField(
                           initialValue: editedPoints.toString(),
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'النقاط', border: OutlineInputBorder(), isDense: true),
+                          decoration: const InputDecoration(
+                            labelText: 'النقاط',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
                           onChanged: (v) => editedPoints = int.tryParse(v) ?? 1,
                         ),
-                      ]
-                    ]
-                  ]
-                )
+                      ],
+                    ],
+                  ],
+                ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('إلغاء'),
+                ),
                 FilledButton(
                   onPressed: () {
                     if (isCustom && editedNotes.trim().isEmpty) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('الرجاء كتابة البند / الملاحظة')));
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                          content: Text('الرجاء كتابة البند / الملاحظة'),
+                        ),
+                      );
                       return;
                     }
                     Navigator.pop(ctx, true);
@@ -814,23 +1044,26 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                 ),
               ],
             );
-         });
+          },
+        );
       },
     );
 
     if (confirm != true) return;
-    
+
     // Check if switching off specific custom notes by switching to a card
     final isNowCustom = (editedCardId == null);
-    
-    await ref.read(tayoRepositoryProvider.notifier).updatePointLog(
-      logId: log.id,
-      date: DateFormat('yyyy-MM-dd').format(editedDate),
-      cardId: editedCardId,
-      points: editedPoints,
-      notes: isNowCustom ? editedNotes.trim() : null,
-      clearNotes: !isNowCustom, 
-    );
+
+    await ref
+        .read(tayoRepositoryProvider.notifier)
+        .updatePointLog(
+          logId: log.id,
+          date: DateFormat('yyyy-MM-dd').format(editedDate),
+          cardId: editedCardId,
+          points: editedPoints,
+          notes: isNowCustom ? editedNotes.trim() : null,
+          clearNotes: !isNowCustom,
+        );
     _loadRecentLogs();
     if (_selectedPerson?.id == log.personId) {
       _loadPersonBalance();
@@ -839,8 +1072,201 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
 
   Future<void> _loadPersonBalance() async {
     if (_selectedPerson == null) return;
-    final bal = await ref.read(tayoRepositoryProvider.notifier).getPersonTotalPoints(_selectedPerson!.id ?? 0);
-    setState(() => _personBalance = bal);
+    final balance = await ref
+        .read(tayoRepositoryProvider.notifier)
+        .getPersonPointBalance(
+          personId: _selectedPerson!.id ?? 0,
+          dateFrom: _balanceDateFrom,
+          dateTo: _balanceDateTo,
+        );
+    if (mounted) setState(() => _personBalance = balance);
+  }
+
+  Future<void> _pickBalanceDate({required bool from}) async {
+    final current = from ? _balanceDateFrom : _balanceDateTo;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (from) {
+        _balanceDateFrom = picked;
+      } else {
+        _balanceDateTo = picked;
+      }
+    });
+    await _loadPersonBalance();
+  }
+
+  Future<void> _redeemPoints() async {
+    if (_selectedPerson == null || _isRedeeming) return;
+    final points = int.tryParse(_redemptionPointsCtrl.text.trim());
+    if (points == null || points <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اكتب عدد نقاط استبدال صحيح')),
+      );
+      return;
+    }
+    setState(() => _isRedeeming = true);
+    final error = await ref
+        .read(tayoRepositoryProvider.notifier)
+        .redeemPoints(
+          personId: _selectedPerson!.id ?? 0,
+          points: points,
+          date: DateFormat('yyyy-MM-dd').format(_selectedDate),
+          balanceDateFrom: _balanceDateFrom,
+          balanceDateTo: _balanceDateTo,
+          notes: _redemptionNotesCtrl.text,
+        );
+    if (!mounted) return;
+    setState(() => _isRedeeming = false);
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+      return;
+    }
+    _redemptionPointsCtrl.clear();
+    _redemptionNotesCtrl.clear();
+    await Future.wait([_loadPersonBalance(), _loadRecentLogs()]);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('تم استبدال النقاط وتحديث الرصيد'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  Widget _buildSelectedPersonBalance(ColorScheme cs, bool canAdd) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.person, color: cs.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${_selectedPerson!.name} (${_selectedPerson!.id})',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            Chip(label: Text('نقاط الطايو: ${_personBalance.tayoEarned}')),
+            Chip(
+              label: Text('نقاط الحضور: ${_personBalance.attendancePoints}'),
+            ),
+            Chip(label: Text('الكلي: ${_personBalance.totalEarned}')),
+            Chip(label: Text('المستبدل: ${_personBalance.redeemed}')),
+            Chip(
+              backgroundColor: cs.primary,
+              label: Text(
+                'الصافي: ${_personBalance.net}',
+                style: TextStyle(
+                  color: cs.onPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => _pickBalanceDate(from: true),
+              icon: const Icon(Icons.date_range, size: 16),
+              label: Text(
+                _balanceDateFrom == null
+                    ? 'من أول المدة'
+                    : 'من ${DateFormat('yyyy-MM-dd').format(_balanceDateFrom!)}',
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _pickBalanceDate(from: false),
+              icon: const Icon(Icons.event, size: 16),
+              label: Text(
+                _balanceDateTo == null
+                    ? 'إلى آخر المدة'
+                    : 'إلى ${DateFormat('yyyy-MM-dd').format(_balanceDateTo!)}',
+              ),
+            ),
+            if (_balanceDateFrom != null || _balanceDateTo != null)
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _balanceDateFrom = null;
+                    _balanceDateTo = null;
+                  });
+                  _loadPersonBalance();
+                },
+                icon: const Icon(Icons.clear, size: 16),
+                label: const Text('كل الفترات'),
+              ),
+          ],
+        ),
+        const Divider(),
+        Text(
+          'استبدال نقاط',
+          style: TextStyle(color: cs.primary, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            SizedBox(
+              width: 150,
+              child: TextField(
+                controller: _redemptionPointsCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'نقاط الاستبدال',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 220,
+              child: TextField(
+                controller: _redemptionNotesCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'ملاحظة (اختياري)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: canAdd && !_isRedeeming ? _redeemPoints : null,
+              icon: _isRedeeming
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.redeem),
+              label: const Text('استبدال وخصم'),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   Future<void> _awardPoints() async {
@@ -849,11 +1275,19 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
 
     try {
       if (_selectedPerson == null) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اختر مخدوم أولاً')));
+        if (mounted)
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('اختر مخدوم أولاً')));
         return;
       }
       if (_selectedCard == null && !_addExtraPoints) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اختر كارت أو فعّل إضافة نقاط إضافية')));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('اختر كارت أو فعّل إضافة نقاط إضافية'),
+            ),
+          );
         return;
       }
 
@@ -870,7 +1304,9 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
           notes: _cardQuantity > 1 ? 'الكمية: $_cardQuantity' : null,
         );
         if (err != null && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(err)));
           return;
         }
       }
@@ -879,7 +1315,14 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
       if (_addExtraPoints) {
         final reason = _extraPointsNameCtrl.text.trim();
         if (reason.isEmpty) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء كتابة البند / الملاحظة للـ نقاط الإضافية')));
+          if (mounted)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'الرجاء كتابة البند / الملاحظة للـ نقاط الإضافية',
+                ),
+              ),
+            );
           return;
         }
         // Use cardId = 0 for extra points
@@ -909,11 +1352,11 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
         _cardQuantity = 1;
         _cardQuantityCtrl.text = '1';
         _cardSearchCtrl.clear();
-        
+
         // Force Autocomplete widget internal state to reset fully
-        _cardFieldCtrl?.text = ' '; 
+        _cardFieldCtrl?.text = ' ';
         _cardFieldCtrl?.clear();
-        
+
         _extraPointsNameCtrl.clear();
         _addExtraPoints = false;
       });
@@ -921,12 +1364,12 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
       // Refocus on card field
       Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {
-           _cardFieldFocus?.unfocus();
-           Future.delayed(const Duration(milliseconds: 50), () {
-             if (mounted) {
-               _cardFieldFocus?.requestFocus();
-             }
-           });
+          _cardFieldFocus?.unfocus();
+          Future.delayed(const Duration(milliseconds: 50), () {
+            if (mounted) {
+              _cardFieldFocus?.requestFocus();
+            }
+          });
         }
       });
 
@@ -946,9 +1389,18 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authServiceProvider).value;
-    final canAdd = user == null || !user.isAdvanced || (user.granularPermissions['tayo']?['add'] ?? false);
-    final canEdit = user == null || !user.isAdvanced || (user.granularPermissions['tayo']?['edit'] ?? false);
-    final canDelete = user == null || !user.isAdvanced || (user.granularPermissions['tayo']?['delete'] ?? false);
+    final canAdd =
+        user == null ||
+        !user.isAdvanced ||
+        (user.granularPermissions['tayo']?['add'] ?? false);
+    final canEdit =
+        user == null ||
+        !user.isAdvanced ||
+        (user.granularPermissions['tayo']?['edit'] ?? false);
+    final canDelete =
+        user == null ||
+        !user.isAdvanced ||
+        (user.granularPermissions['tayo']?['delete'] ?? false);
 
     final cs = Theme.of(context).colorScheme;
     final cardsAsync = ref.watch(tayoRepositoryProvider);
@@ -967,23 +1419,36 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                 // ── Entry Form ──
                 Card(
                   elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('إضافة نقاط لمخدوم', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cs.primary)),
+                        Text(
+                          'إضافة نقاط لمخدوم',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: cs.primary,
+                          ),
+                        ),
                         const Divider(),
                         // Person search
                         Autocomplete<PersonOption>(
                           optionsBuilder: (textEditVal) {
-                            if (textEditVal.text.isEmpty) return const Iterable.empty();
+                            if (textEditVal.text.isEmpty)
+                              return const Iterable.empty();
                             final q = textEditVal.text.toLowerCase().trim();
                             final intQ = int.tryParse(q);
                             return _personOptions.where((p) {
-                              final idMatch = p.id.toString() == q || (intQ != null && p.id == intQ);
-                              return p.name.toLowerCase().contains(q) || idMatch;
+                              final idMatch =
+                                  p.id.toString() == q ||
+                                  (intQ != null && p.id == intQ);
+                              return p.name.toLowerCase().contains(q) ||
+                                  idMatch;
                             });
                           },
                           displayStringForOption: (p) => '${p.name} (${p.id})',
@@ -992,9 +1457,11 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                             return TextField(
                               controller: ctrl,
                               focusNode: fn,
+                              textInputAction: TextInputAction.search,
+                              onSubmitted: _selectPersonFromQuery,
                               onTap: () {
                                 if (!fn.hasFocus) fn.requestFocus();
-                                ctrl.text = ctrl.text; 
+                                ctrl.text = ctrl.text;
                               },
                               decoration: InputDecoration(
                                 labelText: 'بحث بالاسم أو الكود',
@@ -1007,7 +1474,13 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                                           ctrl.clear();
                                           setState(() {
                                             _selectedPerson = null;
-                                            _personBalance = 0;
+                                            _personBalance =
+                                                const PersonPointBalance(
+                                                  tayoEarned: 0,
+                                                  attendancePoints: 0,
+                                                  totalEarned: 0,
+                                                  redeemed: 0,
+                                                );
                                           });
                                         },
                                       )
@@ -1028,25 +1501,7 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                               color: cs.primaryContainer.withOpacity(0.3),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.person, color: cs.primary),
-                                const SizedBox(width: 8),
-                                Text('${_selectedPerson!.name}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                const Spacer(),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: cs.primary,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    'الرصيد: $_personBalance',
-                                    style: TextStyle(color: cs.onPrimary, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                            ),
+                            child: _buildSelectedPersonBalance(cs, canAdd),
                           ),
                         ],
                         const SizedBox(height: 12),
@@ -1056,12 +1511,15 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                             if (textEditVal.text.isEmpty) return allCards;
                             final q = textEditVal.text.toLowerCase().trim();
                             final intQ = int.tryParse(q);
-                            return allCards.where((c) =>
-                                c.cardName.toLowerCase().contains(q) ||
-                                c.cardId.toString() == q ||
-                                (intQ != null && c.cardId == intQ));
+                            return allCards.where(
+                              (c) =>
+                                  c.cardName.toLowerCase().contains(q) ||
+                                  c.cardId.toString() == q ||
+                                  (intQ != null && c.cardId == intQ),
+                            );
                           },
-                          displayStringForOption: (c) => '${c.cardName} (${c.cardPoints} نقطة)',
+                          displayStringForOption: (c) =>
+                              '${c.cardName} (${c.cardPoints} نقطة)',
                           fieldViewBuilder: (ctx, ctrl, fn, onSubmit) {
                             _cardFieldCtrl = ctrl;
                             _cardFieldFocus = fn;
@@ -1074,15 +1532,20 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                                   final q = ctrl.text.toLowerCase().trim();
                                   final intQ = int.tryParse(q);
                                   try {
-                                    final exactMatch = allCards.firstWhere((c) => 
-                                        c.cardId.toString() == q || 
-                                        c.cardName.toLowerCase() == q ||
-                                        (intQ != null && c.cardId == intQ));
+                                    final exactMatch = allCards.firstWhere(
+                                      (c) =>
+                                          c.cardId.toString() == q ||
+                                          c.cardName.toLowerCase() == q ||
+                                          (intQ != null && c.cardId == intQ),
+                                    );
                                     setState(() => _selectedCard = exactMatch);
                                   } catch (_) {}
                                 }
                                 onSubmit();
-                                Future.delayed(const Duration(milliseconds: 100), () => _awardPoints());
+                                Future.delayed(
+                                  const Duration(milliseconds: 100),
+                                  () => _awardPoints(),
+                                );
                               },
                               onTap: () {
                                 if (!fn.hasFocus) fn.requestFocus();
@@ -1097,19 +1560,23 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                           },
                           onSelected: (c) {
                             if (_selectedCard?.cardId == c.cardId) {
-                               setState(() {
-                                 _cardQuantity++;
-                                 _cardQuantityCtrl.text = _cardQuantity.toString();
-                               });
+                              setState(() {
+                                _cardQuantity++;
+                                _cardQuantityCtrl.text = _cardQuantity
+                                    .toString();
+                              });
                             } else {
-                               setState(() {
-                                 _selectedCard = c;
-                                 _cardQuantity = 1;
-                                 _cardQuantityCtrl.text = '1';
-                               });
+                              setState(() {
+                                _selectedCard = c;
+                                _cardQuantity = 1;
+                                _cardQuantityCtrl.text = '1';
+                              });
                             }
                             // Auto trigger submit when card selected via Enter or tap
-                            Future.delayed(const Duration(milliseconds: 100), () => _awardPoints());
+                            Future.delayed(
+                              const Duration(milliseconds: 100),
+                              () => _awardPoints(),
+                            );
                           },
                         ),
                         if (_selectedCard != null) ...[
@@ -1118,8 +1585,14 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                             children: [
                               Expanded(
                                 child: Chip(
-                                  avatar: Icon(Icons.stars, color: Colors.amber.shade700, size: 18),
-                                  label: Text('${_selectedCard!.cardName} — ${_selectedCard!.cardPoints} نقطة'),
+                                  avatar: Icon(
+                                    Icons.stars,
+                                    color: Colors.amber.shade700,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    '${_selectedCard!.cardName} — ${_selectedCard!.cardPoints} نقطة',
+                                  ),
                                   deleteIcon: const Icon(Icons.close, size: 16),
                                   onDeleted: () => setState(() {
                                     _selectedCard = null;
@@ -1131,7 +1604,9 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                               const SizedBox(width: 8),
                               Container(
                                 decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey.shade400),
+                                  border: Border.all(
+                                    color: Colors.grey.shade400,
+                                  ),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Row(
@@ -1143,11 +1618,15 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                                         if (_cardQuantity > 1) {
                                           setState(() {
                                             _cardQuantity--;
-                                            _cardQuantityCtrl.text = _cardQuantity.toString();
+                                            _cardQuantityCtrl.text =
+                                                _cardQuantity.toString();
                                           });
                                         }
                                       },
-                                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
                                       padding: EdgeInsets.zero,
                                     ),
                                     SizedBox(
@@ -1159,7 +1638,9 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                                         decoration: const InputDecoration(
                                           border: InputBorder.none,
                                           isDense: true,
-                                          contentPadding: EdgeInsets.symmetric(vertical: 8),
+                                          contentPadding: EdgeInsets.symmetric(
+                                            vertical: 8,
+                                          ),
                                         ),
                                         onChanged: (v) {
                                           final val = int.tryParse(v);
@@ -1174,10 +1655,14 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                                       onPressed: () {
                                         setState(() {
                                           _cardQuantity++;
-                                          _cardQuantityCtrl.text = _cardQuantity.toString();
+                                          _cardQuantityCtrl.text = _cardQuantity
+                                              .toString();
                                         });
                                       },
-                                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
                                       padding: EdgeInsets.zero,
                                     ),
                                   ],
@@ -1202,12 +1687,18 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                                   firstDate: DateTime(2020),
                                   lastDate: DateTime(2030),
                                 );
-                                if (picked != null) setState(() => _selectedDate = picked);
+                                if (picked != null)
+                                  setState(() => _selectedDate = picked);
                               },
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
                                 decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey.shade400),
+                                  border: Border.all(
+                                    color: Colors.grey.shade400,
+                                  ),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Row(
@@ -1215,7 +1706,11 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                                   children: [
                                     const Icon(Icons.calendar_today, size: 16),
                                     const SizedBox(width: 6),
-                                    Text(DateFormat('yyyy-MM-dd').format(_selectedDate)),
+                                    Text(
+                                      DateFormat(
+                                        'yyyy-MM-dd',
+                                      ).format(_selectedDate),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1226,7 +1721,8 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                               children: [
                                 Switch(
                                   value: _addExtraPoints,
-                                  onChanged: (v) => setState(() => _addExtraPoints = v),
+                                  onChanged: (v) =>
+                                      setState(() => _addExtraPoints = v),
                                 ),
                                 const Text('إضافة نقاط إضافية'),
                               ],
@@ -1252,8 +1748,11 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                                     border: OutlineInputBorder(),
                                     isDense: true,
                                   ),
-                                  controller: TextEditingController(text: '$_extraPointsAmount'),
-                                  onChanged: (v) => _extraPointsAmount = int.tryParse(v) ?? 1,
+                                  controller: TextEditingController(
+                                    text: '$_extraPointsAmount',
+                                  ),
+                                  onChanged: (v) =>
+                                      _extraPointsAmount = int.tryParse(v) ?? 1,
                                 ),
                               ),
                             ],
@@ -1261,15 +1760,23 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                         ),
                         const SizedBox(height: 14),
                         // Save button
-                        if (canAdd) SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _awardPoints,
-                            icon: const Icon(Icons.add_task),
-                            label: const Text('إضافة النقاط', style: TextStyle(fontSize: 15)),
-                            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                        if (canAdd)
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _awardPoints,
+                              icon: const Icon(Icons.add_task),
+                              label: const Text(
+                                'إضافة النقاط',
+                                style: TextStyle(fontSize: 15),
+                              ),
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -1278,19 +1785,39 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                 // ── Filters for log ──
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         InkWell(
-                          onTap: () => setState(() => _showLogFilters = !_showLogFilters),
+                          onTap: () => setState(
+                            () => _showLogFilters = !_showLogFilters,
+                          ),
                           child: Row(
                             children: [
-                              Icon(Icons.filter_list, color: cs.primary, size: 20),
+                              Icon(
+                                Icons.filter_list,
+                                color: cs.primary,
+                                size: 20,
+                              ),
                               const SizedBox(width: 8),
-                              Text('تصفية وعرض السجلات (بحث)', style: TextStyle(fontWeight: FontWeight.bold, color: cs.primary)),
+                              Text(
+                                'تصفية وعرض السجلات (بحث)',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.primary,
+                                ),
+                              ),
                               const Spacer(),
-                              Icon(_showLogFilters ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: cs.primary),
+                              Icon(
+                                _showLogFilters
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: cs.primary,
+                              ),
                             ],
                           ),
                         ),
@@ -1302,8 +1829,16 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                             children: [
                               _buildStageFilter(),
                               _buildAreaFilter(),
-                              _buildDateFilter('تاريخ البداية', _filterDateFrom, (d) => setState(() => _filterDateFrom = d)),
-                              _buildDateFilter('تاريخ النهاية', _filterDateTo, (d) => setState(() => _filterDateTo = d)),
+                              _buildDateFilter(
+                                'تاريخ البداية',
+                                _filterDateFrom,
+                                (d) => setState(() => _filterDateFrom = d),
+                              ),
+                              _buildDateFilter(
+                                'تاريخ النهاية',
+                                _filterDateTo,
+                                (d) => setState(() => _filterDateTo = d),
+                              ),
                               FilledButton.tonalIcon(
                                 onPressed: _loadRecentLogs,
                                 icon: const Icon(Icons.search, size: 18),
@@ -1322,51 +1857,102 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
                   Padding(
                     padding: const EdgeInsets.all(24),
                     child: Center(
-                      child: Text('لا توجد سجلات', style: TextStyle(color: Colors.grey.shade500)),
+                      child: Text(
+                        'لا توجد سجلات',
+                        style: TextStyle(color: Colors.grey.shade500),
+                      ),
                     ),
                   )
                 else
-                  ..._recentLogs.map((log) => Card(
-                        margin: const EdgeInsets.symmetric(vertical: 3),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: log.isAttendance ? Colors.green.shade100 : cs.primaryContainer,
-                            child: Icon(
-                              log.isAttendance ? Icons.check_circle : Icons.card_giftcard,
-                              color: log.isAttendance ? Colors.green : cs.primary,
-                              size: 20,
-                            ),
+                  ..._recentLogs.map(
+                    (log) => Card(
+                      margin: const EdgeInsets.symmetric(vertical: 3),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: log.points < 0
+                              ? Colors.orange.shade100
+                              : (log.isAttendance
+                                    ? Colors.green.shade100
+                                    : cs.primaryContainer),
+                          child: Icon(
+                            log.points < 0
+                                ? Icons.redeem
+                                : (log.isAttendance
+                                      ? Icons.check_circle
+                                      : Icons.card_giftcard),
+                            color: log.points < 0
+                                ? Colors.orange.shade800
+                                : (log.isAttendance
+                                      ? Colors.green
+                                      : cs.primary),
+                            size: 20,
                           ),
-                          title: Text(log.personName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text(log.isAttendance ? 'نقاط حضور' : (log.cardName ?? log.notes ?? 'نقاط إضافية')),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text('+${log.points}', style: TextStyle(fontWeight: FontWeight.bold, color: cs.primary, fontSize: 16)),
-                                  Text(log.date, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                                ],
-                              ),
-                              const SizedBox(width: 8),
-                              if (canEdit) IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
+                        ),
+                        title: Text(
+                          log.personName,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          log.isAttendance
+                              ? 'نقاط حضور'
+                              : (log.cardName ?? log.notes ?? 'نقاط إضافية'),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  log.points < 0
+                                      ? '${log.points}'
+                                      : '+${log.points}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: log.points < 0
+                                        ? Colors.orange.shade800
+                                        : cs.primary,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                Text(
+                                  log.date,
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: 8),
+                            if (canEdit)
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: Colors.blue,
+                                  size: 20,
+                                ),
                                 onPressed: () => _editLog(log, allCards),
                                 constraints: const BoxConstraints(),
                                 padding: const EdgeInsets.all(4),
                               ),
-                              if (canDelete) IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                            if (canDelete)
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                  size: 20,
+                                ),
                                 onPressed: () => _deleteLog(log),
                                 constraints: const BoxConstraints(),
                                 padding: const EdgeInsets.all(4),
                               ),
-                            ],
-                          ),
+                          ],
                         ),
-                      )),
+                      ),
+                    ),
+                  ),
               ],
             ),
           );
@@ -1386,10 +1972,23 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
           child: DropdownButtonFormField<int?>(
             value: _filterStageId,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'المرحلة', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+            decoration: const InputDecoration(
+              labelText: 'المرحلة',
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            ),
             items: [
               const DropdownMenuItem(value: null, child: Text('الكل')),
-              ...stages.map((s) => DropdownMenuItem(value: s.stageId, child: Text(s.stageName ?? '', overflow: TextOverflow.ellipsis))),
+              ...stages.map(
+                (s) => DropdownMenuItem(
+                  value: s.stageId,
+                  child: Text(
+                    s.stageName ?? '',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
             ],
             onChanged: (v) => setState(() => _filterStageId = v),
           ),
@@ -1409,10 +2008,23 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
           child: DropdownButtonFormField<int?>(
             value: _filterAreaId,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'المنطقة', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+            decoration: const InputDecoration(
+              labelText: 'المنطقة',
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            ),
             items: [
               const DropdownMenuItem(value: null, child: Text('الكل')),
-              ...areas.map((a) => DropdownMenuItem(value: a.areaId, child: Text(a.areaName ?? '', overflow: TextOverflow.ellipsis))),
+              ...areas.map(
+                (a) => DropdownMenuItem(
+                  value: a.areaId,
+                  child: Text(
+                    a.areaName ?? '',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
             ],
             onChanged: (v) => setState(() => _filterAreaId = v),
           ),
@@ -1421,7 +2033,11 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
     );
   }
 
-  Widget _buildDateFilter(String label, DateTime? current, ValueChanged<DateTime?> onChanged) {
+  Widget _buildDateFilter(
+    String label,
+    DateTime? current,
+    ValueChanged<DateTime?> onChanged,
+  ) {
     return InkWell(
       onTap: () async {
         final picked = await showDatePicker(
@@ -1443,7 +2059,11 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
           children: [
             const Icon(Icons.event, size: 16),
             const SizedBox(width: 4),
-            Text(current != null ? DateFormat('yyyy-MM-dd').format(current) : label),
+            Text(
+              current != null
+                  ? DateFormat('yyyy-MM-dd').format(current)
+                  : label,
+            ),
             if (current != null)
               InkWell(
                 onTap: () => onChanged(null),
@@ -1492,18 +2112,25 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
   void _search() async {
     setState(() => _loading = true);
     try {
-      final data = await ref.read(tayoRepositoryProvider.notifier).getPointsReport(
+      final data = await ref
+          .read(tayoRepositoryProvider.notifier)
+          .getPointsReport(
             stageId: _stageId,
             areaId: _areaId,
             dateFrom: _dateFrom,
             dateTo: _dateTo,
             ascending: _ascending,
             includeAttendance: _includeAttendancePoints,
-            attendanceServiceIds: _selectedServiceIds.isNotEmpty ? _selectedServiceIds : null,
+            attendanceServiceIds: _selectedServiceIds.isNotEmpty
+                ? _selectedServiceIds
+                : null,
           );
       setState(() => _results = data);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('خطأ: $e')));
     }
     setState(() => _loading = false);
   }
@@ -1515,13 +2142,15 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
     for (final r in _results) {
       uniqueCards.addAll(r.cardPoints.keys);
     }
-    
+
     final initialColumns = [
       ReportColumn(id: '#', title: '#'),
       ReportColumn(id: 'الاسم', title: 'الاسم'),
       ReportColumn(id: 'المرحلة', title: 'المرحلة'),
       ReportColumn(id: 'المنطقة', title: 'المنطقة'),
-      ReportColumn(id: 'إجمالي النقاط', title: 'إجمالي النقاط'),
+      ReportColumn(id: 'إجمالي المكتسب', title: 'إجمالي المكتسب'),
+      ReportColumn(id: 'النقاط المستبدلة', title: 'النقاط المستبدلة'),
+      ReportColumn(id: 'صافي النقاط', title: 'صافي النقاط'),
       ReportColumn(id: 'نقاط الحضور', title: 'نقاط الحضور', isSelected: false),
       ReportColumn(id: 'نقاط الطايو', title: 'نقاط الطايو', isSelected: false),
     ];
@@ -1564,21 +2193,27 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
             // ── Filters ──
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('الفلاتر', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: cs.primary)),
+                    Text(
+                      'الفلاتر',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: cs.primary,
+                      ),
+                    ),
                     const SizedBox(height: 10),
                     Wrap(
                       spacing: 10,
                       runSpacing: 10,
-                      children: [
-                        _buildStageDropdown(),
-                        _buildAreaDropdown(),
-                      ],
+                      children: [_buildStageDropdown(), _buildAreaDropdown()],
                     ),
                     const SizedBox(height: 10),
                     // Date range
@@ -1586,8 +2221,16 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
                       spacing: 10,
                       runSpacing: 8,
                       children: [
-                        _buildDateBtn('من', _dateFrom, (d) => setState(() => _dateFrom = d)),
-                        _buildDateBtn('إلى', _dateTo, (d) => setState(() => _dateTo = d)),
+                        _buildDateBtn(
+                          'من',
+                          _dateFrom,
+                          (d) => setState(() => _dateFrom = d),
+                        ),
+                        _buildDateBtn(
+                          'إلى',
+                          _dateTo,
+                          (d) => setState(() => _dateTo = d),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -1597,14 +2240,24 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
                       runSpacing: 6,
                       children: [
                         _presetChip('هذا الأسبوع', () {
-                          final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+                          final startOfWeek = now.subtract(
+                            Duration(days: now.weekday - 1),
+                          );
                           _setPreset('هذا الأسبوع', startOfWeek, now);
                         }),
                         _presetChip('هذا الشهر', () {
-                          _setPreset('هذا الشهر', DateTime(now.year, now.month, 1), now);
+                          _setPreset(
+                            'هذا الشهر',
+                            DateTime(now.year, now.month, 1),
+                            now,
+                          );
                         }),
                         _presetChip('هذه السنة', () {
-                          _setPreset('هذه السنة', DateTime(now.year, 1, 1), now);
+                          _setPreset(
+                            'هذه السنة',
+                            DateTime(now.year, 1, 1),
+                            now,
+                          );
                         }),
                         _presetChip('الكل', () {
                           setState(() {
@@ -1617,7 +2270,13 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
                     ),
                     const SizedBox(height: 10),
                     SwitchListTile(
-                      title: const Text('إضافة نقاط الحضور في هذه الفترة إلى التقرير', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      title: const Text(
+                        'إضافة نقاط الحضور في هذه الفترة إلى التقرير',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
                       value: _includeAttendancePoints,
                       onChanged: (val) => setState(() {
                         _includeAttendancePoints = val;
@@ -1626,8 +2285,7 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
                       contentPadding: EdgeInsets.zero,
                       dense: true,
                     ),
-                    if (_includeAttendancePoints)
-                      _buildServiceSelector(),
+                    if (_includeAttendancePoints) _buildServiceSelector(),
                     const Divider(),
                     // Sort toggle + search
                     Row(
@@ -1635,11 +2293,15 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
                         const Text('الترتيب: '),
                         SegmentedButton<bool>(
                           segments: const [
-                            ButtonSegment(value: false, label: Text('تنازلي ↓')),
+                            ButtonSegment(
+                              value: false,
+                              label: Text('تنازلي ↓'),
+                            ),
                             ButtonSegment(value: true, label: Text('تصاعدي ↑')),
                           ],
                           selected: {_ascending},
-                          onSelectionChanged: (v) => setState(() => _ascending = v.first),
+                          onSelectionChanged: (v) =>
+                              setState(() => _ascending = v.first),
                         ),
                         const Spacer(),
                         FilledButton.icon(
@@ -1660,7 +2322,13 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
-                    Text('${_results.length} نتيجة', style: TextStyle(fontWeight: FontWeight.bold, color: cs.primary)),
+                    Text(
+                      '${_results.length} نتيجة',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: cs.primary,
+                      ),
+                    ),
                     const Spacer(),
                     OutlinedButton.icon(
                       onPressed: _exportPdf,
@@ -1672,16 +2340,26 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
               ),
             // ── Results ──
             if (_loading)
-              const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()))
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(child: CircularProgressIndicator()),
+              )
             else if (_results.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(32),
                 child: Center(
                   child: Column(
                     children: [
-                      Icon(Icons.assessment_outlined, size: 56, color: Colors.grey.shade400),
+                      Icon(
+                        Icons.assessment_outlined,
+                        size: 56,
+                        color: Colors.grey.shade400,
+                      ),
                       const SizedBox(height: 8),
-                      Text('اضغط بحث لعرض النتائج', style: TextStyle(color: Colors.grey.shade500)),
+                      Text(
+                        'اضغط بحث لعرض النتائج',
+                        style: TextStyle(color: Colors.grey.shade500),
+                      ),
                     ],
                   ),
                 ),
@@ -1699,7 +2377,8 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
                   margin: const EdgeInsets.symmetric(vertical: 3),
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: rankColor?.withOpacity(0.2) ?? cs.primaryContainer,
+                      backgroundColor:
+                          rankColor?.withOpacity(0.2) ?? cs.primaryContainer,
                       child: Text(
                         '$rank',
                         style: TextStyle(
@@ -1708,17 +2387,46 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
                         ),
                       ),
                     ),
-                    title: Text(r.personName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text([r.stageName, r.areaName].where((s) => s != null && s.isNotEmpty).join(' • ')),
+                    title: Text(
+                      r.personName,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          [
+                            r.stageName,
+                            r.areaName,
+                          ].where((s) => s != null && s.isNotEmpty).join(' • '),
+                        ),
+                        Text(
+                          'المكتسب: ${r.totalPoints} • المستبدل: ${r.redeemedPoints} • الصافي: ${r.netPoints}',
+                          style: TextStyle(
+                            color: r.redeemedPoints > 0
+                                ? Colors.orange.shade800
+                                : Colors.grey.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                     trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: cs.primary,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        '${r.totalPoints}',
-                        style: TextStyle(color: cs.onPrimary, fontWeight: FontWeight.bold, fontSize: 16),
+                        '${r.netPoints}',
+                        style: TextStyle(
+                          color: cs.onPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                   ),
@@ -1733,17 +2441,42 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
   Widget _buildServiceSelector() {
     final servicesAsync = ref.watch(servicesRepositoryProvider);
     final services = servicesAsync.asData?.value ?? [];
-    if (services.isEmpty) return const Text('لا توجد خدمات معرّفة بعد', style: TextStyle(color: Colors.grey, fontSize: 12));
+    if (services.isEmpty)
+      return const Text(
+        'لا توجد خدمات معرّفة بعد',
+        style: TextStyle(color: Colors.grey, fontSize: 12),
+      );
     return Padding(
       padding: const EdgeInsets.only(right: 16, top: 4, bottom: 4),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('اختر الخدمات:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-        Wrap(spacing: 8, children: services.map((s) => FilterChip(
-          label: Text('${s.name} (${s.dayName})', style: const TextStyle(fontSize: 11)),
-          selected: _selectedServiceIds.contains(s.id),
-          onSelected: (v) => setState(() { if (v) _selectedServiceIds.add(s.id); else _selectedServiceIds.remove(s.id); }),
-        )).toList()),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'اختر الخدمات:',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+          Wrap(
+            spacing: 8,
+            children: services
+                .map(
+                  (s) => FilterChip(
+                    label: Text(
+                      '${s.name} (${s.dayName})',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    selected: _selectedServiceIds.contains(s.id),
+                    onSelected: (v) => setState(() {
+                      if (v)
+                        _selectedServiceIds.add(s.id);
+                      else
+                        _selectedServiceIds.remove(s.id);
+                    }),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1758,10 +2491,23 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
           child: DropdownButtonFormField<int?>(
             value: _stageId,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'المرحلة', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+            decoration: const InputDecoration(
+              labelText: 'المرحلة',
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            ),
             items: [
               const DropdownMenuItem(value: null, child: Text('الكل')),
-              ...stages.map((s) => DropdownMenuItem(value: s.stageId, child: Text(s.stageName ?? '', overflow: TextOverflow.ellipsis))),
+              ...stages.map(
+                (s) => DropdownMenuItem(
+                  value: s.stageId,
+                  child: Text(
+                    s.stageName ?? '',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
             ],
             onChanged: (v) => setState(() => _stageId = v),
           ),
@@ -1781,10 +2527,23 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
           child: DropdownButtonFormField<int?>(
             value: _areaId,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'المنطقة', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+            decoration: const InputDecoration(
+              labelText: 'المنطقة',
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            ),
             items: [
               const DropdownMenuItem(value: null, child: Text('الكل')),
-              ...areas.map((a) => DropdownMenuItem(value: a.areaId, child: Text(a.areaName ?? '', overflow: TextOverflow.ellipsis))),
+              ...areas.map(
+                (a) => DropdownMenuItem(
+                  value: a.areaId,
+                  child: Text(
+                    a.areaName ?? '',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
             ],
             onChanged: (v) => setState(() => _areaId = v),
           ),
@@ -1793,7 +2552,11 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
     );
   }
 
-  Widget _buildDateBtn(String label, DateTime? current, ValueChanged<DateTime?> onPicked) {
+  Widget _buildDateBtn(
+    String label,
+    DateTime? current,
+    ValueChanged<DateTime?> onPicked,
+  ) {
     return InkWell(
       onTap: () async {
         final picked = await showDatePicker(
@@ -1815,7 +2578,11 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
           children: [
             const Icon(Icons.calendar_today, size: 14),
             const SizedBox(width: 4),
-            Text(current != null ? '$label: ${DateFormat('yyyy-MM-dd').format(current)}' : label),
+            Text(
+              current != null
+                  ? '$label: ${DateFormat('yyyy-MM-dd').format(current)}'
+                  : label,
+            ),
             if (current != null)
               InkWell(
                 onTap: () => onPicked(null),
@@ -1834,8 +2601,12 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
     final isActive = _presetLabel == label;
     return ActionChip(
       label: Text(label),
-      backgroundColor: isActive ? Theme.of(context).colorScheme.primary.withOpacity(0.15) : null,
-      side: isActive ? BorderSide(color: Theme.of(context).colorScheme.primary) : null,
+      backgroundColor: isActive
+          ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
+          : null,
+      side: isActive
+          ? BorderSide(color: Theme.of(context).colorScheme.primary)
+          : null,
       onPressed: onTap,
     );
   }
@@ -1871,7 +2642,10 @@ class _TayoColumnsDialogState extends State<_TayoColumnsDialog> {
             children: [
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 8.0),
-                child: Text('اختر الأعمدة واسحبها لترتيبها من اليمين لليسار في التقرير:', style: TextStyle(color: Colors.grey)),
+                child: Text(
+                  'اختر الأعمدة واسحبها لترتيبها من اليمين لليسار في التقرير:',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
               Expanded(
                 child: ReorderableListView(
@@ -1901,10 +2675,16 @@ class _TayoColumnsDialogState extends State<_TayoColumnsDialog> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
           ElevatedButton(
             onPressed: () {
-              final result = _columns.where((c) => c.isSelected).map((c) => c.id).toList();
+              final result = _columns
+                  .where((c) => c.isSelected)
+                  .map((c) => c.id)
+                  .toList();
               Navigator.pop(context, result);
             },
             child: const Text('موافق'),
