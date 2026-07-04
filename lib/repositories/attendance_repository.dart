@@ -7,6 +7,7 @@ import '../database/database_provider.dart';
 import '../services/auth_service.dart';
 import 'persons_repository.dart';
 import 'service_eligibility_repository.dart';
+import '../utils/arabic_helper.dart';
 
 part 'attendance_repository.g.dart';
 
@@ -40,6 +41,7 @@ class AttendanceDTO {
   final String? services;
   final Map<int, String> customValues;
   final List<AttendanceServiceRecord> serviceRecords;
+  final String? checkColor;
 
   AttendanceDTO({
     this.id,
@@ -70,6 +72,7 @@ class AttendanceDTO {
     this.services,
     this.customValues = const {},
     this.serviceRecords = const [],
+    this.checkColor,
   });
 }
 
@@ -83,6 +86,7 @@ class AttendanceServiceRecord {
   final int point;
   final int? attendancePoint;
   final int? checkoutPoint;
+  final String? checkColor;
 
   const AttendanceServiceRecord({
     required this.id,
@@ -94,6 +98,7 @@ class AttendanceServiceRecord {
     required this.point,
     this.attendancePoint,
     this.checkoutPoint,
+    this.checkColor,
   });
 }
 
@@ -213,9 +218,11 @@ class AttendanceRepository extends _$AttendanceRepository {
         personQuery.where(db.persons.year.isIn(birthdayYear));
 
       if (search != null && search.trim().isNotEmpty) {
-        final pattern = '%${search.trim()}%';
+        final queryNormalized = normalizeArabic(search);
+        final pattern = '%$queryNormalized%';
+        final normalizedName = normalizeArabicSql(db.persons.personName);
         personQuery.where(
-          db.persons.personName.like(pattern) |
+          normalizedName.like(pattern) |
               db.persons.personId.cast<String>().like(pattern),
         );
       }
@@ -354,6 +361,7 @@ class AttendanceRepository extends _$AttendanceRepository {
               services: personServicesNames[person.personId]?.join('، ') ?? '',
               customValues: personCustomValues[person.personId] ?? {},
               serviceRecords: <AttendanceServiceRecord>[],
+              checkColor: row.readTableOrNull(db.services)?.checkColor,
             );
           }
           if (coming != null) {
@@ -372,6 +380,7 @@ class AttendanceRepository extends _$AttendanceRepository {
                   point: coming.point ?? 0,
                   attendancePoint: coming.attendancePoint,
                   checkoutPoint: coming.checkoutPoint,
+                  checkColor: row.readTableOrNull(db.services)?.checkColor,
                 ),
               );
             }
@@ -417,6 +426,7 @@ class AttendanceRepository extends _$AttendanceRepository {
                 services:
                     personServicesNames[person.personId]?.join('، ') ?? '',
                 customValues: personCustomValues[person.personId] ?? {},
+                checkColor: row.readTableOrNull(db.services)?.checkColor,
               ),
             );
           }
@@ -531,11 +541,15 @@ class AttendanceRepository extends _$AttendanceRepository {
       if (birthdayYear != null && birthdayYear.isNotEmpty)
         totalQuery.where(db.persons.year.isIn(birthdayYear));
 
-      if (search != null && search.isNotEmpty)
+      if (search != null && search.isNotEmpty) {
+        final queryNormalized = normalizeArabic(search);
+        final pattern = '%$queryNormalized%';
+        final normalizedName = normalizeArabicSql(db.persons.personName);
         totalQuery.where(
-          db.persons.personName.like('%$search%') |
-              db.persons.personId.cast<String>().like('%$search%'),
+          normalizedName.like(pattern) |
+              db.persons.personId.cast<String>().like(pattern),
         );
+      }
 
       if (user != null && user.isAdvanced)
         await _applyVisibilityFilters(totalQuery, db, filters, user);
@@ -894,6 +908,8 @@ class AttendanceRepository extends _$AttendanceRepository {
     int? point,
     String? dateWeek,
     int? behavior,
+    int? attendancePoint,
+    int? checkoutPoint,
   }) async {
     final db = ref.read(appDatabaseProvider);
     await (db.update(db.coming)..where((t) => t.id.equals(id))).write(
@@ -904,6 +920,12 @@ class AttendanceRepository extends _$AttendanceRepository {
             : const drift.Value.absent(),
         behavior: behavior != null
             ? drift.Value(behavior)
+            : const drift.Value.absent(),
+        attendancePoint: attendancePoint != null
+            ? drift.Value(attendancePoint)
+            : const drift.Value.absent(),
+        checkoutPoint: checkoutPoint != null
+            ? drift.Value(checkoutPoint)
             : const drift.Value.absent(),
       ),
     );

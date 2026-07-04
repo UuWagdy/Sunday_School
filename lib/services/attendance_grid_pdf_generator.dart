@@ -322,6 +322,7 @@ class AttendanceGridPdfGenerator {
           separatePages,
           showPointsInAttendanceCells,
           tableFontSize,
+          exportOptions,
         ),
         footer: (context) =>
             _buildFooter(regular, bold, context.pageNumber, context.pagesCount),
@@ -507,6 +508,7 @@ class AttendanceGridPdfGenerator {
     bool separatePages,
     bool showPointsInAttendanceCells,
     double tableFontSize,
+    PdfExportOptions exportOptions,
   ) {
     if (data.isEmpty) {
       return [
@@ -547,6 +549,7 @@ class AttendanceGridPdfGenerator {
             reportPaintedRecords,
             showPointsInAttendanceCells,
             tableFontSize,
+            exportOptions,
           ),
         );
         widgets.add(pw.SizedBox(height: 10));
@@ -640,6 +643,7 @@ class AttendanceGridPdfGenerator {
           reportPaintedRecords,
           showPointsInAttendanceCells,
           tableFontSize,
+          exportOptions,
         ),
       );
     }
@@ -702,6 +706,7 @@ class AttendanceGridPdfGenerator {
     void Function(int count) onPaintedRecords,
     bool showPointsInAttendanceCells,
     double tableFontSize,
+    PdfExportOptions exportOptions,
   ) {
     // Extract unique persons and map their attendance for this group
     final Map<int, AttendanceDTO> personsMap = {};
@@ -757,6 +762,7 @@ class AttendanceGridPdfGenerator {
             showFooter: true,
             startRowIndex: 0,
             personServiceRecordMap: personServiceRecordMap,
+            exportOptions: exportOptions,
           ),
         );
         widgets.add(pw.SizedBox(height: 10));
@@ -781,6 +787,7 @@ class AttendanceGridPdfGenerator {
           showFooter: true,
           startRowIndex: 0,
           personServiceRecordMap: personServiceRecordMap,
+          exportOptions: exportOptions,
         ),
       );
       widgets.add(pw.SizedBox(height: 10));
@@ -789,8 +796,26 @@ class AttendanceGridPdfGenerator {
     return widgets;
   }
 
+  static PdfColor parsePdfColor(String? hexString) {
+    if (hexString == null || hexString.isEmpty) return PdfColors.green800;
+    try {
+      var cleanHex = hexString.replaceAll('#', '');
+      if (cleanHex.startsWith('0x') || cleanHex.startsWith('0X')) {
+        cleanHex = cleanHex.substring(2);
+      }
+      if (cleanHex.length == 6) {
+        cleanHex = 'FF$cleanHex';
+      }
+      final val = int.parse(cleanHex, radix: 16);
+      return PdfColor.fromInt(val);
+    } catch (_) {
+      return PdfColors.green800;
+    }
+  }
+
   // A font-independent checkmark drawn as a vector path
-  static pw.Widget _checkmarkCell() {
+  static pw.Widget _checkmarkCell({String? colorHex}) {
+    final pdfColor = parsePdfColor(colorHex);
     return pw.Container(
       alignment: pw.Alignment.center,
       padding: const pw.EdgeInsets.all(1),
@@ -798,7 +823,7 @@ class AttendanceGridPdfGenerator {
         size: const PdfPoint(8, 8),
         painter: (PdfGraphics canvas, PdfPoint size) {
           canvas
-            ..setColor(PdfColors.green800)
+            ..setColor(pdfColor)
             ..setLineWidth(1.5)
             ..setLineCap(PdfLineCap.round)
             ..setLineJoin(PdfLineJoin.round)
@@ -835,9 +860,10 @@ class AttendanceGridPdfGenerator {
     int? points,
     bool showPoints,
     double fontSize,
+    String? checkColorHex,
   ) {
     if (!attended) return pw.SizedBox();
-    if (!showPoints) return _checkmarkCell();
+    if (!showPoints) return _checkmarkCell(colorHex: checkColorHex);
     return pw.Container(
       alignment: pw.Alignment.center,
       padding: const pw.EdgeInsets.symmetric(horizontal: 1, vertical: 2),
@@ -845,7 +871,7 @@ class AttendanceGridPdfGenerator {
         mainAxisAlignment: pw.MainAxisAlignment.center,
         mainAxisSize: pw.MainAxisSize.min,
         children: [
-          _checkmarkCell(),
+          _checkmarkCell(colorHex: checkColorHex),
           pw.SizedBox(width: 2),
           pw.Text(
             '(${points ?? 0})',
@@ -854,7 +880,7 @@ class AttendanceGridPdfGenerator {
               font: font,
               fontSize: fontSize * 0.85,
               fontWeight: pw.FontWeight.bold,
-              color: PdfColors.green700,
+              color: parsePdfColor(checkColorHex),
             ),
           ),
         ],
@@ -903,6 +929,7 @@ class AttendanceGridPdfGenerator {
     bool showFooter = true,
     int startRowIndex = 0,
     Map<String, AttendanceDTO>? personServiceRecordMap,
+    required PdfExportOptions exportOptions,
   }) {
     final int dateColCount = dates.length;
     final int infoColCount = columns.length;
@@ -984,10 +1011,23 @@ class AttendanceGridPdfGenerator {
     // Calculate totals over ALL person IDs in the group, not just the chunk
     for (final pid in allPersonIds) {
       final atts = attendanceMap[pid]!;
-      grandTotal += atts.length;
+      if (exportOptions.totalAsPoints) {
+        int totalPoints = 0;
+        for (var d in dates) {
+          if (atts.contains(d)) {
+            final record = personServiceRecordMap?['$pid|$d'];
+            totalPoints += record?.point ?? 0;
+          }
+        }
+        grandTotal += totalPoints;
+      } else {
+        grandTotal += atts.length;
+      }
       for (var d in dates) {
         if (atts.contains(d)) {
-          dateTotals[d] = (dateTotals[d] ?? 0) + 1;
+          final record = personServiceRecordMap?['$pid|$d'];
+          final val = exportOptions.totalAsPoints ? (record?.point ?? 0) : 1;
+          dateTotals[d] = (dateTotals[d] ?? 0) + val;
         }
       }
     }
@@ -999,8 +1039,20 @@ class AttendanceGridPdfGenerator {
 
       final rowCells = <pw.Widget>[];
       // Total (far left)
+      int totalForPerson = 0;
+      if (exportOptions.totalAsPoints) {
+        for (var d in dates) {
+          if (atts.contains(d)) {
+            final record = personServiceRecordMap?['$pid|$d'];
+            totalForPerson += record?.point ?? 0;
+          }
+        }
+      } else {
+        totalForPerson = atts.length;
+      }
+
       final totalCell = _textCellWidget(
-        atts.length.toString(),
+        totalForPerson.toString(),
         font,
         fontSize: tableFontSize,
       );
@@ -1023,6 +1075,7 @@ class AttendanceGridPdfGenerator {
             record?.point,
             showPointsInAttendanceCells,
             tableFontSize,
+            record?.checkColor,
           ),
         );
       }

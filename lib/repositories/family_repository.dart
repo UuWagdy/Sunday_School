@@ -3,6 +3,7 @@ import 'package:drift/drift.dart' as drift;
 import '../services/auth_service.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
+import '../utils/arabic_helper.dart';
 
 part 'family_repository.g.dart';
 
@@ -47,8 +48,10 @@ class FamilyRepository extends _$FamilyRepository {
     await _applyVisibilityFilters(query, db, filters);
 
     if (search != null && search.isNotEmpty) {
-      final s = '%$search%';
-      query.where(db.persons.personName.like(s));
+      final queryNormalized = normalizeArabic(search);
+      final s = '%$queryNormalized%';
+      final normalizedName = normalizeArabicSql(db.persons.personName);
+      query.where(normalizedName.like(s));
     }
 
     if (limit != null) {

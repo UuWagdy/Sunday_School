@@ -9,21 +9,25 @@ class PdfExportOptions {
     this.orientation = PdfPageOrientationOption.auto,
     this.stretchToFit = true,
     this.groupMode = PdfGroupExportMode.singlePdfNewPages,
+    this.totalAsPoints = true,
   });
 
   final PdfPageOrientationOption orientation;
   final bool stretchToFit;
   final PdfGroupExportMode groupMode;
+  final bool totalAsPoints;
 
   PdfExportOptions copyWith({
     PdfPageOrientationOption? orientation,
     bool? stretchToFit,
     PdfGroupExportMode? groupMode,
+    bool? totalAsPoints,
   }) {
     return PdfExportOptions(
       orientation: orientation ?? this.orientation,
       stretchToFit: stretchToFit ?? this.stretchToFit,
       groupMode: groupMode ?? this.groupMode,
+      totalAsPoints: totalAsPoints ?? this.totalAsPoints,
     );
   }
 

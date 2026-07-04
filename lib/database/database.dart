@@ -46,7 +46,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 38;
+  int get schemaVersion => 39;
 
   Future<void> _createTableSafely(Migrator m, TableInfo table) async {
     try {
@@ -178,6 +178,9 @@ class AppDatabase extends _$AppDatabase {
       if (from < 38) {
         await _ensureAttendancePointColumns();
       }
+      if (from < 39) {
+        await _addColumnSafely(m, services, services.checkColor as GeneratedColumn);
+      }
       // Repair phase: Fix any null IDs that might cause crashes during mapping
       await _repairBrokenIds();
     },
@@ -194,6 +197,11 @@ class AppDatabase extends _$AppDatabase {
       await _ensureAttendancePointColumns();
       await _ensureVisitationTablesExist();
       await _ensureAdminExtendedPermissions();
+      await _ensureColumnExists(
+        tableName: 'Services',
+        columnName: 'Check_Color',
+        definition: 'TEXT',
+      );
     },
   );
 

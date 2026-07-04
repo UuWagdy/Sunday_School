@@ -162,6 +162,7 @@ class ExcelExportService {
     required List<String> dates,
     Map<String, String>? headerData,
     Map<int, int>? serviceMinsMap,
+    bool totalAsPoints = true,
   }) async {
     final excel = Excel.createExcel();
     final sheet = excel['تقرير حضور الشبكة'];
@@ -179,6 +180,7 @@ class ExcelExportService {
     // 2. Extract unique persons and map their attendance
     final Map<int, AttendanceDTO> personsMap = {};
     final Map<int, Set<String>> attendanceMap = {};
+    final Map<String, AttendanceDTO> personServiceRecordMap = {};
 
     for (var r in data) {
       final personId = r.personId;
@@ -191,6 +193,7 @@ class ExcelExportService {
       if (r.dateWeek != null && r.id != null) {
         final s = r.serviceName?.trim() ?? '';
         attendanceMap[personId]!.add('${r.dateWeek}|$s');
+        personServiceRecordMap['$personId|${r.dateWeek}|$s'] = r;
       }
     }
     final personIds = personsMap.keys.toList();
@@ -212,7 +215,19 @@ class ExcelExportService {
       final pid = personIds[i];
       final personRec = personsMap[pid]!;
       final atts = attendanceMap[pid]!;
-      grandTotal += atts.length;
+      
+      int totalForPerson = 0;
+      if (totalAsPoints) {
+        for (var d in dates) {
+          if (atts.contains(d)) {
+            final record = personServiceRecordMap['$pid|$d'];
+            totalForPerson += record?.point ?? 0;
+          }
+        }
+      } else {
+        totalForPerson = atts.length;
+      }
+      grandTotal += totalForPerson;
 
       final row = [
         IntCellValue(i + 1),
@@ -294,12 +309,14 @@ class ExcelExportService {
         ...dates.map((d) {
           final attended = atts.contains(d);
           if (attended) {
-            dateTotals[d] = (dateTotals[d] ?? 0) + 1;
+            final record = personServiceRecordMap['$pid|$d'];
+            final val = totalAsPoints ? (record?.point ?? 0) : 1;
+            dateTotals[d] = (dateTotals[d] ?? 0) + val;
             return TextCellValue('✓');
           }
           return TextCellValue('');
         }),
-        IntCellValue(atts.length),
+        IntCellValue(totalForPerson),
       ];
       sheet.appendRow(row);
     }

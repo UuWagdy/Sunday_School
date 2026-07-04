@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
 import '../services/auth_service.dart';
+import '../utils/arabic_helper.dart';
 
 final visitationRepositoryProvider = Provider<VisitationRepository>((ref) {
   return VisitationRepository(ref);
@@ -163,9 +164,11 @@ class VisitationRepository {
       query.where(db.persons.leader.isIn(leaders));
     }
     if (search != null && search.trim().isNotEmpty) {
-      final pattern = '%${search.trim()}%';
+      final queryNormalized = normalizeArabic(search);
+      final pattern = '%$queryNormalized%';
+      final normalizedName = normalizeArabicSql(db.persons.personName);
       query.where(
-        db.persons.personName.like(pattern) |
+        normalizedName.like(pattern) |
             db.persons.personId.cast<String>().like(pattern) |
             db.persons.mobile.like(pattern) |
             db.persons.phone.like(pattern) |

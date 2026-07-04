@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:collection/collection.dart';
 import '../../models/pdf_export_options.dart';
 import '../../repositories/fields_repository.dart';
 
@@ -53,11 +56,12 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
   PdfPageOrientationOption _orientation = PdfPageOrientationOption.auto;
   bool _stretchToFit = true;
   PdfGroupExportMode _groupExportMode = PdfGroupExportMode.singlePdfNewPages;
+  bool _totalAsPoints = true;
 
   void _applyShortcut(String type) {
     if (type == 'name_code') {
       for (var col in _columns) {
-        if (col.id == 'name' || col.id == 'id') {
+        if (col.id == 'name' || col.id == 'id' || col.id == 'points') {
           col.isSelected = true;
         } else {
           col.isSelected = false;
@@ -67,13 +71,9 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
       final visitationIds = {
         'name',
         'id',
-        'done_checkbox',
-        'area',
-        'stage',
-        'father',
         'mobile',
         'phone',
-        'visitNotes',
+        'points',
       };
       for (var col in _columns) {
         if (visitationIds.contains(col.id)) {
@@ -93,18 +93,15 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
     final visitationIds = {
       'name',
       'id',
-      'done_checkbox',
-      'area',
-      'stage',
-      'father',
       'mobile',
       'phone',
-      'visitNotes',
+      'points',
     };
 
-    if (selectedIds.length == 2 &&
+    if (selectedIds.length == 3 &&
         selectedIds.contains('name') &&
-        selectedIds.contains('id')) {
+        selectedIds.contains('id') &&
+        selectedIds.contains('points')) {
       _shortcutType = 'name_code';
     } else if (selectedIds.length == visitationIds.length &&
         selectedIds.every((id) => visitationIds.contains(id))) {
@@ -300,6 +297,7 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
       ),
     ];
     _isInit = true;
+    _loadSavedSettings();
   }
 
   @override
@@ -356,7 +354,8 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
                   child: const Text('إلغاء'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
+                    await _saveSettings();
                     final result = {
                       'sorting': _sortingCriteria
                           .where((c) => c.isSelected)
@@ -372,6 +371,7 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
                         orientation: _orientation,
                         stretchToFit: _stretchToFit,
                         groupMode: _groupExportMode,
+                        totalAsPoints: _totalAsPoints,
                       ),
                     };
                     Navigator.pop(context, result);
@@ -479,7 +479,7 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               ChoiceChip(
-                label: const Text('الاسم والكود فقط'),
+                label: const Text('حضور وغياب'),
                 selected: _shortcutType == 'name_code',
                 onSelected: (selected) {
                   if (selected) {
@@ -507,6 +507,40 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
           ),
         ),
         const Divider(height: 1),
+        if (widget.isAttendance && !widget.isVisitation) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'طريقة حساب الإجمالي:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('مجموع النقاط'),
+                      selected: _totalAsPoints,
+                      onSelected: (selected) {
+                        if (selected) setState(() => _totalAsPoints = true);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text('مجموع الحضور'),
+                      selected: !_totalAsPoints,
+                      onSelected: (selected) {
+                        if (selected) setState(() => _totalAsPoints = false);
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+        ],
         const Padding(
           padding: EdgeInsets.all(16.0),
           child: Text('اختر الأعمدة واسحبها لترتيبها من اليمين لليسار:'),
@@ -613,5 +647,101 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
         ),
       ],
     );
+  }
+
+  Future<void> _loadSavedSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      final criteriaJson = prefs.getString('sorting_criteria');
+      final headersJson = prefs.getString('sorting_header_fields');
+      final columnsJson = prefs.getString('sorting_columns');
+      
+      final separatePages = prefs.getBool('sorting_separate_pages');
+      final orientationStr = prefs.getString('sorting_orientation');
+      final stretchToFit = prefs.getBool('sorting_stretch_to_fit');
+      final groupExportModeStr = prefs.getString('sorting_group_export_mode');
+      final totalAsPoints = prefs.getBool('sorting_total_as_points');
+
+      setState(() {
+        if (separatePages != null) _separatePages = separatePages;
+        if (stretchToFit != null) _stretchToFit = stretchToFit;
+        if (totalAsPoints != null) _totalAsPoints = totalAsPoints;
+        if (orientationStr != null) {
+          _orientation = PdfPageOrientationOption.values.firstWhere(
+            (e) => e.toString() == orientationStr,
+            orElse: () => PdfPageOrientationOption.auto,
+          );
+        }
+        if (groupExportModeStr != null) {
+          _groupExportMode = PdfGroupExportMode.values.firstWhere(
+            (e) => e.toString() == groupExportModeStr,
+            orElse: () => PdfGroupExportMode.singlePdfNewPages,
+          );
+        }
+        
+        if (criteriaJson != null) {
+          final List<dynamic> decoded = jsonDecode(criteriaJson);
+          for (var item in decoded) {
+            final match = _sortingCriteria.firstWhereOrNull((c) => c.id == item['id']);
+            if (match != null) {
+              match.isSelected = item['isSelected'] == true;
+            }
+          }
+        }
+        if (headersJson != null) {
+          final List<dynamic> decoded = jsonDecode(headersJson);
+          for (var item in decoded) {
+            final match = _headerFields.firstWhereOrNull((c) => c.id == item['id']);
+            if (match != null) {
+              match.isSelected = item['isSelected'] == true;
+            }
+          }
+        }
+        if (columnsJson != null) {
+          final List<dynamic> decoded = jsonDecode(columnsJson);
+          final List<ReportColumn> reordered = [];
+          for (var item in decoded) {
+            final match = _columns.firstWhereOrNull((c) => c.id == item['id']);
+            if (match != null) {
+              match.isSelected = item['isSelected'] == true;
+              reordered.add(match);
+            }
+          }
+          for (var col in _columns) {
+            if (!reordered.any((r) => r.id == col.id)) {
+              reordered.add(col);
+            }
+          }
+          _columns = reordered;
+        }
+        
+        _updateShortcutTypeFromColumns();
+      });
+    } catch (e) {
+      debugPrint('Error loading saved print settings: $e');
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      final criteriaList = _sortingCriteria.map((c) => {'id': c.id, 'isSelected': c.isSelected}).toList();
+      final headersList = _headerFields.map((c) => {'id': c.id, 'isSelected': c.isSelected}).toList();
+      final columnsList = _columns.map((c) => {'id': c.id, 'isSelected': c.isSelected}).toList();
+
+      await prefs.setString('sorting_criteria', jsonEncode(criteriaList));
+      await prefs.setString('sorting_header_fields', jsonEncode(headersList));
+      await prefs.setString('sorting_columns', jsonEncode(columnsList));
+      
+      await prefs.setBool('sorting_separate_pages', _separatePages);
+      await prefs.setString('sorting_orientation', _orientation.toString());
+      await prefs.setBool('sorting_stretch_to_fit', _stretchToFit);
+      await prefs.setString('sorting_group_export_mode', _groupExportMode.toString());
+      await prefs.setBool('sorting_total_as_points', _totalAsPoints);
+    } catch (e) {
+      debugPrint('Error saving print settings: $e');
+    }
   }
 }

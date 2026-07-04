@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' as drift;
 import 'package:intl/intl.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
+import '../utils/arabic_helper.dart';
 
 part 'period_comparison_repository.g.dart';
 
@@ -75,9 +76,11 @@ class PeriodComparisonRepository extends _$PeriodComparisonRepository {
     }
     if (gender != null) query.where((t) => t.jenderName.equals(gender));
     if (search != null && search.isNotEmpty) {
+      final queryNormalized = normalizeArabic(search);
+      final s = '%$queryNormalized%';
       query.where((t) =>
-          t.personName.like('%$search%') |
-          t.personId.cast<String>().like('%$search%'));
+          normalizeArabicSql(t.personName).like(s) |
+          t.personId.cast<String>().like(s));
     }
 
     return query.get();

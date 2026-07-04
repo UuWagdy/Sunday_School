@@ -18,6 +18,36 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
     5: 'الجمعة', 6: 'السبت', 7: 'الأحد',
   };
 
+  static const List<Color> _checkmarkDefaultColors = [
+    Colors.green,
+    Colors.teal,
+    Colors.blue,
+    Colors.indigo,
+    Colors.purple,
+    Colors.pink,
+    Colors.red,
+    Colors.deepOrange,
+    Colors.orange,
+    Colors.amber,
+    Colors.brown,
+    Colors.blueGrey,
+    Colors.black,
+  ];
+
+  static String _colorToHex(Color color) {
+    return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+  }
+
+  static Color _hexToColor(String? hexStr) {
+    if (hexStr == null || hexStr.isEmpty) return Colors.green;
+    try {
+      final clean = hexStr.replaceAll('#', '');
+      return Color(int.parse('FF$clean', radix: 16));
+    } catch (_) {
+      return Colors.green;
+    }
+  }
+
   Uint8List? _churchLogo;
   String? _churchName;
   String? _programName;
@@ -53,6 +83,7 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
         ? TimeOfDay(hour: existing!.endHour!, minute: existing!.endMinute!) 
         : null;
     Uint8List? currentLogo = existing?.logo;
+    String? selectedColorHex = existing?.checkColor;
 
     showDialog(
       context: context,
@@ -143,6 +174,48 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
                           ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                const Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    'لون علامة الصح:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _checkmarkDefaultColors.map((color) {
+                    final hex = _colorToHex(color);
+                    final isSelected = (selectedColorHex == null && color == Colors.green) || (selectedColorHex == hex);
+                    return InkWell(
+                      onTap: () => setDlgState(() => selectedColorHex = hex),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected ? Colors.black : Colors.transparent,
+                            width: 2.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 2,
+                              offset: const Offset(0, 1),
+                            )
+                          ],
+                        ),
+                        child: isSelected
+                            ? const Icon(Icons.check, color: Colors.white, size: 16)
+                            : null,
+                      ),
+                    );
+                  }).toList(),
+                ),
               ]),
             ),
             actions: [
@@ -161,6 +234,7 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
                     endHour: endTime?.hour,
                     endMinute: endTime?.minute,
                     logo: currentLogo,
+                    checkColor: selectedColorHex,
                   );
                 } else {
                   ok = await repo.updateService(
@@ -172,6 +246,7 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
                     endHour: endTime?.hour,
                     endMinute: endTime?.minute,
                     logo: currentLogo,
+                    checkColor: selectedColorHex,
                   );
                 }
                 if (mounted) {
@@ -427,7 +502,20 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
                       backgroundImage: svc.logo != null ? MemoryImage(svc.logo!) : null,
                       child: svc.logo == null ? Icon(Icons.church, color: Theme.of(context).primaryColor) : null,
                     ),
-                    title: Text(svc.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Row(
+                      children: [
+                        Text(svc.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: _hexToColor(svc.checkColor),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    ),
                     subtitle: Text('${svc.dayName} - من: ${svc.formattedTime} إلى: ${svc.formattedEndTime}'),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       IconButton(icon: const Icon(Icons.edit, color: Colors.blue, size: 20), onPressed: () => _showAddEditDialog(existing: svc)),
@@ -520,7 +608,7 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
           ),
         ),
         Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             TextButton.icon(
@@ -578,7 +666,7 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
           ),
         ),
         Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             TextButton.icon(

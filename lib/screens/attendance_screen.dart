@@ -25,6 +25,7 @@ import '../repositories/khoros_repository.dart';
 import '../repositories/areas_repository.dart';
 import '../repositories/fathers_repository.dart';
 import '../ui/widgets/multi_select_filter.dart';
+import '../utils/arabic_helper.dart';
 import '../widgets/print_progress_dialog.dart';
 import '../services/pdf_generation_task.dart';
 import 'qr_scanner_screen.dart';
@@ -54,7 +55,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   // --- Attendance Filters ---
   List<int> _filterMonth = [];
   List<int> _filterYear = [];
-  int? _filterServiceId;
+  List<int> _selectedServiceIds = [];
   String _filterStatus = 'present';
   bool _filterSpecificDateOnly = true;
   DateTime? _filterDateFrom;
@@ -99,11 +100,13 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   DateTime _selectedDate = DateTime.now();
   int? _selectedPersonId;
   String? _selectedPersonName;
-  int? _selectedServiceId;
+
   bool _isSaving = false;
   bool _isCheckingOutAll = false;
   bool _isBulkActionRunning = false;
   bool _isCheckoutMode = false;
+  int _attendanceSavedPoints = 2;
+  int _checkoutSavedPoints = 2;
 
   @override
   void initState() {
@@ -301,7 +304,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           birthdayDay: _filterBirthdayDay,
           birthdayMonth: _filterBirthdayMonth,
           birthdayYear: _filterBirthdayYear,
-          serviceId: _filterServiceId,
+          serviceIds: _selectedServiceIds,
           visitedStatus: _filterVisitedStatus,
           notesFilter: _filterNotesStatus,
           lateAfterTime: _lateAfterTimeString(),
@@ -324,7 +327,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           birthdayDay: _filterBirthdayDay,
           birthdayMonth: _filterBirthdayMonth,
           birthdayYear: _filterBirthdayYear,
-          serviceId: _filterServiceId,
+          serviceIds: _selectedServiceIds,
           visitedStatus: _filterVisitedStatus,
           notesFilter: _filterNotesStatus,
           lateAfterTime: _lateAfterTimeString(),
@@ -392,7 +395,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       birthdayDay: _filterBirthdayDay,
       birthdayMonth: _filterBirthdayMonth,
       birthdayYear: _filterBirthdayYear,
-      serviceId: _filterServiceId,
+      serviceIds: _selectedServiceIds,
       visitedStatus: _filterVisitedStatus,
       notesFilter: _filterNotesStatus,
       lateAfterTime: _lateAfterTimeString(),
@@ -448,8 +451,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       .expand(_serviceRecordsFor)
       .where(
         (record) =>
-            _selectedServiceId == null ||
-            record.serviceId == _selectedServiceId,
+            _selectedServiceIds.isEmpty ||
+            _selectedServiceIds.contains(record.serviceId),
       )
       .map((record) => record.id)
       .toSet()
@@ -493,7 +496,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
             birthdayDay: _filterBirthdayDay,
             birthdayMonth: _filterBirthdayMonth,
             birthdayYear: _filterBirthdayYear,
-            serviceId: _filterServiceId,
+            serviceIds: _selectedServiceIds,
             visitedStatus: _filterVisitedStatus,
             notesFilter: _filterNotesStatus,
             lateAfterTime: _lateAfterTimeString(),
@@ -637,7 +640,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               point: _currentPoints,
               month: _selectedDate.month,
               year: _selectedDate.year,
-              serviceId: r.serviceId ?? _selectedServiceId,
+              serviceId: r.serviceId ?? _selectedServiceIds.firstOrNull,
               attendTime: _currentTime12h(),
               isCheckout: true,
               personName: r.personName,
@@ -725,7 +728,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
     // Validate service day
     final services = ref.read(servicesRepositoryProvider).asData?.value ?? [];
-    if (services.isNotEmpty && _selectedServiceId == null) {
+    if (services.isNotEmpty && _selectedServiceIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('يرجى اختيار الخدمة أولاً'),
@@ -740,54 +743,46 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       return;
     }
 
-    if (_selectedServiceId != null) {
-      final svc = services.firstWhere(
-        (s) => s.id == _selectedServiceId,
-        orElse: () => services.first,
-      );
-      // DateTime weekday: 1=Mon .. 7=Sun (matches our convention)
-      if (_selectedDate.weekday != svc.dayOfWeek) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خدمة "${svc.name}" ليست اليوم (${svc.dayName})'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        // Clear the person name and refocus the input
-        _autocompleteController?.clear();
-        _selectedPersonId = null;
-        _selectedPersonName = null;
-        _internalFocusNode?.requestFocus();
-        _codeFocusNode.requestFocus();
-        return;
-      }
-    }
-
-    if (_selectedServiceId != null) {
-      final selectedServiceName = _serviceNameById(
-        services,
-        _selectedServiceId,
-      );
-      final eligible = await ref
-          .read(serviceEligibilityRepositoryProvider)
-          .isPersonEligibleForService(
-            personId: _selectedPersonId!,
-            serviceId: _selectedServiceId,
-          );
-      if (!eligible) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              serviceEligibilityErrorMessageFor(
-                personName: _selectedPersonName,
-                serviceName: selectedServiceName,
-              ),
+    // Validate weekday and eligibility for all selected services
+    for (final sId in _selectedServiceIds) {
+      final svc = services.where((s) => s.id == sId).firstOrNull;
+      if (svc != null) {
+        if (_selectedDate.weekday != svc.dayOfWeek) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('خدمة "${svc.name}" ليست اليوم (${svc.dayName})'),
+              backgroundColor: Colors.red,
             ),
-            backgroundColor: Colors.red,
-          ),
-        );
-        _refocusCodeField();
-        return;
+          );
+          _autocompleteController?.clear();
+          _selectedPersonId = null;
+          _selectedPersonName = null;
+          _internalFocusNode?.requestFocus();
+          _codeFocusNode.requestFocus();
+          return;
+        }
+
+        final eligible = await ref
+            .read(serviceEligibilityRepositoryProvider)
+            .isPersonEligibleForService(
+              personId: _selectedPersonId!,
+              serviceId: sId,
+            );
+        if (!eligible) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                serviceEligibilityErrorMessageFor(
+                  personName: _selectedPersonName,
+                  serviceName: svc.name,
+                ),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+          _refocusCodeField();
+          return;
+        }
       }
     }
 
@@ -795,7 +790,6 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     try {
       final pId = _selectedPersonId!;
       final pName = _selectedPersonName ?? '';
-      final serviceName = _serviceNameById(services, _selectedServiceId);
       _autocompleteController?.clear();
       _selectedPersonId = null;
       _selectedPersonName = null;
@@ -807,24 +801,31 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
       final timeStr = _currentTime12h();
 
-      final errorMsg = await ref
-          .read(attendanceRepositoryProvider.notifier)
-          .addAttendance(
-            personId: pId,
-            dateWeek: dateStr,
-            point: points,
-            month: _selectedDate.month,
-            year: _selectedDate.year,
-            serviceId: _selectedServiceId,
-            attendTime: timeStr,
-            isCheckout: _isCheckoutMode,
-            personName: pName,
-            serviceName: serviceName,
-          );
+      String? lastError;
+      for (final sId in _selectedServiceIds) {
+        final serviceName = _serviceNameById(services, sId);
+        final errorMsg = await ref
+            .read(attendanceRepositoryProvider.notifier)
+            .addAttendance(
+              personId: pId,
+              dateWeek: dateStr,
+              point: points,
+              month: _selectedDate.month,
+              year: _selectedDate.year,
+              serviceId: sId,
+              attendTime: timeStr,
+              isCheckout: _isCheckoutMode,
+              personName: pName,
+              serviceName: serviceName,
+            );
+        if (errorMsg != null) {
+          lastError = errorMsg;
+        }
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        if (errorMsg == null) {
+        if (lastError == null) {
           await _reloadPreservingScroll();
           final label = _isCheckoutMode ? 'انصراف' : 'حضور';
           ScaffoldMessenger.of(context).showSnackBar(
@@ -838,7 +839,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('⚠️ $errorMsg'),
+              content: Text('⚠️ $lastError'),
               backgroundColor: Colors.red.shade700,
               duration: const Duration(seconds: 5),
             ),
@@ -874,8 +875,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       final dateStr =
           r.dateWeek ?? DateFormat('yyyy-MM-dd').format(_selectedDate);
       final timeStr = _currentTime12h();
-      final services = ref.read(servicesRepositoryProvider).asData?.value ?? [];
-      final serviceId = r.serviceId ?? _selectedServiceId;
+       final services = ref.read(servicesRepositoryProvider).asData?.value ?? [];
+      final serviceId = r.serviceId ?? _selectedServiceIds.firstOrNull;
       final serviceName =
           r.serviceName ?? _serviceNameById(services, serviceId);
 
@@ -930,7 +931,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     }
   }
 
-  Future<void> _checkoutAll() async {
+  Future<void> _saveManualAttendance() async {
     if (_periodModeEnabled) {
       _showPeriodModeBlockedMessage();
       return;
@@ -938,7 +939,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     if (_isCheckingOutAll) return;
 
     final services = ref.read(servicesRepositoryProvider).asData?.value ?? [];
-    if (services.isNotEmpty && _selectedServiceId == null) {
+    if (services.isNotEmpty && _selectedServiceIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('يرجى اختيار الخدمة أولاً'),
@@ -951,12 +952,12 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     final points =
         int.tryParse(_pointsController.text) ?? _defaultAttendancePoints;
     final date = DateFormat('yyyy-MM-dd').format(_selectedDate);
-    final serviceName = _selectedServiceId == null
+    final serviceNames = _selectedServiceIds.isEmpty
         ? 'بدون خدمة'
         : services
-              .where((service) => service.id == _selectedServiceId)
+              .where((service) => _selectedServiceIds.contains(service.id))
               .map((service) => service.name)
-              .firstOrNull;
+              .join('، ');
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => Directionality(
@@ -965,7 +966,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           title: const Text('تأكيد انصراف الكل'),
           content: Text(
             'سيتم تسجيل الانصراف الآن لكل من حضر ولم ينصرف في '
-            '$serviceName بتاريخ $date، '
+            '$serviceNames بتاريخ $date، '
             'مع إضافة $points نقطة لكل شخص.',
           ),
           actions: [
@@ -987,25 +988,29 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
     setState(() => _isCheckingOutAll = true);
     try {
-      final count = await ref
-          .read(attendanceRepositoryProvider.notifier)
-          .checkoutAll(
-            dateWeek: date,
-            checkoutTime: _currentTime12h(),
-            points: points,
-            serviceId: _selectedServiceId,
-          );
+      int totalCount = 0;
+      for (final sId in _selectedServiceIds) {
+        final count = await ref
+            .read(attendanceRepositoryProvider.notifier)
+            .checkoutAll(
+              dateWeek: date,
+              checkoutTime: _currentTime12h(),
+              points: points,
+              serviceId: sId,
+            );
+        totalCount += count;
+      }
       if (!mounted) return;
       await _loadInitialData();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            count == 0
+            totalCount == 0
                 ? 'لا يوجد أشخاص منتظر تسجيل انصرافهم'
-                : 'تم تسجيل انصراف $count شخص بنجاح',
+                : 'تم تسجيل انصراف $totalCount شخص بنجاح 🎉',
           ),
-          backgroundColor: count == 0 ? Colors.orange : Colors.green,
+          backgroundColor: totalCount == 0 ? Colors.orange : Colors.green,
         ),
       );
     } catch (error) {
@@ -1059,10 +1064,25 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   }
 
   void _showEditDialog(AttendanceDTO r) {
-    final pointCtrl = TextEditingController(text: '${r.point ?? 0}');
-    DateTime editDate = r.dateWeek != null
-        ? (DateTime.tryParse(r.dateWeek!) ?? DateTime.now())
+    final records = _serviceRecordsFor(r);
+    if (records.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('لا توجد سجلات حضور للتعديل'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Set initial values from the first record
+    AttendanceServiceRecord selectedRecord = records.first;
+    final pointAttendanceCtrl = TextEditingController(text: '${selectedRecord.attendancePoint ?? selectedRecord.point}');
+    final pointCheckoutCtrl = TextEditingController(text: '${selectedRecord.checkoutPoint ?? 0}');
+    DateTime editDate = selectedRecord.dateWeek != null
+        ? (DateTime.tryParse(selectedRecord.dateWeek!) ?? DateTime.now())
         : DateTime.now();
+
     showDialog(
       context: context,
       builder: (c) => Directionality(
@@ -1074,10 +1094,40 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (records.length > 1) ...[
+                    DropdownButtonFormField<AttendanceServiceRecord>(
+                      value: selectedRecord,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'الخدمة المراد تعديلها'),
+                      items: records.map((rec) => DropdownMenuItem(
+                        value: rec,
+                        child: Text(rec.serviceName ?? 'خدمة غير معروفة'),
+                      )).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDlgState(() {
+                            selectedRecord = val;
+                            pointAttendanceCtrl.text = '${val.attendancePoint ?? val.point}';
+                            pointCheckoutCtrl.text = '${val.checkoutPoint ?? 0}';
+                            editDate = val.dateWeek != null
+                                ? (DateTime.tryParse(val.dateWeek!) ?? DateTime.now())
+                                : DateTime.now();
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   TextField(
-                    controller: pointCtrl,
+                    controller: pointAttendanceCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'النقاط'),
+                    decoration: const InputDecoration(labelText: 'نقاط الحضور'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: pointCheckoutCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'نقاط الانصراف'),
                   ),
                   const SizedBox(height: 12),
                   InkWell(
@@ -1105,11 +1155,16 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                 FilledButton(
                   onPressed: () async {
                     Navigator.pop(c);
+                    final attPoints = int.tryParse(pointAttendanceCtrl.text) ?? 0;
+                    final chkPoints = int.tryParse(pointCheckoutCtrl.text) ?? 0;
+                    final totalPoints = attPoints + chkPoints;
                     final success = await ref
                         .read(attendanceRepositoryProvider.notifier)
                         .updateAttendance(
-                          id: r.id!,
-                          point: int.tryParse(pointCtrl.text),
+                          id: selectedRecord.id,
+                          point: totalPoints,
+                          attendancePoint: attPoints,
+                          checkoutPoint: chkPoints,
                           dateWeek: DateFormat('yyyy-MM-dd').format(editDate),
                         );
                     if (mounted && success) {
@@ -1491,7 +1546,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                   onPressed:
                       (_isSaving || _isCheckingOutAll || _periodModeEnabled)
                       ? null
-                      : _checkoutAll,
+                      : _saveManualAttendance,
                   icon: _isCheckingOutAll
                       ? const SizedBox(
                           width: 14,
@@ -1605,36 +1660,16 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   }
 
   Widget _buildServiceDropdownInline(List<ServiceDTO> services) {
-    return DropdownButtonFormField<int?>(
-      value: _selectedServiceId,
-      isExpanded: true,
-      decoration: InputDecoration(
-        labelText: 'الخدمة',
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 10,
-        ),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        filled: true,
-        fillColor: Colors.white,
-      ),
-      items: [
-        const DropdownMenuItem(value: null, child: Text('اختر الخدمة')),
-        ...services.map(
-          (s) => DropdownMenuItem(
-            value: s.id,
-            child: Text(
-              '${s.name} - ${s.dayName}',
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ),
-      ],
-      onChanged: (v) async {
+    if (services.isEmpty) return const SizedBox.shrink();
+    return MultiSelectFilter(
+      label: 'الخدمات للتحضير والفلترة',
+      selectedIds: _selectedServiceIds,
+      allItems: services
+          .map((s) => SelectableItem(id: s.id, name: '${s.name} - ${s.dayName}'))
+          .toList(),
+      onChanged: (ids) async {
         setState(() {
-          _selectedServiceId = v;
-          _filterServiceId = v;
+          _selectedServiceIds = List<int>.from(ids);
           _selectedPersonIds.clear();
         });
         await _loadInitialData();
@@ -1650,14 +1685,14 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           if (_isSaving) return;
           final query = value.trim();
           if (query.isNotEmpty) {
-            final lowerQ = query.toLowerCase();
-            final intQ = int.tryParse(lowerQ);
+            final normalizedQ = normalizeArabic(query.toLowerCase());
+            final intQ = int.tryParse(query);
 
             final exactMatch = persons
                 .where(
                   (p) =>
-                      p.id.toString() == lowerQ ||
-                      p.name.toLowerCase() == lowerQ ||
+                      p.id.toString() == query ||
+                      normalizeArabic(p.name.toLowerCase()) == normalizedQ ||
                       (intQ != null && p.id == intQ),
                 )
                 .toList();
@@ -1665,8 +1700,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
             final partialMatch = persons
                 .where(
                   (p) =>
-                      p.name.toLowerCase().contains(lowerQ) ||
-                      p.id.toString().contains(lowerQ),
+                      normalizeArabic(p.name.toLowerCase()).contains(normalizedQ) ||
+                      p.id.toString().contains(query),
                 )
                 .toList();
 
@@ -1749,15 +1784,15 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
             if (query.isEmpty)
               return persons.map((p) => PersonOption(id: p.id, name: p.name));
 
-            final lowerQ = query.toLowerCase();
-            final intQ = int.tryParse(lowerQ);
+            final normalizedQ = normalizeArabic(query.toLowerCase());
+            final intQ = int.tryParse(query);
 
             return persons
                 .where((p) {
                   final idMatch =
-                      p.id.toString() == lowerQ ||
+                      p.id.toString() == query ||
                       (intQ != null && p.id == intQ);
-                  return p.name.toLowerCase().contains(lowerQ) || idMatch;
+                  return normalizeArabic(p.name.toLowerCase()).contains(normalizedQ) || idMatch;
                 })
                 .map((p) => PersonOption(id: p.id, name: p.name));
           },
@@ -1985,8 +2020,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         .expand(_serviceRecordsFor)
         .where(
           (record) =>
-              _selectedServiceId == null ||
-              record.serviceId == _selectedServiceId,
+              _selectedServiceIds.isEmpty ||
+              _selectedServiceIds.contains(record.serviceId),
         )
         .any(
           (record) =>
@@ -2072,12 +2107,25 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     return GestureDetector(
       onTap: _periodModeEnabled
           ? null
-          : () => setState(() {
-              _isCheckoutMode = val;
-              if (val) {
-                _pointsController.text = '$_defaultAttendancePoints';
-              }
-            }),
+          : () {
+              if (_isCheckoutMode == val) return;
+              setState(() {
+                final currentVal = int.tryParse(_pointsController.text) ?? _defaultAttendancePoints;
+                if (_isCheckoutMode) {
+                  _checkoutSavedPoints = currentVal;
+                } else {
+                  _attendanceSavedPoints = currentVal;
+                }
+                
+                _isCheckoutMode = val;
+                
+                if (val) {
+                  _pointsController.text = '$_checkoutSavedPoints';
+                } else {
+                  _pointsController.text = '$_attendanceSavedPoints';
+                }
+              });
+            },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
@@ -3853,7 +3901,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                           buildPdf: (groupName, rows) =>
                               AttendanceGridPdfGenerator.generateGridPDF(
                                 data: rows,
-                                title: 'سجل الغياب والحضور - $groupName',
+                                title: 'سجل الحضور والغياب - $groupName',
                                 headerData: headerData,
                                 sortingCriteria: sorting,
                                 columns: cols,
@@ -3892,7 +3940,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                   final task =
                       await AttendanceGridPdfGenerator.startGridPDFGeneration(
                         data: allData,
-                        title: 'سجل الغياب والحضور',
+                        title: 'سجل الحضور والغياب',
                         headerData: headerData,
                         sortingCriteria: sorting,
                         columns: cols,

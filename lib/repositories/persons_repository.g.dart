@@ -33,7 +33,7 @@ final class PersonsRepositoryProvider
   PersonsRepository create() => PersonsRepository();
 }
 
-String _$personsRepositoryHash() => r'07abe4f17812a366479d5382886932bfa9997b94';
+String _$personsRepositoryHash() => r'8c0a46ffa250afaaa082678f5c5f7295eadeacea';
 
 abstract class _$PersonsRepository extends $AsyncNotifier<List<PersonListDTO>> {
   FutureOr<List<PersonListDTO>> build();

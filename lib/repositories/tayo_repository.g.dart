@@ -33,7 +33,7 @@ final class TayoRepositoryProvider
   TayoRepository create() => TayoRepository();
 }
 
-String _$tayoRepositoryHash() => r'5fab2c6c653610be36cc3691ea25d28af495c7ff';
+String _$tayoRepositoryHash() => r'f56043d7d1497c0957ddf14ffff786e2d52d7c0c';
 
 abstract class _$TayoRepository extends $AsyncNotifier<List<TayoCardDTO>> {
   FutureOr<List<TayoCardDTO>> build();

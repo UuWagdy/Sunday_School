@@ -3799,6 +3799,17 @@ class $ServicesTable extends Services
     type: DriftSqlType.blob,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _checkColorMeta = const VerificationMeta(
+    'checkColor',
+  );
+  @override
+  late final GeneratedColumn<String> checkColor = GeneratedColumn<String>(
+    'Check_Color',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     serviceId,
@@ -3809,6 +3820,7 @@ class $ServicesTable extends Services
     endHour,
     endMinute,
     logo,
+    checkColor,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3873,6 +3885,12 @@ class $ServicesTable extends Services
         logo.isAcceptableOrUnknown(data['Logo']!, _logoMeta),
       );
     }
+    if (data.containsKey('Check_Color')) {
+      context.handle(
+        _checkColorMeta,
+        checkColor.isAcceptableOrUnknown(data['Check_Color']!, _checkColorMeta),
+      );
+    }
     return context;
   }
 
@@ -3914,6 +3932,10 @@ class $ServicesTable extends Services
         DriftSqlType.blob,
         data['${effectivePrefix}Logo'],
       ),
+      checkColor: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Check_Color'],
+      ),
     );
   }
 
@@ -3932,6 +3954,7 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
   final int? endHour;
   final int? endMinute;
   final Uint8List? logo;
+  final String? checkColor;
   const ServiceData({
     required this.serviceId,
     this.serviceName,
@@ -3941,6 +3964,7 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
     this.endHour,
     this.endMinute,
     this.logo,
+    this.checkColor,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3967,6 +3991,9 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
     if (!nullToAbsent || logo != null) {
       map['Logo'] = Variable<Uint8List>(logo);
     }
+    if (!nullToAbsent || checkColor != null) {
+      map['Check_Color'] = Variable<String>(checkColor);
+    }
     return map;
   }
 
@@ -3990,6 +4017,9 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
           ? const Value.absent()
           : Value(endMinute),
       logo: logo == null && nullToAbsent ? const Value.absent() : Value(logo),
+      checkColor: checkColor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(checkColor),
     );
   }
 
@@ -4007,6 +4037,7 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
       endHour: serializer.fromJson<int?>(json['endHour']),
       endMinute: serializer.fromJson<int?>(json['endMinute']),
       logo: serializer.fromJson<Uint8List?>(json['logo']),
+      checkColor: serializer.fromJson<String?>(json['checkColor']),
     );
   }
   @override
@@ -4021,6 +4052,7 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
       'endHour': serializer.toJson<int?>(endHour),
       'endMinute': serializer.toJson<int?>(endMinute),
       'logo': serializer.toJson<Uint8List?>(logo),
+      'checkColor': serializer.toJson<String?>(checkColor),
     };
   }
 
@@ -4033,6 +4065,7 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
     Value<int?> endHour = const Value.absent(),
     Value<int?> endMinute = const Value.absent(),
     Value<Uint8List?> logo = const Value.absent(),
+    Value<String?> checkColor = const Value.absent(),
   }) => ServiceData(
     serviceId: serviceId ?? this.serviceId,
     serviceName: serviceName.present ? serviceName.value : this.serviceName,
@@ -4042,6 +4075,7 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
     endHour: endHour.present ? endHour.value : this.endHour,
     endMinute: endMinute.present ? endMinute.value : this.endMinute,
     logo: logo.present ? logo.value : this.logo,
+    checkColor: checkColor.present ? checkColor.value : this.checkColor,
   );
   ServiceData copyWithCompanion(ServicesCompanion data) {
     return ServiceData(
@@ -4055,6 +4089,9 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
       endHour: data.endHour.present ? data.endHour.value : this.endHour,
       endMinute: data.endMinute.present ? data.endMinute.value : this.endMinute,
       logo: data.logo.present ? data.logo.value : this.logo,
+      checkColor: data.checkColor.present
+          ? data.checkColor.value
+          : this.checkColor,
     );
   }
 
@@ -4068,7 +4105,8 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
           ..write('minute: $minute, ')
           ..write('endHour: $endHour, ')
           ..write('endMinute: $endMinute, ')
-          ..write('logo: $logo')
+          ..write('logo: $logo, ')
+          ..write('checkColor: $checkColor')
           ..write(')'))
         .toString();
   }
@@ -4083,6 +4121,7 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
     endHour,
     endMinute,
     $driftBlobEquality.hash(logo),
+    checkColor,
   );
   @override
   bool operator ==(Object other) =>
@@ -4095,7 +4134,8 @@ class ServiceData extends DataClass implements Insertable<ServiceData> {
           other.minute == this.minute &&
           other.endHour == this.endHour &&
           other.endMinute == this.endMinute &&
-          $driftBlobEquality.equals(other.logo, this.logo));
+          $driftBlobEquality.equals(other.logo, this.logo) &&
+          other.checkColor == this.checkColor);
 }
 
 class ServicesCompanion extends UpdateCompanion<ServiceData> {
@@ -4107,6 +4147,7 @@ class ServicesCompanion extends UpdateCompanion<ServiceData> {
   final Value<int?> endHour;
   final Value<int?> endMinute;
   final Value<Uint8List?> logo;
+  final Value<String?> checkColor;
   const ServicesCompanion({
     this.serviceId = const Value.absent(),
     this.serviceName = const Value.absent(),
@@ -4116,6 +4157,7 @@ class ServicesCompanion extends UpdateCompanion<ServiceData> {
     this.endHour = const Value.absent(),
     this.endMinute = const Value.absent(),
     this.logo = const Value.absent(),
+    this.checkColor = const Value.absent(),
   });
   ServicesCompanion.insert({
     this.serviceId = const Value.absent(),
@@ -4126,6 +4168,7 @@ class ServicesCompanion extends UpdateCompanion<ServiceData> {
     this.endHour = const Value.absent(),
     this.endMinute = const Value.absent(),
     this.logo = const Value.absent(),
+    this.checkColor = const Value.absent(),
   });
   static Insertable<ServiceData> custom({
     Expression<int>? serviceId,
@@ -4136,6 +4179,7 @@ class ServicesCompanion extends UpdateCompanion<ServiceData> {
     Expression<int>? endHour,
     Expression<int>? endMinute,
     Expression<Uint8List>? logo,
+    Expression<String>? checkColor,
   }) {
     return RawValuesInsertable({
       if (serviceId != null) 'Service_ID': serviceId,
@@ -4146,6 +4190,7 @@ class ServicesCompanion extends UpdateCompanion<ServiceData> {
       if (endHour != null) 'End_Hour': endHour,
       if (endMinute != null) 'End_Minute': endMinute,
       if (logo != null) 'Logo': logo,
+      if (checkColor != null) 'Check_Color': checkColor,
     });
   }
 
@@ -4158,6 +4203,7 @@ class ServicesCompanion extends UpdateCompanion<ServiceData> {
     Value<int?>? endHour,
     Value<int?>? endMinute,
     Value<Uint8List?>? logo,
+    Value<String?>? checkColor,
   }) {
     return ServicesCompanion(
       serviceId: serviceId ?? this.serviceId,
@@ -4168,6 +4214,7 @@ class ServicesCompanion extends UpdateCompanion<ServiceData> {
       endHour: endHour ?? this.endHour,
       endMinute: endMinute ?? this.endMinute,
       logo: logo ?? this.logo,
+      checkColor: checkColor ?? this.checkColor,
     );
   }
 
@@ -4198,6 +4245,9 @@ class ServicesCompanion extends UpdateCompanion<ServiceData> {
     if (logo.present) {
       map['Logo'] = Variable<Uint8List>(logo.value);
     }
+    if (checkColor.present) {
+      map['Check_Color'] = Variable<String>(checkColor.value);
+    }
     return map;
   }
 
@@ -4211,7 +4261,8 @@ class ServicesCompanion extends UpdateCompanion<ServiceData> {
           ..write('minute: $minute, ')
           ..write('endHour: $endHour, ')
           ..write('endMinute: $endMinute, ')
-          ..write('logo: $logo')
+          ..write('logo: $logo, ')
+          ..write('checkColor: $checkColor')
           ..write(')'))
         .toString();
   }
@@ -14449,6 +14500,7 @@ typedef $$ServicesTableCreateCompanionBuilder =
       Value<int?> endHour,
       Value<int?> endMinute,
       Value<Uint8List?> logo,
+      Value<String?> checkColor,
     });
 typedef $$ServicesTableUpdateCompanionBuilder =
     ServicesCompanion Function({
@@ -14460,6 +14512,7 @@ typedef $$ServicesTableUpdateCompanionBuilder =
       Value<int?> endHour,
       Value<int?> endMinute,
       Value<Uint8List?> logo,
+      Value<String?> checkColor,
     });
 
 final class $$ServicesTableReferences
@@ -14640,6 +14693,11 @@ class $$ServicesTableFilterComposer
 
   ColumnFilters<Uint8List> get logo => $composableBuilder(
     column: $table.logo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get checkColor => $composableBuilder(
+    column: $table.checkColor,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -14842,6 +14900,11 @@ class $$ServicesTableOrderingComposer
     column: $table.logo,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get checkColor => $composableBuilder(
+    column: $table.checkColor,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ServicesTableAnnotationComposer
@@ -14878,6 +14941,11 @@ class $$ServicesTableAnnotationComposer
 
   GeneratedColumn<Uint8List> get logo =>
       $composableBuilder(column: $table.logo, builder: (column) => column);
+
+  GeneratedColumn<String> get checkColor => $composableBuilder(
+    column: $table.checkColor,
+    builder: (column) => column,
+  );
 
   Expression<T> visitationsRefs<T extends Object>(
     Expression<T> Function($$VisitationsTableAnnotationComposer a) f,
@@ -15073,6 +15141,7 @@ class $$ServicesTableTableManager
                 Value<int?> endHour = const Value.absent(),
                 Value<int?> endMinute = const Value.absent(),
                 Value<Uint8List?> logo = const Value.absent(),
+                Value<String?> checkColor = const Value.absent(),
               }) => ServicesCompanion(
                 serviceId: serviceId,
                 serviceName: serviceName,
@@ -15082,6 +15151,7 @@ class $$ServicesTableTableManager
                 endHour: endHour,
                 endMinute: endMinute,
                 logo: logo,
+                checkColor: checkColor,
               ),
           createCompanionCallback:
               ({
@@ -15093,6 +15163,7 @@ class $$ServicesTableTableManager
                 Value<int?> endHour = const Value.absent(),
                 Value<int?> endMinute = const Value.absent(),
                 Value<Uint8List?> logo = const Value.absent(),
+                Value<String?> checkColor = const Value.absent(),
               }) => ServicesCompanion.insert(
                 serviceId: serviceId,
                 serviceName: serviceName,
@@ -15102,6 +15173,7 @@ class $$ServicesTableTableManager
                 endHour: endHour,
                 endMinute: endMinute,
                 logo: logo,
+                checkColor: checkColor,
               ),
           withReferenceMapper: (p0) => p0
               .map(

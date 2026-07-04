@@ -6,6 +6,7 @@ import '../database/database.dart';
 import '../database/database_provider.dart';
 import '../services/auth_service.dart';
 import 'service_eligibility_repository.dart';
+import '../utils/arabic_helper.dart';
 
 part 'persons_repository.g.dart';
 
@@ -159,9 +160,11 @@ class PersonsRepository extends _$PersonsRepository {
     }
 
     if (search != null && search.isNotEmpty) {
-      final s = '%${search.trim()}%';
+      final queryNormalized = normalizeArabic(search);
+      final s = '%$queryNormalized%';
+      final normalizedName = normalizeArabicSql(db.persons.personName);
       query.where(
-        db.persons.personName.like(s) |
+        normalizedName.like(s) |
             db.persons.mobile.like(s) |
             db.persons.phone.like(s) |
             db.persons.streetName.like(s) |
@@ -407,9 +410,11 @@ class PersonsRepository extends _$PersonsRepository {
       }
 
       if (search != null && search.isNotEmpty) {
-        final s = '%${search.trim()}%';
+        final queryNormalized = normalizeArabic(search);
+        final s = '%$queryNormalized%';
+        final normalizedName = normalizeArabicSql(db.persons.personName);
         query.where(
-          db.persons.personName.like(s) |
+          normalizedName.like(s) |
               db.persons.mobile.like(s) |
               db.persons.phone.like(s) |
               db.persons.streetName.like(s) |

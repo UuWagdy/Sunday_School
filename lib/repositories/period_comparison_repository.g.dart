@@ -35,7 +35,7 @@ final class PeriodComparisonRepositoryProvider
 }
 
 String _$periodComparisonRepositoryHash() =>
-    r'81013a06d894b0e76e736d48d0bb13bad7903373';
+    r'af56b4b82070cdd643f4fb24772b7e1484d605ca';
 
 abstract class _$PeriodComparisonRepository extends $AsyncNotifier<void> {
   FutureOr<void> build();

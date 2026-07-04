@@ -114,6 +114,7 @@ class Services extends Table {
   IntColumn get endHour => integer().nullable().named('End_Hour')();
   IntColumn get endMinute => integer().nullable().named('End_Minute')();
   BlobColumn get logo => blob().nullable().named('Logo')();
+  TextColumn get checkColor => text().nullable().named('Check_Color')();
 }
 
 @DataClassName('CreditData')

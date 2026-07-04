@@ -34,7 +34,7 @@ final class ServicesRepositoryProvider
 }
 
 String _$servicesRepositoryHash() =>
-    r'49507b65c4da3a13905b805b212aa2b03e369d7f';
+    r'dcb98703c8039933171bda8086c79484565d3d0d';
 
 abstract class _$ServicesRepository extends $AsyncNotifier<List<ServiceDTO>> {
   FutureOr<List<ServiceDTO>> build();

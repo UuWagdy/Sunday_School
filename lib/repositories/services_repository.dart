@@ -17,6 +17,7 @@ class ServiceDTO {
   final int? endHour;
   final int? endMinute;
   final Uint8List? logo;
+  final String? checkColor;
 
   ServiceDTO({
     required this.id,
@@ -27,6 +28,7 @@ class ServiceDTO {
     this.endHour,
     this.endMinute,
     this.logo,
+    this.checkColor,
   });
 
   /// Get the day name in Arabic
@@ -95,6 +97,7 @@ class ServicesRepository extends _$ServicesRepository {
       endHour: r.endHour,
       endMinute: r.endMinute,
       logo: r.logo,
+      checkColor: r.checkColor,
     )).toList();
   }
 
@@ -106,6 +109,7 @@ class ServicesRepository extends _$ServicesRepository {
     int? endHour,
     int? endMinute,
     Uint8List? logo,
+    String? checkColor,
   }) async {
     try {
       final db = ref.read(appDatabaseProvider);
@@ -117,6 +121,7 @@ class ServicesRepository extends _$ServicesRepository {
         endHour: drift.Value(endHour),
         endMinute: drift.Value(endMinute),
         logo: drift.Value(logo),
+        checkColor: drift.Value(checkColor),
       ));
       ref.invalidateSelf();
       return true;
@@ -135,6 +140,7 @@ class ServicesRepository extends _$ServicesRepository {
     int? endHour,
     int? endMinute,
     Uint8List? logo,
+    String? checkColor,
   }) async {
     try {
       final db = ref.read(appDatabaseProvider);
@@ -147,6 +153,7 @@ class ServicesRepository extends _$ServicesRepository {
           endHour: drift.Value(endHour),
           endMinute: drift.Value(endMinute),
           logo: drift.Value(logo),
+          checkColor: drift.Value(checkColor),
         ),
       );
       ref.invalidateSelf();
