@@ -140,6 +140,7 @@ class AttendanceRepository extends _$AttendanceRepository {
     String? callId,
     bool deduplicatePeople = true,
     void Function(bool hasMore)? onHasMore,
+    String? sortBy,
   }) async {
     final cid = callId ?? 'INTERNAL';
 
@@ -276,16 +277,29 @@ class AttendanceRepository extends _$AttendanceRepository {
         await _applyVisibilityFilters(personQuery, db, filters, user);
       }
 
-      personQuery.orderBy([
-        drift.OrderingTerm(
-          expression: db.persons.personId,
-          mode: drift.OrderingMode.desc,
-        ),
-        drift.OrderingTerm(
-          expression: db.coming.dateWeek,
-          mode: drift.OrderingMode.desc,
-        ),
-      ]);
+      if (sortBy == 'name') {
+        personQuery.orderBy([
+          drift.OrderingTerm(
+            expression: db.persons.personName,
+            mode: drift.OrderingMode.asc,
+          ),
+          drift.OrderingTerm(
+            expression: db.coming.dateWeek,
+            mode: drift.OrderingMode.desc,
+          ),
+        ]);
+      } else {
+        personQuery.orderBy([
+          drift.OrderingTerm(
+            expression: db.persons.personId,
+            mode: drift.OrderingMode.asc,
+          ),
+          drift.OrderingTerm(
+            expression: db.coming.dateWeek,
+            mode: drift.OrderingMode.desc,
+          ),
+        ]);
+      }
 
       if (limit != null) personQuery.limit(limit, offset: offset ?? 0);
 

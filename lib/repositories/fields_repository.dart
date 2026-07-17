@@ -47,7 +47,10 @@ class FieldConfigDTO {
       order: d.fieldOrder,
       isVisible: d.isVisible,
       isFilter: d.isFilter,
-      isPhone: d.isPhone || d.fieldKey == 'mobile' || d.fieldKey == 'phone',
+      isPhone: d.isPhone ||
+          d.fieldKey == 'mobile' ||
+          d.fieldKey == 'phone' ||
+          _isMatchesSpecificPhoneFieldName(d.name),
     );
   }
 }
@@ -220,4 +223,52 @@ class FieldsRepository extends _$FieldsRepository {
       return false;
     }
   }
+}
+
+bool _isMatchesSpecificPhoneFieldName(String name) {
+  String normalized = name.toLowerCase();
+
+  // Normalize Alef
+  normalized = normalized
+      .replaceAll('أ', 'ا')
+      .replaceAll('إ', 'ا')
+      .replaceAll('آ', 'ا');
+
+  // Collapse multiple Alefs (e.g., 'اامر' -> 'امر')
+  while (normalized.contains('اا')) {
+    normalized = normalized.replaceAll('اا', 'ا');
+  }
+
+  // Normalize other Arabic letters and digits, remove spaces/punctuation
+  normalized = normalized
+      .replaceAll('ة', 'ه')
+      .replaceAll('ى', 'ي')
+      .replaceAll(' ', '')
+      .replaceAll('_', '')
+      .replaceAll('-', '')
+      .replaceAll('١', '1')
+      .replaceAll('٢', '2')
+      .replaceAll('٣', '3')
+      .replaceAll('٤', '4')
+      .replaceAll('٥', '5')
+      .replaceAll('٦', '6')
+      .replaceAll('٧', '7')
+      .replaceAll('٨', '8')
+      .replaceAll('٩', '9')
+      .replaceAll('٠', '0');
+
+  // Match variants of:
+  // - رقم ولي الامر 1 / رقم ولي الامر 2
+  // - رقم الطالب / موبايل الطالب / تليفون الطالب / هاتف الطالب
+  return normalized.contains('رقموليالامر1') ||
+      normalized.contains('رقموليالامر2') ||
+      normalized.contains('وليالامر1') ||
+      normalized.contains('وليالامر2') ||
+      normalized.contains('رقمالطالب') ||
+      normalized.contains('موبايلالطالب') ||
+      normalized.contains('تليفونالطالب') ||
+      normalized.contains('هاتفالطالب') ||
+      normalized.contains('هاتفعالطالب') ||
+      normalized.contains('موبايلوليالامر') ||
+      normalized.contains('تليفونوليالامر');
 }

@@ -27,7 +27,7 @@ String serviceEligibilityErrorMessageFor({
 
 final serviceEligibilityRepositoryProvider =
     Provider<ServiceEligibilityRepository>((ref) {
-      return ServiceEligibilityRepository(ref.read(appDatabaseProvider));
+      return ServiceEligibilityRepository(ref.watch(appDatabaseProvider));
     });
 
 class ServiceEligibilityRepository {

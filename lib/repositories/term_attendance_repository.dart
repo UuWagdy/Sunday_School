@@ -16,11 +16,15 @@ class TermAttendanceMeeting {
   final DateTime date;
   final int serviceId;
   final String serviceName;
+  final int hour;
+  final int minute;
 
   const TermAttendanceMeeting({
     required this.date,
     required this.serviceId,
     required this.serviceName,
+    required this.hour,
+    required this.minute,
   });
 
   String get key => TermAttendanceRepository.attendanceKey(serviceId, date);
@@ -465,6 +469,8 @@ class TermAttendanceRepository {
             date: date,
             serviceId: service.serviceId,
             serviceName: service.serviceName ?? '',
+            hour: service.hour ?? 0,
+            minute: service.minute ?? 0,
           ),
         );
         date = date.add(const Duration(days: 7));
@@ -474,6 +480,10 @@ class TermAttendanceRepository {
     meetings.sort((a, b) {
       final dateCompare = a.date.compareTo(b.date);
       if (dateCompare != 0) return dateCompare;
+      final timeA = a.hour * 60 + a.minute;
+      final timeB = b.hour * 60 + b.minute;
+      final timeCompare = timeA.compareTo(timeB);
+      if (timeCompare != 0) return timeCompare;
       return a.serviceName.compareTo(b.serviceName);
     });
     return meetings;

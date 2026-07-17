@@ -48,6 +48,7 @@ class GroupedPdfExportService {
     required String baseName,
     required Future<Uint8List> Function(String groupName, List<T> rows)
         buildPdf,
+    String? dateSuffix,
   }) async {
     final written = <String>[];
     final skipped = <String>[];
@@ -57,9 +58,13 @@ class GroupedPdfExportService {
         continue;
       }
 
+      final suffixStr = (dateSuffix != null && dateSuffix.trim().isNotEmpty)
+          ? '_${dateSuffix.trim()}'
+          : '';
+
       final path = await uniquePdfPath(
         directoryPath: directoryPath,
-        baseName: '${baseName}_${safeFileName(entry.key)}',
+        baseName: '${baseName}_${safeFileName(entry.key)}$suffixStr',
       );
       final bytes = await buildPdf(entry.key, entry.value);
       await File(path).writeAsBytes(bytes, flush: true);

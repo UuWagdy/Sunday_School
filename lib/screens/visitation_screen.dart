@@ -53,6 +53,7 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
   Map<int, dynamic> _customFilters = {};
   bool? _visitedStatus;
   String? _visitTypeFilter;
+  String? _attendanceFilter = 'absent';
 
   bool _showFilters = true;
   bool _isLoading = false;
@@ -96,6 +97,7 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
             birthdayYear: _filterBirthdayYear,
             visitedStatus: _visitedStatus,
             visitType: _visitTypeFilter,
+            attendanceStatus: _attendanceFilter,
             customFilters: _customFilters,
             limit: 1000,
           );
@@ -695,6 +697,24 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
             _loadData();
           },
         ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String?>(
+          value: _attendanceFilter,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'قائمة الحضور',
+            isDense: true,
+          ),
+          items: const [
+            DropdownMenuItem(value: null, child: Text('الكل')),
+            DropdownMenuItem(value: 'present', child: Text('الحاضرين')),
+            DropdownMenuItem(value: 'absent', child: Text('الغائبين')),
+          ],
+          onChanged: (value) {
+            setState(() => _attendanceFilter = value);
+            _loadData();
+          },
+        ),
       ],
     );
   }
@@ -970,7 +990,7 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
           (field) =>
               field.type != 'native' &&
               field.type != 'document' &&
-              field.isPhone,
+              (field.isPhone || _isMatchesSpecificPhoneFieldName(field.name)),
         )
         .toList();
     String fieldLabel(String key, String fallback) {
@@ -1136,6 +1156,11 @@ class _VisitationCardState extends State<_VisitationCard> {
                               Icons.location_on,
                               widget.record.areaName,
                             ),
+                          _InfoChip(
+                            widget.record.isAttended == true ? Icons.check_circle : Icons.cancel,
+                            widget.record.isAttended == true ? 'حاضر' : 'غائب',
+                            color: widget.record.isAttended == true ? Colors.green : Colors.red,
+                          ),
                         ],
                       ),
                     ],
@@ -1247,25 +1272,27 @@ class _VisitationCardState extends State<_VisitationCard> {
 }
 
 class _InfoChip extends StatelessWidget {
-  const _InfoChip(this.icon, this.label);
+  const _InfoChip(this.icon, this.label, {this.color});
 
   final IconData icon;
   final String label;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
+    final themeColor = color ?? const Color(0xFF1A237E);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A237E).withOpacity(0.06),
+        color: themeColor.withOpacity(0.06),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: const Color(0xFF1A237E)),
+          Icon(icon, size: 14, color: themeColor),
           const SizedBox(width: 4),
-          Text(label, style: const TextStyle(fontSize: 12)),
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.black87)),
         ],
       ),
     );
@@ -1556,4 +1583,52 @@ class _VisitationMessageSettingsDialogState
       ),
     );
   }
+}
+
+bool _isMatchesSpecificPhoneFieldName(String name) {
+  String normalized = name.toLowerCase();
+
+  // Normalize Alef
+  normalized = normalized
+      .replaceAll('أ', 'ا')
+      .replaceAll('إ', 'ا')
+      .replaceAll('آ', 'ا');
+
+  // Collapse multiple Alefs (e.g., 'اامر' -> 'امر')
+  while (normalized.contains('اا')) {
+    normalized = normalized.replaceAll('اا', 'ا');
+  }
+
+  // Normalize other Arabic letters and digits, remove spaces/punctuation
+  normalized = normalized
+      .replaceAll('ة', 'ه')
+      .replaceAll('ى', 'ي')
+      .replaceAll(' ', '')
+      .replaceAll('_', '')
+      .replaceAll('-', '')
+      .replaceAll('١', '1')
+      .replaceAll('٢', '2')
+      .replaceAll('٣', '3')
+      .replaceAll('٤', '4')
+      .replaceAll('٥', '5')
+      .replaceAll('٦', '6')
+      .replaceAll('٧', '7')
+      .replaceAll('٨', '8')
+      .replaceAll('٩', '9')
+      .replaceAll('٠', '0');
+
+  // Match variants of:
+  // - رقم ولي الامر 1 / رقم ولي الامر 2
+  // - رقم الطالب / موبايل الطالب / تليفون الطالب / هاتف الطالب
+  return normalized.contains('رقموليالامر1') ||
+      normalized.contains('رقموليالامر2') ||
+      normalized.contains('وليالامر1') ||
+      normalized.contains('وليالامر2') ||
+      normalized.contains('رقمالطالب') ||
+      normalized.contains('موبايلالطالب') ||
+      normalized.contains('تليفونالطالب') ||
+      normalized.contains('هاتفالطالب') ||
+      normalized.contains('هاتفعالطالب') ||
+      normalized.contains('موبايلوليالامر') ||
+      normalized.contains('تليفونوليالامر');
 }

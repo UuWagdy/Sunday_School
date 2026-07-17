@@ -27,6 +27,7 @@ class _AttendanceGridPdfRequest {
     required this.boldBytes,
     required this.separatePages,
     required this.exportOptions,
+    required this.sortBy,
   });
 
   final List<AttendanceDTO> data;
@@ -45,6 +46,7 @@ class _AttendanceGridPdfRequest {
   final Uint8List boldBytes;
   final bool separatePages;
   final PdfExportOptions exportOptions;
+  final String sortBy;
 }
 
 Future<void> _attendanceGridPdfEntryPoint(List<Object?> message) async {
@@ -69,6 +71,7 @@ Future<void> _attendanceGridPdfEntryPoint(List<Object?> message) async {
       reporter: reporter,
       separatePages: request.separatePages,
       exportOptions: request.exportOptions,
+      sortBy: request.sortBy,
     );
     reporter.complete(bytes);
   } catch (error, stackTrace) {
@@ -115,6 +118,7 @@ class AttendanceGridPdfGenerator {
     Map<String, String>? dynamicLabels,
     bool separatePages = false,
     PdfExportOptions exportOptions = const PdfExportOptions(),
+    String sortBy = 'code',
   }) async {
     final task = await startGridPDFGeneration(
       data: data,
@@ -131,6 +135,7 @@ class AttendanceGridPdfGenerator {
       dynamicLabels: dynamicLabels,
       separatePages: separatePages,
       exportOptions: exportOptions,
+      sortBy: sortBy,
     );
     return task.result;
   }
@@ -150,6 +155,7 @@ class AttendanceGridPdfGenerator {
     Map<String, String>? dynamicLabels,
     bool separatePages = false,
     PdfExportOptions exportOptions = const PdfExportOptions(),
+    String sortBy = 'code',
   }) async {
     final regularBytes = await _getRegularFontBytes();
     final boldBytes = await _getBoldFontBytes();
@@ -173,6 +179,7 @@ class AttendanceGridPdfGenerator {
         boldBytes: boldBytes,
         separatePages: separatePages,
         exportOptions: exportOptions,
+        sortBy: sortBy,
       ),
     );
   }
@@ -195,6 +202,7 @@ class AttendanceGridPdfGenerator {
     required PdfGenerationReporter reporter,
     required bool separatePages,
     required PdfExportOptions exportOptions,
+    required String sortBy,
   }) async {
     final pdf = pw.Document();
     final regular = pw.Font.ttf(ByteData.sublistView(regularBytes));
@@ -218,7 +226,12 @@ class AttendanceGridPdfGenerator {
         }
         if (cmp != 0) return cmp;
       }
-      return 0;
+      // Apply user-selected sortBy as a final tie-breaker
+      if (sortBy == 'name') {
+        return (a.personName).compareTo(b.personName);
+      } else {
+        return (a.personId).compareTo(b.personId);
+      }
     });
 
     // 1. Extract unique Date+Service combinations
@@ -230,8 +243,36 @@ class AttendanceGridPdfGenerator {
         uniqueDatesSet.add('$d|$s');
       }
     }
+
+    // Map service name to start time in minutes using serviceMinsMap
+    final Map<String, int> serviceNameToMins = {};
+    for (var r in data) {
+      if (r.serviceId != null && r.serviceName != null && serviceMinsMap != null && serviceMinsMap.containsKey(r.serviceId)) {
+        serviceNameToMins[r.serviceName!.trim()] = serviceMinsMap[r.serviceId]!;
+      }
+      for (var rec in r.serviceRecords) {
+        if (rec.serviceId != null && rec.serviceName != null && serviceMinsMap != null && serviceMinsMap.containsKey(rec.serviceId)) {
+          serviceNameToMins[rec.serviceName!.trim()] = serviceMinsMap[rec.serviceId]!;
+        }
+      }
+    }
+
     final List<String> sortedDates = uniqueDatesSet.toList()
-      ..sort((a, b) => a.split('|')[0].compareTo(b.split('|')[0]));
+      ..sort((a, b) {
+        final dateA = a.split('|')[0];
+        final dateB = b.split('|')[0];
+        final dateCompare = dateA.compareTo(dateB);
+        if (dateCompare != 0) return dateCompare;
+
+        final serviceA = a.split('|')[1];
+        final serviceB = b.split('|')[1];
+        final minsA = serviceNameToMins[serviceA] ?? 0;
+        final minsB = serviceNameToMins[serviceB] ?? 0;
+        final timeCompare = minsA.compareTo(minsB);
+        if (timeCompare != 0) return timeCompare;
+
+        return serviceA.compareTo(serviceB);
+      });
 
     final showPointsInAttendanceCells = shouldRenderPointsInAttendanceCells(
       columns,
@@ -347,6 +388,7 @@ class AttendanceGridPdfGenerator {
     Map<String, String>? dynamicLabels,
     bool separatePages = false,
     PdfExportOptions exportOptions = const PdfExportOptions(),
+    String sortBy = 'code',
   }) async {
     final bytes = await generateGridPDF(
       data: data,
@@ -363,6 +405,7 @@ class AttendanceGridPdfGenerator {
       dynamicLabels: dynamicLabels,
       separatePages: separatePages,
       exportOptions: exportOptions,
+      sortBy: sortBy,
     );
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => bytes,
@@ -938,13 +981,14 @@ class AttendanceGridPdfGenerator {
 
     // Column widths map
     final Map<int, pw.TableColumnWidth> colWidths = {};
+    colWidths[0] = const pw.FixedColumnWidth(35); // Total column (far left)
     colWidths[totalCols - 1] = const pw.FixedColumnWidth(
       20,
     ); // # column (far right)
     // Name column (second from right after #)
     for (int c = 0; c < columns.reversed.length; c++) {
       if (columns.reversed.toList()[c]['id'] == 'name') {
-        colWidths[1 + dateColCount + c] = const pw.FlexColumnWidth(3);
+        colWidths[1 + dateColCount + c] = const pw.FlexColumnWidth(2.5);
       }
     }
 
@@ -1221,7 +1265,9 @@ class AttendanceGridPdfGenerator {
       for (var col in columns.reversed) {
         footerCells.add(
           _textCellWidget(
-            col['id'] == 'name' ? 'الإجمالي' : '',
+            col['id'] == 'name'
+                ? 'الإجمالي'
+                : '',
             boldFont,
             bold: true,
           ),

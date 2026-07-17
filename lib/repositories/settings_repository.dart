@@ -8,7 +8,7 @@ import '../models/card_template.dart';
 import '../utils/contact_links.dart';
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
-  return SettingsRepository(ref.read(appDatabaseProvider));
+  return SettingsRepository(ref.watch(appDatabaseProvider));
 });
 
 final programNameProvider = FutureProvider<String>((ref) {

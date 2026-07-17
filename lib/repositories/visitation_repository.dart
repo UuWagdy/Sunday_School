@@ -49,6 +49,7 @@ class VisitationPersonDTO {
   final String services;
   final List<int> serviceIds;
   final Map<int, String> customValues;
+  final bool? isAttended;
 
   const VisitationPersonDTO({
     this.visitId,
@@ -80,6 +81,7 @@ class VisitationPersonDTO {
     required this.services,
     required this.serviceIds,
     required this.customValues,
+    this.isAttended,
   });
 }
 
@@ -106,6 +108,7 @@ class VisitationRepository {
     List<String>? leaders,
     bool? visitedStatus,
     String? visitType,
+    String? attendanceStatus,
     Map<int, dynamic> customFilters = const {},
     int? limit,
   }) async {
@@ -252,6 +255,21 @@ class VisitationRepository {
       visitsByPerson.putIfAbsent(visit.personId, () => visit);
     }
 
+    final Set<int> presentPersonIds = {};
+    final comingQuery = db.select(db.coming)
+      ..where((t) => t.personId.isIn(personIds))
+      ..where((t) => t.dateWeek.isBiggerOrEqualValue(dateFromText))
+      ..where((t) => t.dateWeek.isSmallerOrEqualValue(dateToText));
+    if (serviceIds != null && serviceIds.isNotEmpty) {
+      comingQuery.where((t) => t.serviceId.isIn(serviceIds));
+    }
+    final comingRows = await comingQuery.get();
+    for (final row in comingRows) {
+      if (row.personId != null) {
+        presentPersonIds.add(row.personId!);
+      }
+    }
+
     final filtered = <VisitationPersonDTO>[];
     final selectedServices = serviceIds?.toSet() ?? const <int>{};
 
@@ -267,6 +285,10 @@ class VisitationRepository {
 
       final customValues = customValuesMap[personId] ?? const <int, String>{};
       if (!_matchesCustomFilters(customValues, customFilters)) continue;
+
+      final bool isPresent = presentPersonIds.contains(personId);
+      if (attendanceStatus == 'present' && !isPresent) continue;
+      if (attendanceStatus == 'absent' && isPresent) continue;
 
       final visit = visitsByPerson[personId];
       final isVisited = visit?.isVisited ?? false;
@@ -318,6 +340,7 @@ class VisitationRepository {
           services: personServiceNamesMap[personId]?.join('، ') ?? '',
           serviceIds: linkedServiceIds,
           customValues: customValues,
+          isAttended: isPresent,
         ),
       );
     }

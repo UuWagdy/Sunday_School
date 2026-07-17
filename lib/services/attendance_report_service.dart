@@ -26,6 +26,7 @@ class _AttendancePdfRequest {
     required this.boldBytes,
     required this.separatePages,
     required this.exportOptions,
+    required this.sortBy,
   });
 
   final List<AttendanceDTO> data;
@@ -43,6 +44,7 @@ class _AttendancePdfRequest {
   final Uint8List boldBytes;
   final bool separatePages;
   final PdfExportOptions exportOptions;
+  final String sortBy;
 }
 
 Future<void> _attendancePdfEntryPoint(List<Object?> message) async {
@@ -66,6 +68,7 @@ Future<void> _attendancePdfEntryPoint(List<Object?> message) async {
       reporter: reporter,
       separatePages: request.separatePages,
       exportOptions: request.exportOptions,
+      sortBy: request.sortBy,
     );
     reporter.complete(bytes);
   } catch (error, stackTrace) {
@@ -111,6 +114,7 @@ class AttendanceReportService {
     Map<int, int>? serviceMinsMap,
     bool separatePages = false,
     PdfExportOptions exportOptions = const PdfExportOptions(),
+    String sortBy = 'code',
   }) async {
     final task = await startPDFGeneration(
       data: data,
@@ -126,6 +130,7 @@ class AttendanceReportService {
       serviceMinsMap: serviceMinsMap,
       separatePages: separatePages,
       exportOptions: exportOptions,
+      sortBy: sortBy,
     );
     return task.result;
   }
@@ -144,6 +149,7 @@ class AttendanceReportService {
     Map<int, int>? serviceMinsMap,
     bool separatePages = false,
     PdfExportOptions exportOptions = const PdfExportOptions(),
+    String sortBy = 'code',
   }) async {
     final regularBytes = await _getRegularFontBytes();
     final boldBytes = await _getBoldFontBytes();
@@ -166,6 +172,7 @@ class AttendanceReportService {
         boldBytes: boldBytes,
         separatePages: separatePages,
         exportOptions: exportOptions,
+        sortBy: sortBy,
       ),
     );
   }
@@ -187,6 +194,7 @@ class AttendanceReportService {
     required PdfGenerationReporter reporter,
     required bool separatePages,
     required PdfExportOptions exportOptions,
+    required String sortBy,
   }) async {
     final pdf = pw.Document();
     final regular = pw.Font.ttf(ByteData.sublistView(regularBytes));
@@ -201,7 +209,12 @@ class AttendanceReportService {
         int cmp = valA.compareTo(valB);
         if (cmp != 0) return cmp;
       }
-      return 0;
+      // Apply user-selected sortBy as a final tie-breaker
+      if (sortBy == 'name') {
+        return (a.personName).compareTo(b.personName);
+      } else {
+        return (a.personId).compareTo(b.personId);
+      }
     });
 
     // Prepare logo images
@@ -286,6 +299,7 @@ class AttendanceReportService {
     Map<int, int>? serviceMinsMap,
     bool separatePages = false,
     PdfExportOptions exportOptions = const PdfExportOptions(),
+    String sortBy = 'code',
   }) async {
     final bytes = await generatePDF(
       data: data,
@@ -301,6 +315,7 @@ class AttendanceReportService {
       serviceMinsMap: serviceMinsMap,
       separatePages: separatePages,
       exportOptions: exportOptions,
+      sortBy: sortBy,
     );
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => bytes,

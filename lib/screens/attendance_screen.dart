@@ -1,6 +1,9 @@
 import 'dart:typed_data';
+import 'dart:io' show Platform, File;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:printing/printing.dart';
@@ -57,6 +60,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   List<int> _filterYear = [];
   List<int> _selectedServiceIds = [];
   String _filterStatus = 'present';
+  String _sortBy = 'code';
   bool _filterSpecificDateOnly = true;
   DateTime? _filterDateFrom;
   DateTime? _filterDateTo;
@@ -310,6 +314,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           lateAfterTime: _lateAfterTimeString(),
           status: _filterStatus,
           customFilters: _customFilters,
+          sortBy: _sortBy,
           callId: '$callId-DATA',
           onHasMore: (val) => rawHasMore = val,
         ),
@@ -400,6 +405,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       notesFilter: _filterNotesStatus,
       lateAfterTime: _lateAfterTimeString(),
       customFilters: _customFilters,
+      sortBy: _sortBy,
       onHasMore: (val) => rawHasMore = val,
     );
     if (mounted) {
@@ -502,6 +508,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
             lateAfterTime: _lateAfterTimeString(),
             status: _filterStatus,
             customFilters: _customFilters,
+            sortBy: _sortBy,
           );
       if (!mounted) return;
       setState(() {
@@ -1443,16 +1450,19 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     final servicesAsync = ref.watch(servicesRepositoryProvider);
     final services = servicesAsync.asData?.value ?? [];
     return Card(
-      elevation: 3,
+      elevation: 2,
       color: const Color(0xFFF5F7FF),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(
           color: Theme.of(context).primaryColor.withOpacity(0.3),
         ),
       ),
       child: Padding(
-        padding: EdgeInsets.all(isMobile ? 12 : 16),
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 12 : 16,
+          vertical: 10,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1500,9 +1510,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            _buildPeriodModeControls(isMobile),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             if (isMobile) ...[
               _buildPersonAutocomplete(),
               const SizedBox(height: 10),
@@ -2663,6 +2671,25 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           },
         ),
         const SizedBox(height: 8),
+        // Sort Order
+        DropdownButtonFormField<String>(
+          value: _sortBy,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'ترتيب الأسماء',
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+          items: const [
+            DropdownMenuItem(value: 'code', child: Text('كود الطالب (رقم الكارنيه)')),
+            DropdownMenuItem(value: 'name', child: Text('أبجدي (حسب الإسم)')),
+          ],
+          onChanged: (v) {
+            setState(() => _sortBy = v ?? 'code');
+            _loadInitialData();
+          },
+        ),
+        const SizedBox(height: 8),
         // Today only toggle
         Row(
           children: [
@@ -3077,6 +3104,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     lateAfterTime: _lateAfterTimeString(),
                     customFilters: _customFilters,
                     deduplicatePeople: false,
+                    sortBy: _sortBy,
                   );
                   if (progress.isCancelled) {
                     progress.close();
@@ -3298,6 +3326,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     lateAfterTime: _lateAfterTimeString(),
                     customFilters: _customFilters,
                     deduplicatePeople: false,
+                    sortBy: _sortBy,
                   );
                   if (progress.isCancelled) {
                     progress.close();
@@ -3339,16 +3368,31 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                       uniqueDatesSet.add('$d|$s');
                     }
                   }
-                  final List<String> sortedDates = uniqueDatesSet.toList()
-                    ..sort(
-                      (a, b) => a.split('|')[0].compareTo(b.split('|')[0]),
-                    );
-
                   final svcsData =
                       ref.read(servicesRepositoryProvider).asData?.value ?? [];
+                  final Map<String, int> serviceNameToMins = {
+                    for (var s in svcsData) s.name.trim(): s.hour * 60 + s.minute,
+                  };
                   final Map<int, int> serviceMinsMap = {
                     for (var s in svcsData) s.id: s.hour * 60 + s.minute,
                   };
+
+                  final List<String> sortedDates = uniqueDatesSet.toList()
+                    ..sort((a, b) {
+                      final dateA = a.split('|')[0];
+                      final dateB = b.split('|')[0];
+                      final dateCompare = dateA.compareTo(dateB);
+                      if (dateCompare != 0) return dateCompare;
+
+                      final serviceA = a.split('|')[1];
+                      final serviceB = b.split('|')[1];
+                      final minsA = serviceNameToMins[serviceA] ?? 0;
+                      final minsB = serviceNameToMins[serviceB] ?? 0;
+                      final timeCompare = minsA.compareTo(minsB);
+                      if (timeCompare != 0) return timeCompare;
+
+                      return serviceA.compareTo(serviceB);
+                    });
 
                   progress.update('جاري إنشاء ملف إكسل...');
                   final path = await ExcelExportService.exportAttendanceGrid(
@@ -3559,6 +3603,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     lateAfterTime: _lateAfterTimeString(),
                     customFilters: _customFilters,
                     deduplicatePeople: false,
+                    sortBy: _sortBy,
                   );
                   if (progress.isCancelled) {
                     progress.close();
@@ -3582,6 +3627,14 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                       allData,
                       sorting,
                     );
+                    final df = periodServiceResult.dateFrom;
+                    final dt = periodServiceResult.dateTo;
+                    final String dateSuffix;
+                    if (df.year == dt.year && df.month == dt.month && df.day == dt.day) {
+                      dateSuffix = DateFormat('yyyy-MM-dd').format(df);
+                    } else {
+                      dateSuffix = '${DateFormat('yyyy-MM-dd').format(df)} - ${DateFormat('yyyy-MM-dd').format(dt)}';
+                    }
                     final exportResult =
                         await GroupedPdfExportService.writeGroups<
                           AttendanceDTO
@@ -3589,6 +3642,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                           groups: groupedData,
                           directoryPath: directory,
                           baseName: 'Attendance_Report',
+                          dateSuffix: dateSuffix,
                           buildPdf: (groupName, rows) =>
                               AttendanceReportService.generatePDF(
                                 data: rows,
@@ -3609,6 +3663,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                                   groupMode:
                                       PdfGroupExportMode.singlePdfNewPages,
                                 ),
+                                sortBy: _sortBy,
                               ),
                         );
                     if (!mounted) return;
@@ -3642,6 +3697,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     serviceMinsMap: serviceMinsMap,
                     separatePages: separatePages,
                     exportOptions: exportOptions,
+                    sortBy: _sortBy,
                   );
                   progress.setCancelAction(task.cancel);
                   final subscription = task.progress.listen(
@@ -3661,10 +3717,17 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     total: allData.length,
                   );
                   progress.close();
-                  await Printing.layoutPdf(
-                    onLayout: (_) async => pdfBytes,
-                    name: 'Attendance_Report.pdf',
-                  );
+                  if (Platform.isWindows) {
+                    final tempDir = await getTemporaryDirectory();
+                    final file = File('${tempDir.path}/Attendance_Report.pdf');
+                    await file.writeAsBytes(pdfBytes);
+                    await launchUrl(Uri.file(file.path));
+                  } else {
+                    await Printing.layoutPdf(
+                      onLayout: (_) async => pdfBytes,
+                      name: 'Attendance_Report.pdf',
+                    );
+                  }
                 } on PdfGenerationCancelledException {
                   progress.close();
                   if (mounted) {
@@ -3867,6 +3930,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     lateAfterTime: _lateAfterTimeString(),
                     customFilters: _customFilters,
                     deduplicatePeople: false,
+                    sortBy: _sortBy,
                   );
                   if (progress.isCancelled) {
                     progress.close();
@@ -3891,6 +3955,14 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                       allData,
                       sorting,
                     );
+                    final df = periodServiceResult.dateFrom;
+                    final dt = periodServiceResult.dateTo;
+                    final String dateSuffix;
+                    if (df.year == dt.year && df.month == dt.month && df.day == dt.day) {
+                      dateSuffix = DateFormat('yyyy-MM-dd').format(df);
+                    } else {
+                      dateSuffix = '${DateFormat('yyyy-MM-dd').format(df)} - ${DateFormat('yyyy-MM-dd').format(dt)}';
+                    }
                     final exportResult =
                         await GroupedPdfExportService.writeGroups<
                           AttendanceDTO
@@ -3898,6 +3970,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                           groups: groupedData,
                           directoryPath: directory,
                           baseName: 'Attendance_Grid',
+                          dateSuffix: dateSuffix,
                           buildPdf: (groupName, rows) =>
                               AttendanceGridPdfGenerator.generateGridPDF(
                                 data: rows,
@@ -3919,6 +3992,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                                   groupMode:
                                       PdfGroupExportMode.singlePdfNewPages,
                                 ),
+                                sortBy: _sortBy,
                               ),
                         );
                     if (!mounted) return;
@@ -3954,6 +4028,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                         dynamicLabels: labels,
                         separatePages: separatePages,
                         exportOptions: exportOptions,
+                        sortBy: _sortBy,
                       );
                   progress.setCancelAction(task.cancel);
                   final subscription = task.progress.listen(
@@ -3973,10 +4048,17 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     total: allData.length,
                   );
                   progress.close();
-                  await Printing.layoutPdf(
-                    onLayout: (_) async => pdfBytes,
-                    name: 'Attendance_Grid.pdf',
-                  );
+                  if (Platform.isWindows) {
+                    final tempDir = await getTemporaryDirectory();
+                    final file = File('${tempDir.path}/Attendance_Grid.pdf');
+                    await file.writeAsBytes(pdfBytes);
+                    await launchUrl(Uri.file(file.path));
+                  } else {
+                    await Printing.layoutPdf(
+                      onLayout: (_) async => pdfBytes,
+                      name: 'Attendance_Grid.pdf',
+                    );
+                  }
                 } on PdfGenerationCancelledException {
                   progress.close();
                   if (mounted) {
