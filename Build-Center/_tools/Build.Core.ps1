@@ -1,13 +1,14 @@
 function Get-TargetJobs([string]$Target) {
     switch ($Target) {
-        'sunday-installer'     { return @('sunday-installer') }
-        'sunday-web-installer' { return @('sunday-web-installer') }
-        'sunday-android'       { return @('sunday-android') }
-        'membership-installer' { return @('membership-installer') }
-        'membership-android'   { return @('membership-android') }
-        'sunday-all'           { return @('sunday-installer', 'sunday-web-installer', 'sunday-android') }
-        'membership-all'       { return @('membership-installer', 'membership-android') }
-        'everything'           { return @('sunday-installer', 'sunday-web-installer', 'sunday-android', 'membership-installer', 'membership-android') }
+        'sunday-installer'        { return @('sunday-installer') }
+        'sunday-web-installer'    { return @('sunday-web-installer') }
+        'sunday-client-installer' { return @('sunday-client-installer') }
+        'sunday-android'          { return @('sunday-android') }
+        'membership-installer'    { return @('membership-installer') }
+        'membership-android'      { return @('membership-android') }
+        'sunday-all'              { return @('sunday-installer', 'sunday-web-installer', 'sunday-client-installer', 'sunday-android') }
+        'membership-all'          { return @('membership-installer', 'membership-android') }
+        'everything'              { return @('sunday-installer', 'sunday-web-installer', 'sunday-client-installer', 'sunday-android', 'membership-installer', 'membership-android') }
         default { throw "Unknown build target: $Target" }
     }
 }
@@ -23,6 +24,16 @@ function Get-ProjectVersion([string]$Root) {
 }
 
 function Get-BuildProfile($Config, [string]$Job) {
+    if ($Job -eq 'sunday-client-installer') {
+        $root = [IO.Path]::GetFullPath($Config.SundaySchoolRoot)
+        return [pscustomobject]@{
+            Root = $root; Key = 'sunday-client'; DisplayName = 'Sunday School LAN Client'
+            InstallerScript = 'installer\SundaySchoolClientSetup.iss'
+            BackendProject = $null; ManagerProject = $null; Postgres = $null
+            Tools = $null; InstallerName = 'SundaySchool_Client_Setup.exe'; AndroidName = $null
+            IsClientOnly = $true; IsWeb = $false
+        }
+    }
     if ($Job -eq 'sunday-web-installer') {
         $root = [IO.Path]::GetFullPath($Config.SundaySchoolRoot)
         return [pscustomobject]@{

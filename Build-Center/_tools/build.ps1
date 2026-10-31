@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('sunday-installer', 'sunday-web-installer', 'sunday-android', 'membership-installer', 'membership-android', 'sunday-all', 'membership-all', 'everything')]
+    [ValidateSet('sunday-installer', 'sunday-web-installer', 'sunday-client-installer', 'sunday-android', 'membership-installer', 'membership-android', 'sunday-all', 'membership-all', 'everything')]
     [string]$Target,
     [string]$ConfigPath,
     [switch]$PlanOnly,
@@ -108,6 +108,15 @@ try {
         $buildProfile = Get-BuildProfile $config $job
         $version = Get-ProjectVersion $buildProfile.Root
         Write-Host "`n=== $($buildProfile.DisplayName) / $job / $($version.Full) ===" -ForegroundColor Green
+        if ($buildProfile.IsClientOnly) {
+            $compilerArguments = @('/Qp', "/O$staging", "/F$([IO.Path]::GetFileNameWithoutExtension($buildProfile.InstallerName))",
+                "/DMyAppVersion=$($version.Name)", (Join-Path $buildProfile.Root $buildProfile.InstallerScript))
+            Invoke-BuildCommand $iscc $compilerArguments $buildProfile.Root
+            $source = Join-Path $staging $buildProfile.InstallerName
+            Assert-BuildArtifact $source 'exe'
+            $pending += [pscustomobject]@{ Source = $source; Name = $buildProfile.InstallerName; Version = $version.Full; Project = $buildProfile.DisplayName }
+            continue
+        }
         if (-not $prepared.ContainsKey($buildProfile.Key)) {
             Invoke-BuildCommand $flutter @('pub', 'get') $buildProfile.Root
             $prepared[$buildProfile.Key] = $true
