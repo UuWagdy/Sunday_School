@@ -6,15 +6,20 @@ import '../../utils/storyteller.dart';
 import '../../database/database_provider.dart';
 import '../../screens/period_comparison_screen.dart';
 import '../../repositories/services_repository.dart';
+import '../../sync/data_change_domains.dart';
+import '../../sync/data_change_coordinator.dart';
 import 'package:drift/drift.dart' as drift;
 
-final totalPersonsProvider = FutureProvider<int>((ref) async {
+final totalPersonsProvider = FutureProvider<int>(scopedPersonsCount);
+
+Future<int> scopedPersonsCount(Ref ref) async {
   final db = ref.watch(appDatabaseProvider);
+  ref.watch(domainRevisionProvider(DataDomain.people));
   final countExp = db.persons.personId.count();
   final query = db.selectOnly(db.persons)..addColumns([countExp]);
   final result = await query.getSingle();
   return result.read(countExp) ?? 0;
-});
+}
 
 class GeneralAttendanceWidget extends ConsumerStatefulWidget {
   const GeneralAttendanceWidget({super.key});
@@ -48,18 +53,19 @@ class _GeneralAttendanceWidgetState extends ConsumerState<GeneralAttendanceWidge
     ));
     final totalAsync = ref.watch(totalPersonsProvider);
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardSurface = isDark ? const Color(0xFF151E2E) : Colors.white;
+    final cardBorder = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+
     return Card(
-      elevation: 8,
+      elevation: isDark ? 2 : 8,
       shadowColor: Colors.black12,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Colors.white, Colors.grey.shade50],
-          ),
+          color: cardSurface,
+          border: Border.all(color: cardBorder),
         ),
         padding: EdgeInsets.all(MediaQuery.of(context).size.width < 600 ? 14 : 24.0),
         child: Column(
@@ -291,8 +297,11 @@ class _GeneralAttendanceWidgetState extends ConsumerState<GeneralAttendanceWidge
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
+                  color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF334155) : Colors.transparent,
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -308,8 +317,12 @@ class _GeneralAttendanceWidgetState extends ConsumerState<GeneralAttendanceWidge
             ),
             const SizedBox(height: 32),
             trendAsync.when(
+              skipLoadingOnReload: true,
+              skipError: true,
               data: (data) {
                 return totalAsync.when(
+                  skipLoadingOnReload: true,
+              skipError: true,
                   data: (total) {
                      if (data.isEmpty) return const SizedBox(height: 200, child: Center(child: Text('لا توجد بيانات')));
                      return Column(
@@ -348,7 +361,7 @@ class _GeneralAttendanceWidgetState extends ConsumerState<GeneralAttendanceWidge
                                      fontWeight: FontWeight.w700, 
                                      height: 1.6, 
                                      fontSize: 15,
-                                     color: Colors.blueGrey.shade900,
+                                     color: isDark ? const Color(0xFFF8FAFC) : Colors.blueGrey.shade900,
                                    ),
                                  ),
                                ),
@@ -372,28 +385,36 @@ class _GeneralAttendanceWidgetState extends ConsumerState<GeneralAttendanceWidge
   }
 
   Widget _buildBetterDropdown<T>({required T value, required List<DropdownMenuItem<T>> items, required ValueChanged<T?> onChanged, String? hint}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final border = isDark ? const Color(0xFF334155) : Colors.grey.shade200;
+    final textColor = isDark ? const Color(0xFFF8FAFC) : Colors.black87;
+    final textMuted = isDark ? const Color(0xFF94A3B8) : Colors.grey.shade600;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+        border: Border.all(color: border),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.2 : 0.02), blurRadius: 4, offset: const Offset(0, 2))],
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
+          dropdownColor: surface,
           value: value,
-          hint: hint != null ? Text(hint, style: const TextStyle(fontSize: 13)) : null,
+          hint: hint != null ? Text(hint, style: TextStyle(fontSize: 13, color: textMuted)) : null,
           items: items,
           onChanged: onChanged,
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 13),
-          icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+          style: TextStyle(fontWeight: FontWeight.bold, color: textColor, fontSize: 13),
+          icon: Icon(Icons.keyboard_arrow_down, size: 18, color: isDark ? const Color(0xFF94A3B8) : Colors.grey.shade700),
         ),
       ),
     );
   }
 
   Widget _buildLegendItem(Color color, String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
         Container(
@@ -406,7 +427,14 @@ class _GeneralAttendanceWidgetState extends ConsumerState<GeneralAttendanceWidge
           ),
         ),
         const SizedBox(width: 8),
-        Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.blueGrey.shade800)),
+        Text(
+          label, 
+          style: TextStyle(
+            fontSize: 13, 
+            fontWeight: FontWeight.w800, 
+            color: isDark ? const Color(0xFFCBD5E1) : Colors.blueGrey.shade800,
+          ),
+        ),
       ],
     );
   }
@@ -422,6 +450,7 @@ class _GeneralAttendanceWidgetState extends ConsumerState<GeneralAttendanceWidge
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         final double barWidth = constraints.maxWidth < 400 ? 8 : 12;
 
         return BarChart(
@@ -470,7 +499,7 @@ class _GeneralAttendanceWidgetState extends ConsumerState<GeneralAttendanceWidge
                       return SideTitleWidget(
                         meta: meta,
                         space: 12,
-                        child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.blueGrey.shade700)),
+                        child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: isDark ? const Color(0xFF94A3B8) : Colors.blueGrey.shade700)),
                       );
                     }
                     return const SizedBox.shrink();
@@ -494,7 +523,7 @@ class _GeneralAttendanceWidgetState extends ConsumerState<GeneralAttendanceWidge
                 barRods: [
                   BarChartRodData(
                     toY: totalPersons.toDouble(),
-                    color: Colors.grey.shade200,
+                    color: isDark ? const Color(0xFF334155) : Colors.grey.shade200,
                     width: barWidth,
                     borderRadius: BorderRadius.circular(4),
                   ),

@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../services/auth_service.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 
 part 'tayo_repository.g.dart';
 
@@ -94,6 +96,7 @@ class PersonPointBalance {
 class TayoRepository extends _$TayoRepository {
   @override
   FutureOr<List<TayoCardDTO>> build() async {
+    ref.watch(domainRevisionProvider(DataDomain.tayo));
     return getCards();
   }
 
@@ -131,7 +134,7 @@ class TayoRepository extends _$TayoRepository {
                 : const drift.Value.absent(),
           ),
         );
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
   }
 
   Future<void> updateCard({
@@ -153,7 +156,7 @@ class TayoRepository extends _$TayoRepository {
             : (image != null ? drift.Value(image) : const drift.Value.absent()),
       ),
     );
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
   }
 
   Future<void> deleteCard(int cardId) async {
@@ -163,7 +166,7 @@ class TayoRepository extends _$TayoRepository {
     await (db.delete(
       db.personTayoPoints,
     )..where((t) => t.cardId.equals(cardId))).go();
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
   }
 
   // ── Points ──

@@ -5,6 +5,8 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:drift/drift.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 
 part 'fields_repository.g.dart';
 
@@ -59,6 +61,7 @@ class FieldConfigDTO {
 class FieldsRepository extends _$FieldsRepository {
   @override
   FutureOr<List<FieldConfigDTO>> build() async {
+    ref.watch(domainRevisionProvider(DataDomain.fields));
     return fetchAll();
   }
 
@@ -87,14 +90,14 @@ class FieldsRepository extends _$FieldsRepository {
         );
       }
     }
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
   }
 
   Future<void> updateFieldFilter(int id, bool isFilter) async {
     final db = ref.read(appDatabaseProvider);
     await (db.update(db.customFieldDefinitions)..where((t) => t.id.equals(id)))
         .write(CustomFieldDefinitionsCompanion(isFilter: Value(isFilter)));
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
   }
 
   Future<void> reorderFields(List<FieldConfigDTO> fields) async {
@@ -108,7 +111,7 @@ class FieldsRepository extends _$FieldsRepository {
         );
       }
     });
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
   }
 
   Future<bool> addCustomField({
@@ -136,7 +139,7 @@ class FieldsRepository extends _$FieldsRepository {
               isPhone: Value(type == 'text' && isPhone),
             ),
           );
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       print('Error adding custom field: $e');
@@ -171,7 +174,7 @@ class FieldsRepository extends _$FieldsRepository {
               : const Value.absent(),
         ),
       );
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       print('Error updating custom field: $e');
@@ -199,7 +202,7 @@ class FieldsRepository extends _$FieldsRepository {
           )..where((t) => t.id.equals(id))).write(
             CustomFieldDefinitionsCompanion(options: Value(jsonEncode(opts))),
           );
-          ref.invalidateSelf();
+          if (ref.mounted) ref.invalidateSelf();
           return true;
         }
       }
@@ -216,7 +219,7 @@ class FieldsRepository extends _$FieldsRepository {
       await (db.delete(
         db.customFieldDefinitions,
       )..where((t) => t.id.equals(id))).go();
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       print('Error deleting custom field: $e');

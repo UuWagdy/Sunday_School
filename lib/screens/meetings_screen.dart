@@ -9,6 +9,9 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../repositories/settings_repository.dart';
+import '../sync/data_change_domains.dart';
+import '../sync/data_change_coordinator.dart';
+import '../utils/silent_refresh_controller.dart';
 
 class MeetingsScreen extends ConsumerStatefulWidget {
   const MeetingsScreen({super.key});
@@ -55,15 +58,20 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
   DateTime _selectedDate = DateTime.now();
   List<_MeetingRecord> _records = [];
   bool _loading = true;
+  late final SilentRefreshController _refreshController;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _refreshController = SilentRefreshController(
+      onRefresh: () => _load(isSilent: true),
+    );
+    _load(isSilent: false);
   }
 
   @override
   void dispose() {
+    _refreshController.dispose();
     _sectorController.dispose();
     for (final controller in _lessonControllers) {
       controller.dispose();
@@ -71,12 +79,20 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool isSilent = false}) async {
+    final gen = _refreshController.currentGeneration;
+    if (!isSilent && mounted) {
+      setState(() => _loading = true);
+    }
     final raw = await ref
         .read(settingsRepositoryProvider)
         .getSetting(_storageKey);
+    if (!mounted || gen != _refreshController.currentGeneration) return;
     if (raw == null || raw.trim().isEmpty) {
-      setState(() => _loading = false);
+      setState(() {
+        _records = [];
+        _loading = false;
+      });
       return;
     }
     final decoded = jsonDecode(raw);
@@ -88,7 +104,9 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
           )
           .toList();
     }
-    if (mounted) setState(() => _loading = false);
+    if (mounted && gen == _refreshController.currentGeneration) {
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _persist() async {
@@ -231,6 +249,16 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(sourceEpochProvider, (previous, next) {
+      _refreshController.updateEpoch(next);
+      setState(() { _records = []; });
+      
+      _refreshController.requestRefresh(immediate: true);
+    });
+    ref.listen(domainRevisionProvider(DataDomain.settings), (previous, next) {
+      _refreshController.requestRefresh();
+    });
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(

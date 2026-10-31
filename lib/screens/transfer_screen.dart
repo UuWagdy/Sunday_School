@@ -6,6 +6,12 @@ import '../database/database.dart';
 import '../repositories/persons_repository.dart';
 import '../repositories/service_eligibility_repository.dart';
 import '../repositories/stages_repository.dart';
+import '../repositories/khoros_repository.dart';
+import '../repositories/areas_repository.dart' as area_repo;
+import '../repositories/fathers_repository.dart';
+import '../sync/data_change_domains.dart';
+import '../sync/data_change_coordinator.dart';
+import '../utils/silent_refresh_controller.dart';
 
 class TransferScreen extends ConsumerStatefulWidget {
   const TransferScreen({super.key});
@@ -23,8 +29,53 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   Set<int> _selectedPersonIds = {};
   bool _isLoading = false;
 
+  late final SilentRefreshController _refreshController;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshController = SilentRefreshController(
+      onRefresh: _revalidateMatchingPersons,
+    );
+  }
+
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _revalidateMatchingPersons() async {
+    if (_fromValueId == null || !mounted) return;
+    final gen = _refreshController.currentGeneration;
+    final currentFrom = _fromValueId;
+    final currentField = _selectedFieldType;
+    final repo = ref.read(personsRepositoryProvider.notifier);
+    final allPersons = await repo.fetchPersons(limit: null);
+    if (!mounted ||
+        gen != _refreshController.currentGeneration ||
+        _fromValueId != currentFrom ||
+        _selectedFieldType != currentField)
+      return;
+
+    final newMatching = allPersons.where((p) {
+      if (currentField == 'stage') return p.stageId == currentFrom;
+      if (currentField == 'khoros') return p.khorosId == currentFrom;
+      if (currentField == 'area') return p.areaId == currentFrom;
+      if (currentField == 'father') return p.fatherId == currentFrom;
+      return false;
+    }).toList();
+
+    setState(() {
+      _matchingPersons = newMatching;
+      final validIds = newMatching.map((p) => p.id).toSet();
+      _selectedPersonIds = _selectedPersonIds.intersection(validIds);
+    });
+  }
+
   void _onFieldTypeChanged(String? newValue) {
     if (newValue != null && newValue != _selectedFieldType) {
+      _refreshController.bumpGeneration();
       setState(() {
         _selectedFieldType = newValue;
         _fromValueId = null;
@@ -36,6 +87,9 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   }
 
   void _onFromValueChanged(int? newValue) async {
+    _refreshController.bumpGeneration();
+    final gen = _refreshController.currentGeneration;
+    final field = _selectedFieldType;
     setState(() {
       _fromValueId = newValue;
       _isLoading = true;
@@ -45,8 +99,11 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
     if (newValue != null) {
       final repo = ref.read(personsRepositoryProvider.notifier);
-      final allPersons = await repo.fetchPersons(limit: 10000);
-
+      final allPersons = await repo.fetchPersons(limit: null);
+      if (!mounted ||
+          gen != _refreshController.currentGeneration ||
+          field != _selectedFieldType)
+        return;
       setState(() {
         _matchingPersons = allPersons.where((p) {
           if (_selectedFieldType == 'stage') return p.stageId == newValue;
@@ -419,15 +476,22 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
             spacing: 12,
             runSpacing: 12,
             children: chains.map((chain) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              final chainBg = isDark ? const Color(0xFF1E293B) : Colors.grey.shade100;
+              final chainBorder = isDark ? const Color(0xFF334155) : Colors.grey.shade300;
+              final chipBg = isDark ? const Color(0xFF0F172A) : Colors.white;
+              final chipBorder = isDark ? const Color(0xFF334155) : Colors.grey.shade300;
+              final chipTextColor = isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A);
+
               return Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
+                  color: chainBg,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade300),
+                  border: Border.all(color: chainBorder),
                 ),
                 child: Wrap(
                   crossAxisAlignment: WrapCrossAlignment.center,
@@ -437,14 +501,16 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                       Chip(
                         label: Text(
                           chain[i].name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
+                            color: chipTextColor,
                           ),
                         ),
+                        side: BorderSide(color: chipBorder),
                         padding: EdgeInsets.zero,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        backgroundColor: Colors.white,
+                        backgroundColor: chipBg,
                       ),
                       if (i < chain.length - 1)
                         const Icon(
@@ -736,6 +802,41 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(sourceEpochProvider, (previous, next) {
+      _refreshController.updateEpoch(next);
+      setState(() {
+        _matchingPersons = [];
+        _selectedPersonIds.clear();
+      });
+
+      _refreshController.requestRefresh(immediate: true);
+    });
+    ref.listen(domainRevisionProvider(DataDomain.people), (previous, next) {
+      if (_fromValueId != null) {
+        _refreshController.requestRefresh();
+      }
+    });
+    ref.listen(domainRevisionProvider(DataDomain.stages), (previous, next) {
+      if (_fromValueId != null && _selectedFieldType == 'stage') {
+        _refreshController.requestRefresh();
+      }
+    });
+    ref.listen(domainRevisionProvider(DataDomain.khoros), (previous, next) {
+      if (_fromValueId != null && _selectedFieldType == 'khoros') {
+        _refreshController.requestRefresh();
+      }
+    });
+    ref.listen(domainRevisionProvider(DataDomain.areas), (previous, next) {
+      if (_fromValueId != null && _selectedFieldType == 'area') {
+        _refreshController.requestRefresh();
+      }
+    });
+    ref.listen(domainRevisionProvider(DataDomain.fathers), (previous, next) {
+      if (_fromValueId != null && _selectedFieldType == 'father') {
+        _refreshController.requestRefresh();
+      }
+    });
+
     final db = ref.watch(appDatabaseProvider);
     final stagesAsync = ref.watch(stagesRepositoryProvider);
     final stagesList = stagesAsync.value ?? [];
@@ -783,7 +884,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                                 label: Text(
                                   _selectedPersonIds.length ==
                                           _matchingPersons.length
-                                      ? 'إلغاء التحديد'
+                                      ? 'إلغاء تحديد الكل'
                                       : 'تحديد الكل',
                                 ),
                                 onPressed: () {
@@ -909,52 +1010,58 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     required IconData icon,
     required ValueChanged<int?> onChanged,
   }) {
-    Future<List<dynamic>> itemsFuture;
+    List<dynamic> data = [];
     if (_selectedFieldType == 'stage') {
-      itemsFuture = db.select(db.stages).get();
+      data = ref.watch(stagesRepositoryProvider).value ?? [];
     } else if (_selectedFieldType == 'khoros') {
-      itemsFuture = db.select(db.khoroses).get();
+      data = ref.watch(khorosRepositoryProvider).value ?? [];
     } else if (_selectedFieldType == 'area') {
-      itemsFuture = db.select(db.areas).get();
+      data = ref.watch(area_repo.areasRepositoryProvider).value ?? [];
     } else {
-      itemsFuture = db.select(db.fathers).get();
+      data = ref.watch(fathersRepositoryProvider).value ?? [];
     }
 
-    return FutureBuilder<List<dynamic>>(
-      future: itemsFuture,
-      builder: (_, snap) {
-        final data = snap.data ?? [];
-        return DropdownButtonFormField<int?>(
-          value: value,
-          isExpanded: true,
-          decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
-          items: [
-            const DropdownMenuItem(value: null, child: Text('اختر')),
-            ...data.map((item) {
-              int id;
-              String name;
-              if (item is Stage) {
-                id = item.stageId;
-                name = item.stageName ?? '';
-              } else if (item is Khorose) {
-                id = item.khorosId;
-                name = item.khorosName ?? '';
-              } else if (item is Area) {
-                id = item.areaId;
-                name = item.areaName ?? '';
-              } else if (item is Father) {
-                id = item.fatherId;
-                name = item.fatherName ?? '';
-              } else {
-                id = 0;
-                name = '';
-              }
-              return DropdownMenuItem(value: id, child: Text(name));
-            }),
-          ],
-          onChanged: onChanged,
-        );
-      },
+    return DropdownButtonFormField<int?>(
+      value: value,
+      isExpanded: true,
+      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+      items: [
+        const DropdownMenuItem(value: null, child: Text('اختر')),
+        ...data.map((item) {
+          int id;
+          String name;
+          if (item is StageModel) {
+            id = item.id;
+            name = item.name;
+          } else if (item is Stage) {
+            id = item.stageId;
+            name = item.stageName ?? '';
+          } else if (item is KhorosModel) {
+            id = item.id;
+            name = item.name;
+          } else if (item is Khorose) {
+            id = item.khorosId;
+            name = item.khorosName ?? '';
+          } else if (item is area_repo.Area) {
+            id = item.id;
+            name = item.name;
+          } else if (item is Area) {
+            id = item.areaId;
+            name = item.areaName ?? '';
+          } else if (item is FatherModel) {
+            id = item.id;
+            name = item.name;
+          } else if (item is Father) {
+            id = item.fatherId;
+            name = item.fatherName ?? '';
+          } else {
+            id = 0;
+            name = '';
+          }
+          return DropdownMenuItem(value: id, child: Text(name));
+        }),
+      ],
+      onChanged: onChanged,
     );
   }
 

@@ -14,6 +14,9 @@ import 'package:drift/drift.dart' as drift;
 import '../repositories/settings_repository.dart';
 import '../services/family_report_pdf_generator.dart';
 import '../ui/dialogs/sorting_dialog.dart';
+import '../sync/data_change_domains.dart';
+import '../sync/data_change_coordinator.dart';
+import '../utils/silent_refresh_controller.dart';
 
 class FamilyRelationshipsView extends ConsumerStatefulWidget {
   const FamilyRelationshipsView({super.key});
@@ -26,6 +29,7 @@ class _FamilyRelationshipsViewState extends ConsumerState<FamilyRelationshipsVie
   bool _isLoading = true;
   List<Map<String, dynamic>> _displayGroups = [];
   bool _showFilters = false;
+  late final SilentRefreshController _refreshController;
 
   Future<void> _printReport() async {
     if (_displayGroups.isEmpty) {
@@ -112,12 +116,24 @@ class _FamilyRelationshipsViewState extends ConsumerState<FamilyRelationshipsVie
   @override
   void initState() {
     super.initState();
-    _loadAllRelationships();
+    _refreshController = SilentRefreshController(
+      onRefresh: () => _loadAllRelationships(isSilent: true),
+    );
+    _loadAllRelationships(isSilent: false);
   }
 
-  Future<void> _loadAllRelationships() async {
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAllRelationships({bool isSilent = false}) async {
+    final gen = _refreshController.currentGeneration;
     if (!mounted) return;
-    setState(() => _isLoading = true);
+    if (!isSilent) {
+      setState(() => _isLoading = true);
+    }
     final db = ref.read(appDatabaseProvider);
     final repo = ref.read(personsRepositoryProvider.notifier);
 
@@ -137,8 +153,10 @@ class _FamilyRelationshipsViewState extends ConsumerState<FamilyRelationshipsVie
       includeServices: false,
     );
 
+    if (!mounted || gen != _refreshController.currentGeneration) return;
+
     if (participants.isEmpty) {
-      if (mounted) setState(() { _displayGroups = []; _isLoading = false; });
+      setState(() { _displayGroups = []; _isLoading = false; });
       return;
     }
 
@@ -324,7 +342,7 @@ class _FamilyRelationshipsViewState extends ConsumerState<FamilyRelationshipsVie
       }
     }
 
-    if (mounted) {
+    if (mounted && gen == _refreshController.currentGeneration) {
       setState(() {
         _displayGroups = groups;
         _isLoading = false;
@@ -398,6 +416,19 @@ class _FamilyRelationshipsViewState extends ConsumerState<FamilyRelationshipsVie
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(sourceEpochProvider, (previous, next) {
+      _refreshController.updateEpoch(next);
+      setState(() { _displayGroups = []; });
+      
+      _refreshController.requestRefresh(immediate: true);
+    });
+    ref.listen(domainRevisionProvider(DataDomain.family), (previous, next) {
+      _refreshController.requestRefresh();
+    });
+    ref.listen(domainRevisionProvider(DataDomain.people), (previous, next) {
+      _refreshController.requestRefresh();
+    });
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -597,6 +628,7 @@ class _FamilyRelationshipsViewState extends ConsumerState<FamilyRelationshipsVie
               Expanded(
                 child: TextField(
                   onChanged: (v) {
+                    _refreshController.bumpGeneration();
                     setState(() => _searchQuery = v);
                     _loadAllRelationships();
                   },
@@ -624,6 +656,7 @@ class _FamilyRelationshipsViewState extends ConsumerState<FamilyRelationshipsVie
                   icon: const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.blue),
                   onChanged: (v) {
                     if (v != null) {
+                      _refreshController.bumpGeneration();
                       setState(() => _displayMode = v);
                       _loadAllRelationships();
                     }

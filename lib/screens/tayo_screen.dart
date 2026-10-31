@@ -19,6 +19,9 @@ import '../services/tayo_card_pdf_generator.dart';
 import '../services/tayo_report_pdf_generator.dart';
 import '../ui/dialogs/sorting_dialog.dart';
 import '../services/auth_service.dart';
+import '../sync/data_change_coordinator.dart';
+import '../utils/silent_refresh_controller.dart';
+import '../sync/data_change_domains.dart';
 
 // ─── Main Tayo Screen ──────────────────────────────────
 
@@ -36,12 +39,74 @@ class _TayoScreenState extends ConsumerState<TayoScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Widget _buildTabButton(
+    int index,
+    String label,
+    IconData icon,
+    ColorScheme cs,
+  ) {
+    final isSelected = _tabController.index == index;
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () {
+          _tabController.animateTo(index);
+          setState(() {});
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: isSelected ? cs.primary : Colors.white.withOpacity(0.85),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected
+                      ? cs.primary
+                      : Colors.white.withOpacity(0.85),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -51,45 +116,55 @@ class _TayoScreenState extends ConsumerState<TayoScreen>
       textDirection: TextDirection.rtl,
       child: Column(
         children: [
-          // ─ Header
+          // ─ Compact Modern Header
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [cs.primary, cs.primary.withOpacity(0.85)],
+                colors: [cs.primary, cs.primary.withOpacity(0.9)],
               ),
             ),
-            child: Column(
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.card_giftcard, color: cs.onPrimary, size: 28),
-                    const SizedBox(width: 10),
-                    Text(
-                      'الطايو',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: cs.onPrimary,
-                      ),
-                    ),
-                  ],
+                Icon(Icons.card_giftcard, color: cs.onPrimary, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'الطايو',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onPrimary,
+                  ),
                 ),
-                const SizedBox(height: 12),
-                TabBar(
-                  controller: _tabController,
-                  indicatorColor: Colors.white,
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white60,
-                  tabs: const [
-                    Tab(icon: Icon(Icons.credit_card), text: 'إدارة الكروت'),
-                    Tab(
-                      icon: Icon(Icons.add_circle_outline),
-                      text: 'إضافة نقاط',
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    Tab(icon: Icon(Icons.assessment), text: 'التقارير'),
-                  ],
+                    child: Row(
+                      children: [
+                        _buildTabButton(
+                          0,
+                          'إدارة الكروت',
+                          Icons.credit_card,
+                          cs,
+                        ),
+                        const SizedBox(width: 4),
+                        _buildTabButton(
+                          1,
+                          'إضافة نقاط',
+                          Icons.add_circle_outline,
+                          cs,
+                        ),
+                        const SizedBox(width: 4),
+                        _buildTabButton(2, 'التقارير', Icons.assessment, cs),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -230,63 +305,160 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: cardsAsync.when(
+        skipLoadingOnReload: true,
+        skipError: true,
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('خطأ: $e')),
         data: (cards) => Column(
           children: [
             // Action bar
             Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               child: Wrap(
                 spacing: 8,
-                runSpacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 alignment: WrapAlignment.start,
                 children: [
                   if (canAdd)
                     FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
                       onPressed: () => _showCardDialog(context),
-                      icon: const Icon(Icons.add),
-                      label: const Text('إضافة كارت'),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text(
+                        'إضافة كارت',
+                        style: TextStyle(fontSize: 12),
+                      ),
                     ),
                   if (cards.isNotEmpty)
                     OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
                       onPressed: () => _printCards(cards),
-                      icon: const Icon(Icons.print),
-                      label: const Text('طباعة الكروت'),
+                      icon: const Icon(Icons.print, size: 16),
+                      label: const Text(
+                        'طباعة الكروت',
+                        style: TextStyle(fontSize: 12),
+                      ),
                     ),
                   if (cards.isNotEmpty) ...[
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(value: 'qr', label: Text('QR')),
-                        ButtonSegment(value: 'barcode', label: Text('باركود')),
-                      ],
-                      selected: {_printCodeType},
-                      onSelectionChanged: (v) {
-                        setState(() => _printCodeType = v.first);
-                        _savePrintSettings();
-                      },
+                    SizedBox(
+                      height: 32,
+                      child: SegmentedButton<String>(
+                        style: const ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        segments: const [
+                          ButtonSegment(
+                            value: 'qr',
+                            label: Text('QR', style: TextStyle(fontSize: 11)),
+                          ),
+                          ButtonSegment(
+                            value: 'barcode',
+                            label: Text(
+                              'باركود',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                          ),
+                        ],
+                        selected: {_printCodeType},
+                        onSelectionChanged: (v) {
+                          setState(() => _printCodeType = v.first);
+                          _savePrintSettings();
+                        },
+                      ),
                     ),
                     SizedBox(
-                      width: 100,
+                      width: 75,
+                      height: 32,
                       child: TextField(
                         controller: _colsController,
                         keyboardType: TextInputType.number,
+                        style: const TextStyle(fontSize: 12),
                         decoration: const InputDecoration(
                           labelText: 'الأعمدة',
                           isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
                           border: OutlineInputBorder(),
                         ),
                       ),
                     ),
                     SizedBox(
-                      width: 100,
+                      width: 75,
+                      height: 32,
                       child: TextField(
                         controller: _rowsController,
                         keyboardType: TextInputType.number,
+                        style: const TextStyle(fontSize: 12),
                         decoration: const InputDecoration(
                           labelText: 'الصفوف',
                           isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
                           border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () {
+                        setState(() => _printBackSide = !_printBackSide);
+                        _savePrintSettings();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _printBackSide
+                              ? Colors.blue.withOpacity(0.08)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: _printBackSide
+                                ? Colors.blue
+                                : Colors.grey.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Checkbox(
+                              value: _printBackSide,
+                              onChanged: (val) {
+                                setState(() => _printBackSide = val ?? false);
+                                _savePrintSettings();
+                              },
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            const Text(
+                              'طباعة ظهر الكارنيه',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11.5,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -294,77 +466,75 @@ class _CardsManagementTabState extends ConsumerState<_CardsManagementTab> {
                 ],
               ),
             ),
-            if (cards.isNotEmpty)
+            if (cards.isNotEmpty && _printBackSide)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 4,
+                ),
+                child: Row(
                   children: [
-                    CheckboxListTile(
-                      title: const Text(
-                        'طباعة ظهر الكارنيه',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                    Expanded(
+                      child: SizedBox(
+                        height: 32,
+                        child: TextField(
+                          controller: _backTopTextController,
+                          style: const TextStyle(fontSize: 11.5),
+                          decoration: const InputDecoration(
+                            labelText: 'النص العلوي',
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
                       ),
-                      value: _printBackSide,
-                      onChanged: (val) {
-                        setState(() => _printBackSide = val ?? false);
-                        _savePrintSettings();
-                      },
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
                     ),
-                    if (_printBackSide) ...[
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _backTopTextController,
-                              decoration: const InputDecoration(
-                                labelText: 'النص العلوي',
-                                isDense: true,
-                                border: OutlineInputBorder(),
-                              ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: SizedBox(
+                        height: 32,
+                        child: TextField(
+                          controller: _backBottomTextController,
+                          style: const TextStyle(fontSize: 11.5),
+                          decoration: const InputDecoration(
+                            labelText: 'النص السفلي',
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
                             ),
+                            border: OutlineInputBorder(),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: _backBottomTextController,
-                              decoration: const InputDecoration(
-                                labelText: 'النص السفلي',
-                                isDense: true,
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if (_backLogoBytes != null) ...[
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: Image.memory(
-                                _backLogoBytes!,
-                                width: 40,
-                                height: 40,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                          ],
-                          ElevatedButton.icon(
-                            onPressed: _pickBackLogo,
-                            icon: const Icon(Icons.upload, size: 16),
-                            label: const Text('لوجو الظهر'),
-                          ),
-                          if (_backLogoBytes != null)
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: _deleteBackLogo,
-                              tooltip: 'حذف اللوجو',
-                            ),
-                        ],
+                        ),
                       ),
-                      const SizedBox(height: 8),
+                    ),
+                    const SizedBox(width: 8),
+                    if (_backLogoBytes != null) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.memory(
+                          _backLogoBytes!,
+                          width: 40,
+                          height: 40,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
                     ],
+                    ElevatedButton.icon(
+                      onPressed: _pickBackLogo,
+                      icon: const Icon(Icons.upload, size: 16),
+                      label: const Text('لوجو الظهر'),
+                    ),
+                    if (_backLogoBytes != null)
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: _deleteBackLogo,
+                        tooltip: 'حذف اللوجو',
+                      ),
                   ],
                 ),
               ),
@@ -762,6 +932,16 @@ class _PointsEntryTab extends ConsumerStatefulWidget {
 }
 
 class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
+  int _balanceGeneration = 0;
+  int _logsGeneration = 0;
+  late final SilentRefreshController _pointsRefresh = SilentRefreshController(
+    onRefresh: () async {
+      await Future.wait([
+        _loadRecentLogs(),
+        if (_selectedPerson != null) _loadPersonBalance(),
+      ]);
+    },
+  );
   // Person search
   final _personSearchCtrl = TextEditingController();
   PersonOption? _selectedPerson;
@@ -824,6 +1004,9 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
 
   @override
   void dispose() {
+    _pointsRefresh.dispose();
+    _balanceGeneration++;
+    _logsGeneration++;
     _personSearchCtrl.dispose();
     _cardSearchCtrl.dispose();
     _extraPointsNameCtrl.dispose();
@@ -845,6 +1028,7 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
   }
 
   Future<void> _loadRecentLogs() async {
+    final generation = ++_logsGeneration;
     final logs = await ref
         .read(tayoRepositoryProvider.notifier)
         .getPointLogs(
@@ -854,7 +1038,8 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
           dateFrom: _filterDateFrom,
           dateTo: _filterDateTo,
         );
-    if (mounted) setState(() => _recentLogs = logs);
+    if (mounted && generation == _logsGeneration)
+      setState(() => _recentLogs = logs);
   }
 
   void _selectPersonFromQuery(String value) {
@@ -1072,6 +1257,8 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
 
   Future<void> _loadPersonBalance() async {
     if (_selectedPerson == null) return;
+    final personId = _selectedPerson!.id;
+    final generation = ++_balanceGeneration;
     final balance = await ref
         .read(tayoRepositoryProvider.notifier)
         .getPersonPointBalance(
@@ -1079,7 +1266,10 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
           dateFrom: _balanceDateFrom,
           dateTo: _balanceDateTo,
         );
-    if (mounted) setState(() => _personBalance = balance);
+    if (mounted &&
+        generation == _balanceGeneration &&
+        personId == _selectedPerson?.id)
+      setState(() => _personBalance = balance);
   }
 
   Future<void> _pickBalanceDate({required bool from}) async {
@@ -1388,6 +1578,19 @@ class _PointsEntryTabState extends ConsumerState<_PointsEntryTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(domainRevisionProvider(DataDomain.people), (prev, next) {
+      _loadPersonOptions();
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.attendance), (
+      prev,
+      next,
+    ) {
+      if (_selectedPerson != null) _pointsRefresh.requestRefresh();
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.tayo), (prev, next) {
+      _pointsRefresh.requestRefresh();
+    });
+
     final user = ref.watch(authServiceProvider).value;
     final canAdd =
         user == null ||
@@ -2094,12 +2297,36 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
   int? _areaId;
   DateTime? _dateFrom;
   DateTime? _dateTo;
+  bool _hasReport = false;
+  int _reportGeneration = 0;
+  ({
+    int? stage,
+    int? area,
+    DateTime? from,
+    DateTime? to,
+    bool ascending,
+    bool attendance,
+    List<int> services,
+  })?
+  _executedReportQuery;
+  late final SilentRefreshController _reportRefresh = SilentRefreshController(
+    onRefresh: () async {
+      if (_hasReport) await _search(silent: true);
+    },
+  );
   bool _ascending = false;
   bool _includeAttendancePoints = false;
   List<int> _selectedServiceIds = [];
   List<PersonPointsDTO> _results = [];
   bool _loading = false;
   String _presetLabel = '';
+
+  @override
+  void dispose() {
+    _reportRefresh.dispose();
+    _reportGeneration++;
+    super.dispose();
+  }
 
   void _setPreset(String label, DateTime from, DateTime to) {
     setState(() {
@@ -2109,30 +2336,47 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
     });
   }
 
-  void _search() async {
-    setState(() => _loading = true);
+  Future<void> _search({bool silent = false}) async {
+    if (!silent)
+      _executedReportQuery = (
+        stage: _stageId,
+        area: _areaId,
+        from: _dateFrom,
+        to: _dateTo,
+        ascending: _ascending,
+        attendance: _includeAttendancePoints,
+        services: List.unmodifiable(_selectedServiceIds),
+      );
+    final query = _executedReportQuery;
+    if (query == null) return;
+    final generation = ++_reportGeneration;
+    _hasReport = true;
+    if (!silent) setState(() => _loading = true);
     try {
       final data = await ref
           .read(tayoRepositoryProvider.notifier)
           .getPointsReport(
-            stageId: _stageId,
-            areaId: _areaId,
-            dateFrom: _dateFrom,
-            dateTo: _dateTo,
-            ascending: _ascending,
-            includeAttendance: _includeAttendancePoints,
-            attendanceServiceIds: _selectedServiceIds.isNotEmpty
-                ? _selectedServiceIds
+            stageId: query.stage,
+            areaId: query.area,
+            dateFrom: query.from,
+            dateTo: query.to,
+            ascending: query.ascending,
+            includeAttendance: query.attendance,
+            attendanceServiceIds: query.services.isNotEmpty
+                ? query.services
                 : null,
           );
+      if (!mounted || generation != _reportGeneration) return;
       setState(() => _results = data);
     } catch (e) {
+      if (silent) rethrow;
       if (mounted)
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('خطأ: $e')));
     }
-    setState(() => _loading = false);
+    if (mounted && generation == _reportGeneration)
+      setState(() => _loading = false);
   }
 
   void _exportPdf() async {
@@ -2180,6 +2424,20 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(domainRevisionProvider(DataDomain.tayo), (prev, next) {
+      if (_hasReport) _reportRefresh.requestRefresh();
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.attendance), (
+      prev,
+      next,
+    ) {
+      if (_hasReport && (_executedReportQuery?.attendance ?? false))
+        _reportRefresh.requestRefresh();
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.people), (prev, next) {
+      if (_hasReport) _reportRefresh.requestRefresh();
+    });
+
     final cs = Theme.of(context).colorScheme;
     final now = DateTime.now();
 

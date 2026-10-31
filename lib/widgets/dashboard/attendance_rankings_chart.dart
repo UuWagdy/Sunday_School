@@ -33,6 +33,7 @@ class _AttendanceRankingsWidgetState extends ConsumerState<AttendanceRankingsWid
       limit: _limitCount,
     ));
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
       elevation: 8,
       shadowColor: Colors.black12,
@@ -40,10 +41,16 @@ class _AttendanceRankingsWidgetState extends ConsumerState<AttendanceRankingsWid
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Colors.white, Colors.grey.shade50],
+          color: isDark ? const Color(0xFF151E2E) : null,
+          gradient: isDark
+              ? null
+              : LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Colors.white, Colors.grey.shade50],
+                ),
+          border: Border.all(
+            color: isDark ? const Color(0xFF334155) : Colors.transparent,
           ),
         ),
         padding: const EdgeInsets.all(24.0),
@@ -55,6 +62,8 @@ class _AttendanceRankingsWidgetState extends ConsumerState<AttendanceRankingsWid
             _buildFilters(),
             const SizedBox(height: 24),
             rankingsAsync.when(
+              skipLoadingOnReload: true,
+              skipError: true,
               data: (data) => _buildRankingsList(data),
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, st) => Center(child: Text('خطأ: $e')),
@@ -149,6 +158,7 @@ class _AttendanceRankingsWidgetState extends ConsumerState<AttendanceRankingsWid
   }
 
   Widget _buildDateFilter(String label, DateTime? value, ValueChanged<DateTime?> onChanged) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: () async {
         final d = await showDatePicker(
@@ -163,21 +173,28 @@ class _AttendanceRankingsWidgetState extends ConsumerState<AttendanceRankingsWid
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-           color: Colors.white,
+           color: isDark ? const Color(0xFF1E293B) : Colors.white,
            borderRadius: BorderRadius.circular(12),
-           border: Border.all(color: Colors.grey.shade200),
+           border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.calendar_today, size: 16, color: Theme.of(context).primaryColor),
+            Icon(Icons.calendar_today, size: 16, color: isDark ? const Color(0xFF90CAF9) : Theme.of(context).primaryColor),
             const SizedBox(width: 8),
-            Text(value != null ? "${value.year}/${value.month}/${value.day}" : label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            Text(
+              value != null ? "${value.year}/${value.month}/${value.day}" : label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF1E293B),
+              ),
+            ),
             if (value != null) ...[
               const SizedBox(width: 8),
               InkWell(
                 onTap: () => onChanged(null),
-                child: const Icon(Icons.close, size: 16, color: Colors.grey),
+                child: Icon(Icons.close, size: 16, color: isDark ? const Color(0xFF94A3B8) : Colors.grey),
               )
             ]
           ],
@@ -213,23 +230,25 @@ class _AttendanceRankingsWidgetState extends ConsumerState<AttendanceRankingsWid
   }
 
   Widget _buildDropdown<T>({required T value, required List<DropdownMenuItem<T>> items, required ValueChanged<T?> onChanged, required double width, String? hint}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: width,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
           value: value,
-          hint: hint != null ? Text(hint, style: const TextStyle(fontSize: 12)) : null,
+          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          hint: hint != null ? Text(hint, style: TextStyle(fontSize: 12, color: isDark ? const Color(0xFF94A3B8) : Colors.grey)) : null,
           items: items,
           onChanged: onChanged,
           isExpanded: true,
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 12),
-          icon: const Icon(Icons.keyboard_arrow_down, size: 16),
+          style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? const Color(0xFFF8FAFC) : Colors.black87, fontSize: 12),
+          icon: Icon(Icons.keyboard_arrow_down, size: 16, color: isDark ? const Color(0xFF94A3B8) : Colors.grey),
         ),
       ),
     );
@@ -285,7 +304,7 @@ class _AttendanceRankingsWidgetState extends ConsumerState<AttendanceRankingsWid
                       height: 12,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
+                        color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF334155) : Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(6),
                       ),
                     ),

@@ -62,10 +62,16 @@ class _StatCardWidgetState extends ConsumerState<_StatCardWidget> {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Colors.white, Colors.grey.shade50],
+            color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF151E2E) : null,
+            gradient: Theme.of(context).brightness == Brightness.dark
+                ? null
+                : LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Colors.white, Colors.grey.shade50],
+                  ),
+            border: Border.all(
+              color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF334155) : Colors.transparent,
             ),
           ),
           padding: const EdgeInsets.all(20.0),
@@ -102,6 +108,8 @@ class _StatCardWidgetState extends ConsumerState<_StatCardWidget> {
               ),
               const SizedBox(height: 24),
               asyncData.when(
+                skipLoadingOnReload: true,
+              skipError: true,
                 data: (rawData) {
                   if (rawData.isEmpty) return const SizedBox(height: 200, child: Center(child: Text('لا توجد بيانات')));
                   
@@ -238,7 +246,7 @@ class _StatCardWidgetState extends ConsumerState<_StatCardWidget> {
                   Expanded(
                     child: Stack(
                       children: [
-                        Container(height: 8, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4))),
+                        Container(height: 8, width: double.infinity, decoration: BoxDecoration(color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF334155) : Colors.grey.shade100, borderRadius: BorderRadius.circular(4))),
                         FractionallySizedBox(
                           widthFactor: percentage,
                           child: Container(

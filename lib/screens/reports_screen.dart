@@ -9,6 +9,29 @@ import '../database/database_provider.dart';
 import '../repositories/reports_repository.dart';
 import '../repositories/fields_repository.dart';
 import '../services/report_generator.dart';
+import '../utils/silent_refresh_controller.dart';
+import '../sync/data_change_domains.dart';
+import '../sync/data_change_coordinator.dart';
+
+class _ReportExecutedQuery {
+  final String reportType;
+  final int? stageId;
+  final int? areaId;
+  final int? month;
+  final int? year;
+  final String? status;
+  final Map<int, dynamic> customFilters;
+
+  const _ReportExecutedQuery({
+    required this.reportType,
+    this.stageId,
+    this.areaId,
+    this.month,
+    this.year,
+    this.status,
+    required this.customFilters,
+  });
+}
 
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
@@ -30,35 +53,113 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   bool _isLoading = false;
   bool _showPdfInsteadOfCards = false;
 
+  _ReportExecutedQuery? _lastExecutedQuery;
+  Future<Uint8List>? _pdfFuture;
+  Uint8List? _previousPdf;
+  int _pdfEpoch = 0;
+  int _pdfVersion = 0;
+  late final SilentRefreshController _refreshController;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshController = SilentRefreshController(
+      debounceDuration: const Duration(milliseconds: 300),
+      onRefresh: () async {
+        final q = _lastExecutedQuery;
+        final generation = _refreshController.currentGeneration;
+        if (q == null || !mounted) return;
+        final db = ref.read(appDatabaseProvider);
+        try {
+          List<dynamic> results = [];
+          if (q.reportType == 'persons') {
+            results = await _fetchPersonsData(db, q);
+          } else if (q.reportType == 'attendance') {
+            results = await _fetchAttendanceData(db, q);
+          } else {
+            results = await _fetchStatisticsData(db);
+          }
+          if (mounted &&
+              generation == _refreshController.currentGeneration &&
+              identical(q, _lastExecutedQuery)) {
+            setState(() {
+              _pdfFuture = null;
+              _reportResults = results;
+              _pdfVersion++;
+            });
+          }
+        } catch (error) {
+          debugPrint('تعذر تحديث التقرير في الخلفية: $error');
+          rethrow;
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(sourceEpochProvider, (previous, next) {
+      _refreshController.updateEpoch(next);
+      setState(() {
+        _reportResults = [];
+        _pdfFuture = null;
+        _previousPdf = null;
+        _pdfEpoch++;
+      });
+
+      _refreshController.requestRefresh(immediate: true);
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.reports), (prev, next) {
+      if (prev != null && prev != next) _refreshController.requestRefresh();
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.people), (prev, next) {
+      if (prev != null && prev != next) _refreshController.requestRefresh();
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.attendance), (
+      prev,
+      next,
+    ) {
+      if (prev != null && prev != next) _refreshController.requestRefresh();
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.fields), (prev, next) {
+      if (prev != null && prev != next) _refreshController.requestRefresh();
+    });
+
     final isMobile = MediaQuery.of(context).size.width < 600;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: isMobile 
-            ? Column(
-                children: [
-                   Expanded(
-                     child: SingleChildScrollView(
-                       child: Column(
-                         crossAxisAlignment: CrossAxisAlignment.stretch,
-                         children: [
-                           _buildHeader(),
-                           const SizedBox(height: 20),
-                           _buildReportTypeSelector(),
-                           const SizedBox(height: 16),
-                           _buildFiltersArea(),
-                           const SizedBox(height: 16),
-                           Container(
+          child: isMobile
+              ? Column(
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildHeader(),
+                            const SizedBox(height: 20),
+                            _buildReportTypeSelector(),
+                            const SizedBox(height: 16),
+                            _buildFiltersArea(),
+                            const SizedBox(height: 16),
+                            Container(
                               height: 400, // Give results some space
                               clipBehavior: Clip.antiAlias,
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: isDark ? const Color(0xFF151E2E) : Colors.white,
                                 borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.transparent),
                                 boxShadow: [
                                   BoxShadow(
                                     color: Colors.black.withOpacity(0.05),
@@ -67,42 +168,47 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                   ),
                                 ],
                               ),
-                              child: _showPdfInsteadOfCards ? _buildPdfPreview() : _buildResultsView(),
+                              child: _showPdfInsteadOfCards
+                                  ? _buildPdfPreview()
+                                  : _buildResultsView(),
                             ),
-                         ],
-                       ),
-                     ),
-                   ),
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(),
-                  const SizedBox(height: 20),
-                  _buildReportTypeSelector(),
-                  const SizedBox(height: 16),
-                  _buildFiltersArea(),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: Container(
-                      clipBehavior: Clip.antiAlias,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                      child: _showPdfInsteadOfCards ? _buildPdfPreview() : _buildResultsView(),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(),
+                    const SizedBox(height: 20),
+                    _buildReportTypeSelector(),
+                    const SizedBox(height: 16),
+                    _buildFiltersArea(),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: Container(
+                        clipBehavior: Clip.antiAlias,
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF151E2E) : Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.transparent),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: _showPdfInsteadOfCards
+                            ? _buildPdfPreview()
+                            : _buildResultsView(),
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );
@@ -115,23 +221,26 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         Expanded(
           child: Row(
             children: [
-               Image.asset('assets/logo.png', height: 40),
-               const SizedBox(width: 12),
-               Expanded(
-                 child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'التقارير والاستخراج',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).primaryColor,
-                            ),
+              Image.asset('assets/logo.png', height: 28),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Row(
+                  children: [
+                    Text(
+                      'التقارير والاستخراج',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).primaryColor,
                       ),
-                      Text('إصدار كشوف البيانات وسجلات الحضور', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                    ],
-                  ),
-               ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'إصدار كشوف البيانات وسجلات الحضور',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -139,19 +248,33 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           Row(
             children: [
               IconButton(
-                onPressed: () => setState(() => _showPdfInsteadOfCards = !_showPdfInsteadOfCards),
-                icon: Icon(_showPdfInsteadOfCards ? Icons.grid_view : Icons.picture_as_pdf, color: Theme.of(context).primaryColor),
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(4),
+                onPressed: () => setState(
+                  () => _showPdfInsteadOfCards = !_showPdfInsteadOfCards,
+                ),
+                icon: Icon(
+                  _showPdfInsteadOfCards
+                      ? Icons.grid_view
+                      : Icons.picture_as_pdf,
+                  color: Theme.of(context).primaryColor,
+                  size: 20,
+                ),
                 tooltip: _showPdfInsteadOfCards ? 'عرض كروت' : 'معاينة PDF',
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               ElevatedButton.icon(
                 onPressed: _printReport,
-                icon: const Icon(Icons.print, size: 20),
-                label: const Text('طباعة'),
+                icon: const Icon(Icons.print, size: 16),
+                label: const Text('طباعة', style: TextStyle(fontSize: 12)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.secondary,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  visualDensity: VisualDensity.compact,
                 ),
               ),
             ],
@@ -168,13 +291,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     ];
 
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(16),
+        color: const Color(0xFFE2E8F0),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
       ),
       child: Row(
-        children: types.map((type) => Expanded(child: _buildTypeItem(type))).toList(),
+        children: types
+            .map((type) => Expanded(child: _buildTypeItem(type)))
+            .toList(),
       ),
     );
   }
@@ -183,6 +309,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final isSelected = _selectedReport == type.id;
     return GestureDetector(
       onTap: () => setState(() {
+        _refreshController.bumpGeneration();
+        _lastExecutedQuery = null;
+        _pdfFuture = null;
+        _previousPdf = null;
         _selectedReport = type.id;
         _selectedStageId = null;
         _selectedAreaId = null;
@@ -194,36 +324,36 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         _showPdfInsteadOfCards = false;
       }),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? Theme.of(context).primaryColor : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          color: isSelected ? const Color(0xFF1D4ED8) : Colors.transparent,
+          borderRadius: BorderRadius.circular(7),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Theme.of(context).primaryColor.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  )
+                    color: const Color(0xFF1D4ED8).withOpacity(0.25),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
                 ]
               : null,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               type.icon,
-              size: 20,
-              color: isSelected ? Colors.white : Colors.grey[600],
+              size: 16,
+              color: isSelected ? Colors.white : const Color(0xFF475569),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(width: 6),
             Text(
               type.label,
               style: TextStyle(
                 fontSize: 12,
-                color: isSelected ? Colors.white : Colors.grey[700],
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? Colors.white : const Color(0xFF334155),
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
               ),
             ),
           ],
@@ -258,7 +388,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     // Add Dynamic Custom Filters
     final fieldsAsync = ref.watch(fieldsRepositoryProvider);
     if (fieldsAsync.hasValue) {
-      final fields = fieldsAsync.value!.where((f) => f.isFilter && f.type != 'native').toList();
+      final fields = fieldsAsync.value!
+          .where((f) => f.isFilter && f.type != 'native')
+          .toList();
       for (final f in fields) {
         if (f.type == 'multi_select') {
           filterWidgets.add(const SizedBox(height: 12));
@@ -284,9 +416,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               )
             : Row(
                 children: [
-                  const Icon(Icons.filter_alt_outlined, size: 20, color: Colors.grey),
+                  const Icon(
+                    Icons.filter_alt_outlined,
+                    size: 20,
+                    color: Colors.grey,
+                  ),
                   const SizedBox(width: 12),
-                  ...filterWidgets.map((w) => w is Expanded ? w : (w is SizedBox ? w : Expanded(child: w))),
+                  ...filterWidgets.map(
+                    (w) => w is Expanded
+                        ? w
+                        : (w is SizedBox ? w : Expanded(child: w)),
+                  ),
                   const SizedBox(width: 16),
                   _buildSearchButton(),
                 ],
@@ -300,13 +440,26 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       future: db.select(db.stages).get(),
       builder: (context, snapshot) {
         final stages = snapshot.data ?? [];
-        final hasSelected = _selectedStageId == null || stages.any((s) => s.stageId == _selectedStageId);
+        final hasSelected =
+            _selectedStageId == null ||
+            stages.any((s) => s.stageId == _selectedStageId);
         return DropdownButtonFormField<int?>(
           value: hasSelected ? _selectedStageId : null,
-          decoration: const InputDecoration(labelText: 'تصفية بالمرحلة', isDense: true),
+          decoration: const InputDecoration(
+            labelText: 'تصفية بالمرحلة',
+            isDense: true,
+          ),
           items: [
-            const DropdownMenuItem<int?>(value: null, child: Text('كل المراحل')),
-            ...stages.map((s) => DropdownMenuItem<int?>(value: s.stageId, child: Text(s.stageName ?? ''))),
+            const DropdownMenuItem<int?>(
+              value: null,
+              child: Text('كل المراحل'),
+            ),
+            ...stages.map(
+              (s) => DropdownMenuItem<int?>(
+                value: s.stageId,
+                child: Text(s.stageName ?? ''),
+              ),
+            ),
           ],
           onChanged: (val) => setState(() => _selectedStageId = val),
         );
@@ -319,13 +472,26 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       future: db.select(db.areas).get(),
       builder: (context, snapshot) {
         final areas = snapshot.data ?? [];
-        final hasSelected = _selectedAreaId == null || areas.any((a) => a.areaId == _selectedAreaId);
+        final hasSelected =
+            _selectedAreaId == null ||
+            areas.any((a) => a.areaId == _selectedAreaId);
         return DropdownButtonFormField<int?>(
           value: hasSelected ? _selectedAreaId : null,
-          decoration: const InputDecoration(labelText: 'تصفية بالمنطقة', isDense: true),
+          decoration: const InputDecoration(
+            labelText: 'تصفية بالمنطقة',
+            isDense: true,
+          ),
           items: [
-            const DropdownMenuItem<int?>(value: null, child: Text('كل المناطق')),
-            ...areas.map((a) => DropdownMenuItem<int?>(value: a.areaId, child: Text(a.areaName ?? ''))),
+            const DropdownMenuItem<int?>(
+              value: null,
+              child: Text('كل المناطق'),
+            ),
+            ...areas.map(
+              (a) => DropdownMenuItem<int?>(
+                value: a.areaId,
+                child: Text(a.areaName ?? ''),
+              ),
+            ),
           ],
           onChanged: (val) => setState(() => _selectedAreaId = val),
         );
@@ -336,10 +502,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   Widget _buildMonthFilter(bool isMobile) {
     return DropdownButtonFormField<int?>(
       value: _selectedMonth,
-      decoration: const InputDecoration(labelText: 'تصفية بالشهر', isDense: true),
+      decoration: const InputDecoration(
+        labelText: 'تصفية بالشهر',
+        isDense: true,
+      ),
       items: [
         const DropdownMenuItem<int?>(value: null, child: Text('كل الشهور')),
-        ...List.generate(12, (i) => DropdownMenuItem<int?>(value: i + 1, child: Text('شهر ${i + 1}'))),
+        ...List.generate(
+          12,
+          (i) =>
+              DropdownMenuItem<int?>(value: i + 1, child: Text('شهر ${i + 1}')),
+        ),
       ],
       onChanged: (val) => setState(() => _selectedMonth = val),
     );
@@ -348,7 +521,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   Widget _buildYearFilter(bool isMobile) {
     return DropdownButtonFormField<int?>(
       value: _selectedYear,
-      decoration: const InputDecoration(labelText: 'تصفية بالسنة', isDense: true),
+      decoration: const InputDecoration(
+        labelText: 'تصفية بالسنة',
+        isDense: true,
+      ),
       items: [
         const DropdownMenuItem<int?>(value: null, child: Text('كل السنوات')),
         ...List.generate(10, (i) {
@@ -366,9 +542,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         decoration: InputDecoration(
           labelText: f.name,
           isDense: true,
-          suffixIcon: _customFilters[f.id]?.isNotEmpty == true 
-            ? IconButton(icon: const Icon(Icons.clear, size: 16), onPressed: () => setState(() => _customFilters.remove(f.id)))
-            : null,
+          suffixIcon: _customFilters[f.id]?.isNotEmpty == true
+              ? IconButton(
+                  icon: const Icon(Icons.clear, size: 16),
+                  onPressed: () => setState(() => _customFilters.remove(f.id)),
+                )
+              : null,
         ),
         onSubmitted: (v) => setState(() => _customFilters[f.id] = v),
       );
@@ -379,17 +558,28 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         decoration: InputDecoration(labelText: f.name, isDense: true),
         items: [
           DropdownMenuItem(value: null, child: Text('كل ${f.name}')),
-          ...(((f.options as List<dynamic>?) ?? []).map((opt) => DropdownMenuItem(value: opt.toString(), child: Text(opt.toString())))),
+          ...(((f.options as List<dynamic>?) ?? []).map(
+            (opt) => DropdownMenuItem(
+              value: opt.toString(),
+              child: Text(opt.toString()),
+            ),
+          )),
         ],
         onChanged: (v) => setState(() {
-          if (v == null) _customFilters.remove(f.id);
-          else _customFilters[f.id] = v;
+          if (v == null)
+            _customFilters.remove(f.id);
+          else
+            _customFilters[f.id] = v;
         }),
       );
     } else if (f.type == 'checkbox') {
       final optionsList = (f.options as List<dynamic>?) ?? [];
-      final trueLabel = optionsList.isNotEmpty ? optionsList[0].toString() : 'نعم';
-      final falseLabel = optionsList.length > 1 ? optionsList[1].toString() : 'لا';
+      final trueLabel = optionsList.isNotEmpty
+          ? optionsList[0].toString()
+          : 'نعم';
+      final falseLabel = optionsList.length > 1
+          ? optionsList[1].toString()
+          : 'لا';
       return DropdownButtonFormField<String?>(
         value: _customFilters[f.id] as String?,
         isExpanded: true,
@@ -399,7 +589,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           DropdownMenuItem(value: 'true', child: Text(trueLabel)),
           DropdownMenuItem(value: 'false', child: Text(falseLabel)),
         ],
-        onChanged: (v) => setState(() { if (v == null) _customFilters.remove(f.id); else _customFilters[f.id] = v; }),
+        onChanged: (v) => setState(() {
+          if (v == null)
+            _customFilters.remove(f.id);
+          else
+            _customFilters[f.id] = v;
+        }),
       );
     } else if (f.type == 'document') {
       return DropdownButtonFormField<String?>(
@@ -409,9 +604,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         items: [
           DropdownMenuItem(value: null, child: Text('كل ${f.name}')),
           const DropdownMenuItem(value: 'has_files', child: Text('يوجد ملفات')),
-          const DropdownMenuItem(value: 'no_files', child: Text('لا يوجد ملفات')),
+          const DropdownMenuItem(
+            value: 'no_files',
+            child: Text('لا يوجد ملفات'),
+          ),
         ],
-        onChanged: (v) => setState(() { if (v == null) _customFilters.remove(f.id); else _customFilters[f.id] = v; }),
+        onChanged: (v) => setState(() {
+          if (v == null)
+            _customFilters.remove(f.id);
+          else
+            _customFilters[f.id] = v;
+        }),
       );
     } else {
       return const SizedBox.shrink();
@@ -423,7 +626,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(f.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+        Text(
+          f.name,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.blueGrey,
+          ),
+        ),
         const SizedBox(height: 4),
         Wrap(
           spacing: 4,
@@ -432,7 +642,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             final opt = optDyn.toString();
             final isSelected = selected.contains(opt);
             return FilterChip(
-              label: Text(opt, style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : Colors.black87)),
+              label: Text(
+                opt,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isSelected ? Colors.white : Colors.black87,
+                ),
+              ),
               selected: isSelected,
               selectedColor: Theme.of(context).primaryColor,
               checkmarkColor: Colors.white,
@@ -441,10 +657,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               onSelected: (val) {
                 setState(() {
                   final newList = List<String>.from(selected);
-                  if (val) newList.add(opt);
-                  else newList.remove(opt);
-                  if (newList.isEmpty) _customFilters.remove(f.id);
-                  else _customFilters[f.id] = newList;
+                  if (val)
+                    newList.add(opt);
+                  else
+                    newList.remove(opt);
+                  if (newList.isEmpty)
+                    _customFilters.remove(f.id);
+                  else
+                    _customFilters[f.id] = newList;
                 });
               },
             );
@@ -457,7 +677,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   Widget _buildStatusFilter(bool isMobile) {
     return DropdownButtonFormField<String>(
       value: _selectedStatus,
-      decoration: const InputDecoration(labelText: 'تصفية بالحالة', isDense: true),
+      decoration: const InputDecoration(
+        labelText: 'تصفية بالحالة',
+        isDense: true,
+      ),
       items: const [
         DropdownMenuItem(value: 'all', child: Text('الكل')),
         DropdownMenuItem(value: 'present', child: Text('الحاضرين')),
@@ -474,52 +697,97 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   Widget _buildSearchButton() {
     return FilledButton.icon(
       onPressed: _isLoading ? null : _onSearch,
-      icon: _isLoading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.search),
+      icon: _isLoading
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.search),
       label: const Text('بحث'),
     );
   }
 
   Future<void> _onSearch() async {
+    _refreshController.bumpGeneration();
+    final generation = _refreshController.currentGeneration;
+    final q = _ReportExecutedQuery(
+      reportType: _selectedReport,
+      stageId: _selectedStageId,
+      areaId: _selectedAreaId,
+      month: _selectedMonth,
+      year: _selectedYear,
+      status: _selectedStatus,
+      customFilters: Map.from(_customFilters),
+    );
+    _lastExecutedQuery = q;
+    _previousPdf = null;
+    _pdfEpoch++;
     setState(() => _isLoading = true);
-    final db = ref.read(appDatabaseProvider);
-    
     try {
-      List<dynamic> results = [];
-      if (_selectedReport == 'persons') {
-        results = await _fetchPersonsData(db);
-      } else if (_selectedReport == 'attendance') {
-        results = await _fetchAttendanceData(db);
-      } else {
-        results = await _fetchStatisticsData(db);
-      }
-      
+      final db = ref.read(appDatabaseProvider);
+      final List<dynamic> results = q.reportType == 'persons'
+          ? await _fetchPersonsData(db, q)
+          : q.reportType == 'attendance'
+          ? await _fetchAttendanceData(db, q)
+          : await _fetchStatisticsData(db);
+      if (!mounted || generation != _refreshController.currentGeneration)
+        return;
       setState(() {
         _reportResults = results;
+        _pdfVersion++;
         _isLoading = false;
         _showPdfInsteadOfCards = false;
+        _pdfFuture = null;
       });
     } catch (e) {
+      if (!mounted || generation != _refreshController.currentGeneration)
+        return;
       setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء البحث: $e')));
-      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطأ أثناء البحث: $e')));
     }
   }
 
   Future<void> _printReport() async {
-    final db = ref.read(appDatabaseProvider);
+    if (_lastExecutedQuery == null || _reportResults.isEmpty) return;
+    final snapshot = _pdfFuture ??= _renderPdfSnapshot(
+      _lastExecutedQuery!.reportType,
+      List.from(_reportResults),
+    );
+    final bytes = await snapshot;
+    if (mounted) await Printing.layoutPdf(onLayout: (_) async => bytes);
+  }
+
+  Future<Uint8List> _renderPdfSnapshot(String type, List<dynamic> rows) async {
+    final generation = _refreshController.currentGeneration;
+    final version = _pdfVersion;
+    final fields = ref.read(fieldsRepositoryProvider).value ?? [];
+    final labels = {
+      for (final f in fields)
+        if (f.fieldKey != null) f.fieldKey!: f.name,
+    };
     await ReportGenerator.loadFonts();
-    
-    late Uint8List pdfBytes;
-    if (_selectedReport == 'persons') {
-      pdfBytes = await _buildPersonsPdf(db);
-    } else if (_selectedReport == 'attendance') {
-      pdfBytes = await _buildAttendancePdf(db);
-    } else {
-      pdfBytes = await _buildStatisticsPdf(db);
-    }
-    
-    await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
+    final doc = type == 'persons'
+        ? ReportGenerator.generatePersonsReport(
+            rows.cast<PersonReportDTO>(),
+            dynamicLabels: labels,
+          )
+        : type == 'attendance'
+        ? ReportGenerator.generateAttendanceReport(
+            rows.cast<AttendanceReportDTO>(),
+          )
+        : ReportGenerator.generateStatisticsReport(rows.cast<StageStatDTO>());
+    final bytes = await doc.save();
+    if (mounted &&
+        generation == _refreshController.currentGeneration &&
+        version == _pdfVersion)
+      _previousPdf = bytes;
+    return bytes;
   }
 
   Widget _buildResultsView() {
@@ -531,7 +799,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           children: [
             Icon(Icons.search_off_outlined, size: 64, color: Colors.grey[300]),
             const SizedBox(height: 16),
-            const Text('لا توجد نتائج. اضغط بحث لعرض البيانات.', style: TextStyle(color: Colors.grey)),
+            const Text(
+              'لا توجد نتائج. اضغط بحث لعرض البيانات.',
+              style: TextStyle(color: Colors.grey),
+            ),
           ],
         ),
       );
@@ -562,7 +833,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
           child: Icon(Icons.person, color: Theme.of(context).primaryColor),
         ),
-        title: Text(p.personName ?? 'بدون اسم', style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          p.personName ?? 'بدون اسم',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -570,15 +844,24 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               children: [
                 Icon(Icons.school_outlined, size: 14, color: Colors.grey[600]),
                 const SizedBox(width: 4),
-                Text(p.stageName ?? 'غير محدد', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                Text(
+                  p.stageName ?? 'غير محدد',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
                 const SizedBox(width: 12),
                 Icon(Icons.map_outlined, size: 14, color: Colors.grey[600]),
                 const SizedBox(width: 4),
-                Text(p.areaName ?? 'غير محدد', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                Text(
+                  p.areaName ?? 'غير محدد',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
               ],
             ),
             if (p.mobile != null && p.mobile!.isNotEmpty)
-              Text('موبايل: ${p.mobile}', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+              Text(
+                'موبايل: ${p.mobile}',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
           ],
         ),
       ),
@@ -590,18 +873,36 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
-          child: Icon(Icons.event_available, color: Theme.of(context).colorScheme.secondary),
+          backgroundColor: Theme.of(
+            context,
+          ).colorScheme.secondary.withOpacity(0.1),
+          child: Icon(
+            Icons.event_available,
+            color: Theme.of(context).colorScheme.secondary,
+          ),
         ),
-        title: Text(a.personName ?? 'بدون اسم', style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text('التاريخ: ${a.dateWeek} | النقاط: ${a.point} | السلوك: ${a.behavior ?? 5}', style: TextStyle(color: Colors.grey[600])),
+        title: Text(
+          a.personName ?? 'بدون اسم',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          'التاريخ: ${a.dateWeek} | النقاط: ${a.point} | السلوك: ${a.behavior ?? 5}',
+          style: TextStyle(color: Colors.grey[600]),
+        ),
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             color: Theme.of(context).primaryColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: Text('${a.month}/${a.year}', style: TextStyle(color: Theme.of(context).primaryColor, fontSize: 12, fontWeight: FontWeight.bold)),
+          child: Text(
+            '${a.month}/${a.year}',
+            style: TextStyle(
+              color: Theme.of(context).primaryColor,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
       ),
     );
@@ -612,148 +913,75 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
         leading: const Icon(Icons.analytics_outlined, color: Colors.blue),
-        title: Text(s.stageName ?? 'غير محدد', style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          s.stageName ?? 'غير محدد',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color: Colors.blue.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Text('${s.count} شخص', style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+          child: Text(
+            '${s.count} شخص',
+            style: const TextStyle(
+              color: Colors.blue,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
       ),
     );
   }
 
   Widget _buildPdfPreview() {
-    final db = ref.watch(appDatabaseProvider);
-
-    switch (_selectedReport) {
-      case 'persons':
-        return FutureBuilder<Uint8List>(
-          future: _buildPersonsPdf(db),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(child: Text('خطأ: ${snapshot.error}'));
-            }
-            final pdfBytes = snapshot.data;
-            if (pdfBytes == null) {
-              return const Center(child: Text('لا توجد بيانات'));
-            }
-            return PdfPreview(
-              build: (format) async => pdfBytes,
-              canChangeOrientation: false,
-              canChangePageFormat: false,
-              maxPageWidth: 700,
-              pdfFileName: 'persons_report.pdf',
-              actions: [
-                PdfPreviewAction(
-                  icon: const Icon(Icons.save),
-                  onPressed: (context, build, format) async {
-                    // Save functionality could be added here
-                  },
-                ),
-              ],
-            );
-          },
+    final q = _lastExecutedQuery;
+    if (q == null) return const Center(child: Text('نفّذ البحث أولًا'));
+    _pdfFuture ??= _renderPdfSnapshot(q.reportType, List.from(_reportResults));
+    return FutureBuilder<Uint8List>(
+      key: ValueKey(_pdfEpoch),
+      future: _pdfFuture,
+      builder: (context, snapshot) {
+        final bytes = snapshot.data ?? _previousPdf;
+        if (bytes == null) {
+          if (snapshot.hasError)
+            return const Center(child: Text('تعذر تجهيز المعاينة'));
+          return const Center(child: CircularProgressIndicator());
+        }
+        return PdfPreview(
+          build: (_) async => bytes,
+          canChangeOrientation: false,
+          canChangePageFormat: false,
+          maxPageWidth: 700,
+          pdfFileName: '${q.reportType}_report.pdf',
         );
-      case 'attendance':
-        return FutureBuilder<Uint8List>(
-          future: _buildAttendancePdf(db),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(child: Text('خطأ: ${snapshot.error}'));
-            }
-            final pdfBytes = snapshot.data;
-            if (pdfBytes == null) {
-              return const Center(child: Text('لا توجد بيانات'));
-            }
-            return PdfPreview(
-              build: (format) async => pdfBytes,
-              canChangeOrientation: false,
-              canChangePageFormat: false,
-              maxPageWidth: 700,
-              pdfFileName: 'attendance_report.pdf',
-            );
-          },
-        );
-      case 'statistics':
-        return FutureBuilder<Uint8List>(
-          future: _buildStatisticsPdf(db),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(child: Text('خطأ: ${snapshot.error}'));
-            }
-            final pdfBytes = snapshot.data;
-            if (pdfBytes == null) {
-              return const Center(child: Text('لا توجد بيانات'));
-            }
-            return PdfPreview(
-              build: (format) async => pdfBytes,
-              canChangeOrientation: false,
-              canChangePageFormat: false,
-              maxPageWidth: 700,
-              pdfFileName: 'statistics_report.pdf',
-            );
-          },
-        );
-      default:
-        return const Center(child: Text('اختر نوع التقرير'));
-    }
+      },
+    );
   }
 
-  Future<Uint8List> _buildPersonsPdf(AppDatabase db) async {
-    await ReportGenerator.loadFonts();
-    final data = await _fetchPersonsData(db);
-    if (data.isEmpty) throw Exception('لا توجد بيانات');
-    
-    final fields = ref.read(fieldsRepositoryProvider).asData?.value ?? [];
-    final labels = {for (var f in fields) if (f.fieldKey != null) f.fieldKey!: f.name};
-
-    final doc = ReportGenerator.generatePersonsReport(data, dynamicLabels: labels);
-    return doc.save();
-  }
-
-  Future<Uint8List> _buildAttendancePdf(AppDatabase db) async {
-    await ReportGenerator.loadFonts();
-    final data = await _fetchAttendanceData(db);
-    if (data.isEmpty) throw Exception('لا توجد بيانات');
-    final doc = ReportGenerator.generateAttendanceReport(data);
-    return doc.save();
-  }
-
-  Future<Uint8List> _buildStatisticsPdf(AppDatabase db) async {
-    await ReportGenerator.loadFonts();
-    final data = await _fetchStatisticsData(db);
-    if (data.isEmpty) throw Exception('لا توجد بيانات');
-    final doc = ReportGenerator.generateStatisticsReport(data);
-    return doc.save();
-  }
-
-  Future<List<PersonReportDTO>> _fetchPersonsData(AppDatabase db) async {
+  Future<List<PersonReportDTO>> _fetchPersonsData(
+    AppDatabase db, [
+    _ReportExecutedQuery? q,
+  ]) async {
     final query = db.select(db.persons).join([
       leftOuterJoin(db.stages, db.stages.stageId.equalsExp(db.persons.stageId)),
       leftOuterJoin(db.areas, db.areas.areaId.equalsExp(db.persons.areaId)),
     ]);
 
-    if (_selectedStageId != null) {
-      query.where(db.persons.stageId.equals(_selectedStageId!));
+    final stageId = q != null ? q.stageId : _selectedStageId;
+    final areaId = q != null ? q.areaId : _selectedAreaId;
+    final filters = q != null ? q.customFilters : _customFilters;
+
+    if (stageId != null) {
+      query.where(db.persons.stageId.equals(stageId));
     }
-    if (_selectedAreaId != null) {
-      query.where(db.persons.areaId.equals(_selectedAreaId!));
+    if (areaId != null) {
+      query.where(db.persons.areaId.equals(areaId));
     }
 
     // Custom Filters
-    for (final entry in _customFilters.entries) {
+    for (final entry in filters.entries) {
       final val = entry.value;
       if (val == null) continue;
 
@@ -762,15 +990,38 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ..addColumns([db.personDocuments.personId])
           ..where(db.personDocuments.fieldId.equals(entry.key));
         if (val == 'has_files') {
-          query.where(existsQuery(sub..where(db.personDocuments.personId.equalsExp(db.persons.personId))));
+          query.where(
+            existsQuery(
+              sub..where(
+                db.personDocuments.personId.equalsExp(db.persons.personId),
+              ),
+            ),
+          );
         } else {
-          query.where(notExistsQuery(sub..where(db.personDocuments.personId.equalsExp(db.persons.personId))));
+          query.where(
+            notExistsQuery(
+              sub..where(
+                db.personDocuments.personId.equalsExp(db.persons.personId),
+              ),
+            ),
+          );
         }
       } else if (val is String && val.isNotEmpty) {
         final sub = db.selectOnly(db.personCustomFieldValues)
           ..addColumns([db.personCustomFieldValues.personId])
-          ..where(db.personCustomFieldValues.fieldId.equals(entry.key) & db.personCustomFieldValues.value.equals(val));
-        query.where(existsQuery(sub..where(db.personCustomFieldValues.personId.equalsExp(db.persons.personId))));
+          ..where(
+            db.personCustomFieldValues.fieldId.equals(entry.key) &
+                db.personCustomFieldValues.value.equals(val),
+          );
+        query.where(
+          existsQuery(
+            sub..where(
+              db.personCustomFieldValues.personId.equalsExp(
+                db.persons.personId,
+              ),
+            ),
+          ),
+        );
       } else if (val is List<String> && val.isNotEmpty) {
         final sub = db.selectOnly(db.personCustomFieldValues)
           ..addColumns([db.personCustomFieldValues.personId]);
@@ -778,8 +1029,18 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         for (final opt in val) {
           orExpr = orExpr | db.personCustomFieldValues.value.like('%$opt%');
         }
-        sub.where(db.personCustomFieldValues.fieldId.equals(entry.key) & orExpr);
-        query.where(existsQuery(sub..where(db.personCustomFieldValues.personId.equalsExp(db.persons.personId))));
+        sub.where(
+          db.personCustomFieldValues.fieldId.equals(entry.key) & orExpr,
+        );
+        query.where(
+          existsQuery(
+            sub..where(
+              db.personCustomFieldValues.personId.equalsExp(
+                db.persons.personId,
+              ),
+            ),
+          ),
+        );
       }
     }
 
@@ -801,30 +1062,43 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     }).toList();
   }
 
-  Future<List<AttendanceReportDTO>> _fetchAttendanceData(AppDatabase db) async {
+  Future<List<AttendanceReportDTO>> _fetchAttendanceData(
+    AppDatabase db, [
+    _ReportExecutedQuery? q,
+  ]) async {
     final query = db.select(db.coming).join([
-      leftOuterJoin(db.persons, db.persons.personId.equalsExp(db.coming.personId)),
+      leftOuterJoin(
+        db.persons,
+        db.persons.personId.equalsExp(db.coming.personId),
+      ),
     ]);
 
-    if (_selectedMonth != null) {
-      query.where(db.coming.mont1.equals(_selectedMonth!));
+    final month = q != null ? q.month : _selectedMonth;
+    final year = q != null ? q.year : _selectedYear;
+    final status = q != null ? q.status : _selectedStatus;
+    final filters = q != null ? q.customFilters : _customFilters;
+
+    if (month != null) {
+      query.where(db.coming.mont1.equals(month));
     }
-    if (_selectedYear != null) {
-      query.where(db.coming.year1.equals(_selectedYear!));
+    if (year != null) {
+      query.where(db.coming.year1.equals(year));
     }
-    
-    if (_selectedStatus != null && _selectedStatus != 'all' && _selectedStatus != 'present') {
-      if (_selectedStatus == 'checked_out') {
+
+    if (status != null && status != 'all' && status != 'present') {
+      if (status == 'checked_out') {
         query.where(db.coming.checkoutTime.isNotNull());
-      } else if (_selectedStatus == 'complete') {
-        query.where(db.coming.checkoutTime.isNotNull() & db.coming.attendTime.isNotNull());
+      } else if (status == 'complete') {
+        query.where(
+          db.coming.checkoutTime.isNotNull() & db.coming.attendTime.isNotNull(),
+        );
       }
     }
 
     // Custom Filters (Join with persons already done implicity in attendance query logic if needed)
     // Here we need to join with persons to apply demographic custom filters if we are in attendance report too?
     // Usually attendance report filters by person demographics too.
-    for (final entry in _customFilters.entries) {
+    for (final entry in filters.entries) {
       final val = entry.value;
       if (val == null) continue;
 
@@ -833,15 +1107,38 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ..addColumns([db.personDocuments.personId])
           ..where(db.personDocuments.fieldId.equals(entry.key));
         if (val == 'has_files') {
-          query.where(existsQuery(sub..where(db.personDocuments.personId.equalsExp(db.persons.personId))));
+          query.where(
+            existsQuery(
+              sub..where(
+                db.personDocuments.personId.equalsExp(db.persons.personId),
+              ),
+            ),
+          );
         } else {
-          query.where(notExistsQuery(sub..where(db.personDocuments.personId.equalsExp(db.persons.personId))));
+          query.where(
+            notExistsQuery(
+              sub..where(
+                db.personDocuments.personId.equalsExp(db.persons.personId),
+              ),
+            ),
+          );
         }
       } else if (val is String && val.isNotEmpty) {
         final sub = db.selectOnly(db.personCustomFieldValues)
           ..addColumns([db.personCustomFieldValues.personId])
-          ..where(db.personCustomFieldValues.fieldId.equals(entry.key) & db.personCustomFieldValues.value.equals(val));
-        query.where(existsQuery(sub..where(db.personCustomFieldValues.personId.equalsExp(db.persons.personId))));
+          ..where(
+            db.personCustomFieldValues.fieldId.equals(entry.key) &
+                db.personCustomFieldValues.value.equals(val),
+          );
+        query.where(
+          existsQuery(
+            sub..where(
+              db.personCustomFieldValues.personId.equalsExp(
+                db.persons.personId,
+              ),
+            ),
+          ),
+        );
       } else if (val is List<String> && val.isNotEmpty) {
         final sub = db.selectOnly(db.personCustomFieldValues)
           ..addColumns([db.personCustomFieldValues.personId]);
@@ -849,8 +1146,18 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         for (final opt in val) {
           orExpr = orExpr | db.personCustomFieldValues.value.like('%$opt%');
         }
-        sub.where(db.personCustomFieldValues.fieldId.equals(entry.key) & orExpr);
-        query.where(existsQuery(sub..where(db.personCustomFieldValues.personId.equalsExp(db.persons.personId))));
+        sub.where(
+          db.personCustomFieldValues.fieldId.equals(entry.key) & orExpr,
+        );
+        query.where(
+          existsQuery(
+            sub..where(
+              db.personCustomFieldValues.personId.equalsExp(
+                db.persons.personId,
+              ),
+            ),
+          ),
+        );
       }
     }
 
@@ -874,10 +1181,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final query = db.selectOnly(db.persons).join([
       leftOuterJoin(db.stages, db.stages.stageId.equalsExp(db.persons.stageId)),
     ]);
-    query.addColumns([
-      db.stages.stageName,
-      db.persons.personId.count(),
-    ]);
+    query.addColumns([db.stages.stageName, db.persons.personId.count()]);
     query.groupBy([db.stages.stageName]);
 
     final rows = await query.get();

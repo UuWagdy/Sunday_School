@@ -1,0 +1,6 @@
+bin/
+obj/
+Tests/bin/
+Tests/obj/
+ui-preview*.png
+publish/

@@ -6,12 +6,15 @@ import '../database/database.dart';
 import '../database/database_provider.dart';
 import '../models/card_template.dart';
 import '../utils/contact_links.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
   return SettingsRepository(ref.watch(appDatabaseProvider));
 });
 
 final programNameProvider = FutureProvider<String>((ref) {
+  ref.watch(domainRevisionProvider(DataDomain.settings));
   return ref.watch(settingsRepositoryProvider).getProgramName();
 });
 
@@ -36,7 +39,8 @@ class SettingsRepository {
   }
 
   Future<void> saveSetting(String key, String value) async {
-    await _db
+    await _db.transaction(() async {
+      await _db
         .into(_db.settings)
         .insertOnConflictUpdate(
           SettingsCompanion(
@@ -44,6 +48,7 @@ class SettingsRepository {
             settingValue: drift.Value(value),
           ),
         );
+    });
   }
 
   Future<void> deleteSetting(String key) async {

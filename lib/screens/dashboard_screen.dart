@@ -24,28 +24,31 @@ class DashboardScreen extends ConsumerWidget {
               const SizedBox(height: 20),
               Expanded(
                 child: CustomScrollView(
+                  cacheExtent: 100,
                   slivers: [
-                    SliverToBoxAdapter(child: GeneralAttendanceWidget()),
-                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                    const SliverToBoxAdapter(
-                      child: TermAttendanceClosureWidget(),
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        final Widget child = switch (index) {
+                          0 => const GeneralAttendanceWidget(),
+                          1 => const TermAttendanceClosureWidget(),
+                          2 => const IndividualAttendanceWidget(),
+                          3 => const AttendanceRankingsWidget(),
+                          4 => Text(
+                            'الإحصائيات العامة والديموغرافية',
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          _ => const StatCardsGrid(),
+                        };
+                        return _DashboardSection(
+                          key: ValueKey(index),
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 24),
+                            child: child,
+                          ),
+                        );
+                      }, childCount: 6),
                     ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                    SliverToBoxAdapter(child: IndividualAttendanceWidget()),
-                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                    const SliverToBoxAdapter(child: AttendanceRankingsWidget()),
-                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                    SliverToBoxAdapter(
-                      child: Text(
-                        'الإحصائيات العامة والديموغرافية',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                    const SliverToBoxAdapter(child: StatCardsGrid()),
-                    const SliverToBoxAdapter(child: SizedBox(height: 40)),
                   ],
                 ),
               ),
@@ -86,5 +89,25 @@ class DashboardScreen extends ConsumerWidget {
         ),
       ],
     );
+  }
+}
+
+// A section starts loading only when scrolled into view. Keep its controls and
+// results when scrolling away, and isolate expensive chart repaints.
+class _DashboardSection extends StatefulWidget {
+  const _DashboardSection({super.key, required this.child});
+  final Widget child;
+  @override
+  State<_DashboardSection> createState() => _DashboardSectionState();
+}
+
+class _DashboardSectionState extends State<_DashboardSection>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return RepaintBoundary(child: widget.child);
   }
 }

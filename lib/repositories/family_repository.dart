@@ -4,6 +4,8 @@ import '../services/auth_service.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
 import '../utils/arabic_helper.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 
 part 'family_repository.g.dart';
 
@@ -33,6 +35,8 @@ class RelativeDTO {
 class FamilyRepository extends _$FamilyRepository {
   @override
   FutureOr<List<RelativeDTO>> build(int personId, {String? search, int? limit, int? offset}) async {
+    ref.watch(domainRevisionProvider(DataDomain.family));
+    ref.watch(domainRevisionProvider(DataDomain.people));
     return _fetchRelatives(personId, search: search, limit: limit, offset: offset);
   }
 

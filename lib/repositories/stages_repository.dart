@@ -4,6 +4,8 @@ import 'package:drift/drift.dart' as drift;
 import '../services/auth_service.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 import 'service_eligibility_repository.dart';
 
 part 'stages_repository.g.dart';
@@ -28,6 +30,8 @@ class StageModel {
 class StagesRepository extends _$StagesRepository {
   @override
   FutureOr<List<StageModel>> build() async {
+    ref.watch(domainRevisionProvider(DataDomain.stages));
+    ref.watch(domainRevisionProvider(DataDomain.services));
     return _fetchStages();
   }
 
@@ -96,17 +100,20 @@ class StagesRepository extends _$StagesRepository {
         ? null
         : resolvedServiceIds.first;
 
-    final stageId = await db
-        .into(db.stages)
-        .insert(
-          StagesCompanion.insert(
-            stageName: drift.Value(name),
-            serviceId: drift.Value(legacyServiceId),
-            nextStageId: drift.Value(nextStageId),
-          ),
-        );
-    await _replaceStageServiceLinks(db, stageId, resolvedServiceIds);
-    ref.invalidateSelf();
+    await db.transaction(() async {
+      final stageId = await db
+          .into(db.stages)
+          .insert(
+            StagesCompanion.insert(
+              stageName: drift.Value(name),
+              serviceId: drift.Value(legacyServiceId),
+              nextStageId: drift.Value(nextStageId),
+            ),
+          );
+      await _replaceStageServiceLinks(db, stageId, resolvedServiceIds);
+    });
+
+    if (ref.mounted) ref.invalidateSelf();
     return true;
   }
 
@@ -134,23 +141,25 @@ class StagesRepository extends _$StagesRepository {
         ? null
         : resolvedServiceIds.first;
 
-    await (db.update(db.stages)..where((t) => t.stageId.equals(id))).write(
-      StagesCompanion(
-        stageName: drift.Value(newName),
-        serviceId: drift.Value(legacyServiceId),
-        nextStageId: drift.Value(nextStageId),
-      ),
-    );
-    await _replaceStageServiceLinks(db, id, resolvedServiceIds);
+    await db.transaction(() async {
+      await (db.update(db.stages)..where((t) => t.stageId.equals(id))).write(
+        StagesCompanion(
+          stageName: drift.Value(newName),
+          serviceId: drift.Value(legacyServiceId),
+          nextStageId: drift.Value(nextStageId),
+        ),
+      );
+      await _replaceStageServiceLinks(db, id, resolvedServiceIds);
+  
+      final persons = await (db.select(
+        db.persons,
+      )..where((t) => t.stageId.equals(id))).get();
+      await ServiceEligibilityRepository(
+        db,
+      ).syncResolvedServicesForPeople(persons.map((person) => person.personId));
+    });
 
-    final persons = await (db.select(
-      db.persons,
-    )..where((t) => t.stageId.equals(id))).get();
-    await ServiceEligibilityRepository(
-      db,
-    ).syncResolvedServicesForPeople(persons.map((person) => person.personId));
-
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
     return true;
   }
 
@@ -182,7 +191,7 @@ class StagesRepository extends _$StagesRepository {
       ).syncResolvedServicesForPeople(persons.map((person) => person.personId));
     });
 
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
     return stageIds.length;
   }
 
@@ -191,15 +200,9 @@ class StagesRepository extends _$StagesRepository {
     int stageId,
     Iterable<int> serviceIds,
   ) async {
-    await db.customStatement(
-      'DELETE FROM "Stage_Services" WHERE "Stage_ID" = ?',
-      [stageId],
-    );
+    await (db.delete(db.stageServices)..where((t) => t.stageId.equals(stageId))).go();
     for (final serviceId in serviceIds.toSet()) {
-      await db.customStatement(
-        'INSERT OR IGNORE INTO "Stage_Services" ("Stage_ID", "Service_ID") VALUES (?, ?)',
-        [stageId, serviceId],
-      );
+      await db.into(db.stageServices).insertOnConflictUpdate(StageServicesCompanion.insert(stageId: stageId, serviceId: serviceId));
     }
   }
 
@@ -211,7 +214,7 @@ class StagesRepository extends _$StagesRepository {
     // For safety, just delete. Real implementation would check referential integrity.
 
     await (db.delete(db.stages)..where((t) => t.stageId.equals(id))).go();
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
     return true;
   }
 }

@@ -4,18 +4,39 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../repositories/services_repository.dart';
 import '../repositories/settings_repository.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 
 class ServicesManagementScreen extends ConsumerStatefulWidget {
   const ServicesManagementScreen({super.key});
 
   @override
-  ConsumerState<ServicesManagementScreen> createState() => _ServicesManagementScreenState();
+  ConsumerState<ServicesManagementScreen> createState() =>
+      _ServicesManagementScreenState();
 }
 
-class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScreen> {
+class _ServiceScheduleItem {
+  int dayOfWeek;
+  TimeOfDay startTime;
+  TimeOfDay? endTime;
+
+  _ServiceScheduleItem({
+    required this.dayOfWeek,
+    required this.startTime,
+    this.endTime,
+  });
+}
+
+class _ServicesManagementScreenState
+    extends ConsumerState<ServicesManagementScreen> {
   static const _days = {
-    1: 'الإثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس',
-    5: 'الجمعة', 6: 'السبت', 7: 'الأحد',
+    1: 'الإثنين',
+    2: 'الثلاثاء',
+    3: 'الأربعاء',
+    4: 'الخميس',
+    5: 'الجمعة',
+    6: 'السبت',
+    7: 'الأحد',
   };
 
   static const List<Color> _checkmarkDefaultColors = [
@@ -63,13 +84,17 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
     final settingsRepo = ref.read(settingsRepositoryProvider);
     final logo = await settingsRepo.getChurchLogo();
     final name = await settingsRepo.getSetting('church_name');
-    final programName = await settingsRepo.getSetting(SettingsRepository.programNameKey);
+    final programName = await settingsRepo.getSetting(
+      SettingsRepository.programNameKey,
+    );
     final trimmedProgramName = programName?.trim();
     if (mounted) {
       setState(() {
         _churchLogo = logo;
         _churchName = name;
-        _programName = trimmedProgramName == null || trimmedProgramName.isEmpty ? null : trimmedProgramName;
+        _programName = trimmedProgramName == null || trimmedProgramName.isEmpty
+            ? null
+            : trimmedProgramName;
         _loadedChurchInfo = true;
       });
     }
@@ -77,11 +102,29 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
 
   void _showAddEditDialog({ServiceDTO? existing}) {
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
-    int day = existing?.dayOfWeek ?? 4;
-    TimeOfDay time = TimeOfDay(hour: existing?.hour ?? 17, minute: existing?.minute ?? 0);
-    TimeOfDay? endTime = (existing?.endHour != null && existing?.endMinute != null) 
-        ? TimeOfDay(hour: existing!.endHour!, minute: existing!.endMinute!) 
-        : null;
+    final List<_ServiceScheduleItem> schedules = existing != null
+        ? [
+            _ServiceScheduleItem(
+              dayOfWeek: existing.dayOfWeek,
+              startTime: TimeOfDay(
+                hour: existing.hour,
+                minute: existing.minute,
+              ),
+              endTime: (existing.endHour != null && existing.endMinute != null)
+                  ? TimeOfDay(
+                      hour: existing.endHour!,
+                      minute: existing.endMinute!,
+                    )
+                  : null,
+            ),
+          ]
+        : [
+            _ServiceScheduleItem(
+              dayOfWeek: 4,
+              startTime: const TimeOfDay(hour: 17, minute: 0),
+              endTime: const TimeOfDay(hour: 19, minute: 0),
+            ),
+          ];
     Uint8List? currentLogo = existing?.logo;
     String? selectedColorHex = existing?.checkColor;
 
@@ -89,173 +132,466 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
       context: context,
       builder: (c) => Directionality(
         textDirection: TextDirection.rtl,
-        child: StatefulBuilder(builder: (ctx, setDlgState) {
-          return AlertDialog(
-            title: Text(existing == null ? 'إضافة خدمة جديدة' : 'تعديل الخدمة'),
-            content: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'اسم الخدمة', hintText: 'مثال: مدارس الأحد')),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  value: day, isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'اليوم'),
-                  items: _days.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
-                  onChanged: (v) => setDlgState(() => day = v ?? 4),
-                ),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: () async {
-                    final picked = await showTimePicker(
-                      context: ctx, 
-                      initialTime: time,
-                      builder: (context, child) => MediaQuery(
-                        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
-                        child: child!,
+        child: StatefulBuilder(
+          builder: (ctx, setDlgState) {
+            final isDark = Theme.of(ctx).brightness == Brightness.dark;
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Text(
+                existing == null ? 'إضافة خدمة جديدة' : 'تعديل الخدمة',
+              ),
+              content: SizedBox(
+                width: 480,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'اسم الخدمة *',
+                          hintText: 'مثال: مدارس الأحد',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                    );
-                    if (picked != null) setDlgState(() => time = picked);
-                  },
-                  child: InputDecorator(
-                    decoration: const InputDecoration(labelText: 'ساعة البدء'),
-                    child: Text(_formatTimeOfDay(time)),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'مواعيد وأيام الخدمة:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                          if (existing == null)
+                            TextButton.icon(
+                              onPressed: () {
+                                final usedDays = schedules
+                                    .map((s) => s.dayOfWeek)
+                                    .toSet();
+                                int nextDay = 4;
+                                for (int d = 1; d <= 7; d++) {
+                                  if (!usedDays.contains(d)) {
+                                    nextDay = d;
+                                    break;
+                                  }
+                                }
+                                setDlgState(() {
+                                  schedules.add(
+                                    _ServiceScheduleItem(
+                                      dayOfWeek: nextDay,
+                                      startTime: const TimeOfDay(
+                                        hour: 17,
+                                        minute: 0,
+                                      ),
+                                      endTime: const TimeOfDay(
+                                        hour: 19,
+                                        minute: 0,
+                                      ),
+                                    ),
+                                  );
+                                });
+                              },
+                              icon: const Icon(
+                                Icons.add_circle_outline,
+                                size: 18,
+                              ),
+                              label: const Text(
+                                'إضافة يوم آخر',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ...List.generate(schedules.length, (i) {
+                        final item = schedules[i];
+                        return Card(
+                          elevation: 0,
+                          color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade50,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                          ),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (existing == null && schedules.length > 1)
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'اليوم #${i + 1}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.close,
+                                          size: 18,
+                                          color: Colors.red,
+                                        ),
+                                        tooltip: 'إزالة هذا اليوم',
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        onPressed: () {
+                                          setDlgState(
+                                            () => schedules.removeAt(i),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                DropdownButtonFormField<int>(
+                                  value: item.dayOfWeek,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'اليوم',
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                  items: _days.entries
+                                      .map(
+                                        (e) => DropdownMenuItem(
+                                          value: e.key,
+                                          child: Text(e.value),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setDlgState(
+                                    () => item.dayOfWeek = v ?? 4,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: () async {
+                                          final picked = await showTimePicker(
+                                            context: ctx,
+                                            initialTime: item.startTime,
+                                            builder: (context, child) =>
+                                                MediaQuery(
+                                                  data: MediaQuery.of(context)
+                                                      .copyWith(
+                                                        alwaysUse24HourFormat:
+                                                            false,
+                                                      ),
+                                                  child: child!,
+                                                ),
+                                          );
+                                          if (picked != null)
+                                            setDlgState(
+                                              () => item.startTime = picked,
+                                            );
+                                        },
+                                        child: InputDecorator(
+                                          decoration: const InputDecoration(
+                                            labelText: 'ساعة البدء',
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: 10,
+                                                  vertical: 8,
+                                                ),
+                                          ),
+                                          child: Text(
+                                            _formatTimeOfDay(item.startTime),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: () async {
+                                          final picked = await showTimePicker(
+                                            context: ctx,
+                                            initialTime:
+                                                item.endTime ??
+                                                const TimeOfDay(
+                                                  hour: 19,
+                                                  minute: 0,
+                                                ),
+                                            builder: (context, child) =>
+                                                MediaQuery(
+                                                  data: MediaQuery.of(context)
+                                                      .copyWith(
+                                                        alwaysUse24HourFormat:
+                                                            false,
+                                                      ),
+                                                  child: child!,
+                                                ),
+                                          );
+                                          if (picked != null)
+                                            setDlgState(
+                                              () => item.endTime = picked,
+                                            );
+                                        },
+                                        child: InputDecorator(
+                                          decoration: InputDecoration(
+                                            labelText: 'ساعة النهاية',
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 10,
+                                                  vertical: 8,
+                                                ),
+                                            suffixIcon: item.endTime != null
+                                                ? IconButton(
+                                                    icon: const Icon(
+                                                      Icons.clear,
+                                                      size: 16,
+                                                    ),
+                                                    padding: EdgeInsets.zero,
+                                                    constraints:
+                                                        const BoxConstraints(),
+                                                    onPressed: () =>
+                                                        setDlgState(
+                                                          () => item.endTime =
+                                                              null,
+                                                        ),
+                                                  )
+                                                : null,
+                                          ),
+                                          child: Text(
+                                            item.endTime == null
+                                                ? 'غير محدد'
+                                                : _formatTimeOfDay(
+                                                    item.endTime!,
+                                                  ),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        onTap: () async {
+                          final picker = ImagePicker();
+                          final xfile = await picker.pickImage(
+                            source: ImageSource.gallery,
+                            maxWidth: 500,
+                            maxHeight: 500,
+                            imageQuality: 80,
+                          );
+                          if (xfile != null) {
+                            final bytes = await xfile.readAsBytes();
+                            setDlgState(() => currentLogo = bytes);
+                          }
+                        },
+                        child: Container(
+                          height: 75,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade300),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.all(8),
+                          child: currentLogo != null
+                              ? Row(
+                                  children: [
+                                    Expanded(
+                                      child: Image.memory(
+                                        currentLogo!,
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.delete,
+                                        color: Colors.red,
+                                        size: 20,
+                                      ),
+                                      onPressed: () =>
+                                          setDlgState(() => currentLogo = null),
+                                    ),
+                                  ],
+                                )
+                              : const Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.add_photo_alternate,
+                                      size: 26,
+                                      color: Colors.grey,
+                                    ),
+                                    SizedBox(height: 4),
+                                    Text(
+                                      'لوجو الخدمة',
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          'لون علامة الصح:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: _checkmarkDefaultColors.map((color) {
+                          final hex = _colorToHex(color);
+                          final isSelected =
+                              (selectedColorHex == null &&
+                                  color == Colors.green) ||
+                              (selectedColorHex == hex);
+                          return InkWell(
+                            onTap: () =>
+                                setDlgState(() => selectedColorHex = hex),
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? Colors.black
+                                      : Colors.transparent,
+                                  width: 2.5,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 2,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: isSelected
+                                  ? const Icon(
+                                      Icons.check,
+                                      color: Colors.white,
+                                      size: 16,
+                                    )
+                                  : null,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: () async {
-                    final picked = await showTimePicker(
-                      context: ctx, 
-                      initialTime: endTime ?? const TimeOfDay(hour: 19, minute: 0),
-                      builder: (context, child) => MediaQuery(
-                        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
-                        child: child!,
-                      ),
-                    );
-                    if (picked != null) setDlgState(() => endTime = picked);
-                  },
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'ساعة النهاية',
-                      suffixIcon: endTime != null ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setDlgState(() => endTime = null)) : null,
-                    ),
-                    child: Text(endTime == null ? 'غير محدد' : _formatTimeOfDay(endTime!)),
-                  ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(c),
+                  child: const Text('إلغاء'),
                 ),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: () async {
-                    final picker = ImagePicker();
-                    final xfile = await picker.pickImage(source: ImageSource.gallery, maxWidth: 500, maxHeight: 500, imageQuality: 80);
-                    if (xfile != null) {
-                      final bytes = await xfile.readAsBytes();
-                      setDlgState(() => currentLogo = bytes);
+                FilledButton(
+                  onPressed: () async {
+                    final name = nameCtrl.text.trim();
+                    if (name.isEmpty) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('يرجى كتابة اسم الخدمة')),
+                      );
+                      return;
+                    }
+                    if (schedules.isEmpty) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                          content: Text('يرجى تحديد يوم واحد على الأقل'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    Navigator.pop(c);
+                    final repo = ref.read(servicesRepositoryProvider.notifier);
+
+                    if (existing == null) {
+                      bool allOk = true;
+                      for (final item in schedules) {
+                        final ok = await repo.addService(
+                          name: name,
+                          dayOfWeek: item.dayOfWeek,
+                          hour: item.startTime.hour,
+                          minute: item.startTime.minute,
+                          endHour: item.endTime?.hour,
+                          endMinute: item.endTime?.minute,
+                          logo: currentLogo,
+                          checkColor: selectedColorHex,
+                        );
+                        if (!ok) allOk = false;
+                      }
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              allOk
+                                  ? 'تمت إضافة ${schedules.length} مواعيد للخدمة بنجاح ✅'
+                                  : 'حدث خطأ أثناء حفظ بعض المواعيد ⚠️',
+                            ),
+                            backgroundColor: allOk ? Colors.green : Colors.red,
+                          ),
+                        );
+                      }
+                    } else {
+                      final item = schedules.first;
+                      final ok = await repo.updateService(
+                        id: existing.id,
+                        name: name,
+                        dayOfWeek: item.dayOfWeek,
+                        hour: item.startTime.hour,
+                        minute: item.startTime.minute,
+                        endHour: item.endTime?.hour,
+                        endMinute: item.endTime?.minute,
+                        logo: currentLogo,
+                        checkColor: selectedColorHex,
+                      );
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(ok ? 'تم الحفظ ✅' : 'خطأ في الحفظ'),
+                            backgroundColor: ok ? Colors.green : Colors.red,
+                          ),
+                        );
+                      }
                     }
                   },
-                  child: Container(
-                    height: 80,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.all(8),
-                    child: currentLogo != null 
-                        ? Row(children: [
-                            Expanded(child: Image.memory(currentLogo!, fit: BoxFit.contain)),
-                            IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () => setDlgState(() => currentLogo = null)),
-                          ])
-                        : const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.add_photo_alternate, size: 28, color: Colors.grey),
-                              SizedBox(height: 4),
-                              Text('لوجو الخدمة', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                            ],
-                          ),
-                  ),
+                  child: const Text('حفظ'),
                 ),
-                const SizedBox(height: 12),
-                const Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    'لون علامة الصح:',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: _checkmarkDefaultColors.map((color) {
-                    final hex = _colorToHex(color);
-                    final isSelected = (selectedColorHex == null && color == Colors.green) || (selectedColorHex == hex);
-                    return InkWell(
-                      onTap: () => setDlgState(() => selectedColorHex = hex),
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isSelected ? Colors.black : Colors.transparent,
-                            width: 2.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 2,
-                              offset: const Offset(0, 1),
-                            )
-                          ],
-                        ),
-                        child: isSelected
-                            ? const Icon(Icons.check, color: Colors.white, size: 16)
-                            : null,
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ]),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(c), child: const Text('إلغاء')),
-              FilledButton(onPressed: () async {
-                if (nameCtrl.text.trim().isEmpty) return;
-                Navigator.pop(c);
-                final repo = ref.read(servicesRepositoryProvider.notifier);
-                bool ok;
-                if (existing == null) {
-                  ok = await repo.addService(
-                    name: nameCtrl.text.trim(), 
-                    dayOfWeek: day, 
-                    hour: time.hour, 
-                    minute: time.minute, 
-                    endHour: endTime?.hour,
-                    endMinute: endTime?.minute,
-                    logo: currentLogo,
-                    checkColor: selectedColorHex,
-                  );
-                } else {
-                  ok = await repo.updateService(
-                    id: existing.id, 
-                    name: nameCtrl.text.trim(), 
-                    dayOfWeek: day, 
-                    hour: time.hour, 
-                    minute: time.minute, 
-                    endHour: endTime?.hour,
-                    endMinute: endTime?.minute,
-                    logo: currentLogo,
-                    checkColor: selectedColorHex,
-                  );
-                }
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'تم الحفظ ✅' : 'خطأ في الحفظ'), backgroundColor: ok ? Colors.green : Colors.red));
-                }
-              }, child: const Text('حفظ')),
-            ],
-          );
-        }),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -267,38 +603,69 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
   }
 
   void _deleteService(ServiceDTO svc) async {
-    final ok = await showDialog<bool>(context: context, builder: (c) => Directionality(
-      textDirection: TextDirection.rtl,
-      child: AlertDialog(
-        title: const Text('حذف الخدمة'),
-        content: Text('هل أنت متأكد من حذف "${svc.name}"؟'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
-          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('حذف', style: TextStyle(color: Colors.red))),
-        ],
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('حذف الخدمة'),
+          content: Text('هل أنت متأكد من حذف "${svc.name}"؟'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('إلغاء'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('حذف', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
       ),
-    ));
+    );
     if (ok == true) {
-      final success = await ref.read(servicesRepositoryProvider.notifier).deleteService(svc.id);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'تم الحذف' : 'خطأ')));
+      final success = await ref
+          .read(servicesRepositoryProvider.notifier)
+          .deleteService(svc.id);
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(success ? 'تم الحذف' : 'خطأ')));
     }
   }
 
   Future<void> _pickChurchLogo() async {
     final picker = ImagePicker();
-    final xfile = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
+    final xfile = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      maxHeight: 800,
+      imageQuality: 80,
+    );
     if (xfile != null) {
       final bytes = await xfile.readAsBytes();
       await ref.read(settingsRepositoryProvider).setChurchLogo(bytes);
       setState(() => _churchLogo = bytes);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث لوجو الكنيسة ⛪'), backgroundColor: Colors.green));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم تحديث لوجو الكنيسة ⛪'),
+            backgroundColor: Colors.green,
+          ),
+        );
     }
   }
 
   Future<void> _deleteChurchLogo() async {
     await ref.read(settingsRepositoryProvider).deleteSetting('church_logo');
     setState(() => _churchLogo = null);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف لوجو الكنيسة'), backgroundColor: Colors.orange));
+    if (mounted)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم حذف لوجو الكنيسة'),
+          backgroundColor: Colors.orange,
+        ),
+      );
   }
 
   Future<void> _editChurchName() async {
@@ -311,10 +678,22 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Text('اسم الكنيسة'),
-          content: TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'اسم الكنيسة', hintText: 'مثال: كنيسة رئيس الملائكة ميخائيل')),
+          content: TextField(
+            controller: nameCtrl,
+            decoration: const InputDecoration(
+              labelText: 'اسم الكنيسة',
+              hintText: 'مثال: كنيسة رئيس الملائكة ميخائيل',
+            ),
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(c), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.pop(c, nameCtrl.text.trim()), child: const Text('حفظ')),
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(c, nameCtrl.text.trim()),
+              child: const Text('حفظ'),
+            ),
           ],
         ),
       ),
@@ -322,14 +701,30 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
     if (result != null) {
       await settingsRepo.saveSetting('church_name', result);
       setState(() => _churchName = result.isEmpty ? null : result);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.isEmpty ? 'تم حذف اسم الكنيسة' : 'تم حفظ اسم الكنيسة: $result ✅'), backgroundColor: Colors.green));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.isEmpty
+                  ? 'تم حذف اسم الكنيسة'
+                  : 'تم حفظ اسم الكنيسة: $result ✅',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
     }
   }
 
   Future<void> _deleteChurchName() async {
     await ref.read(settingsRepositoryProvider).deleteSetting('church_name');
     setState(() => _churchName = null);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف اسم الكنيسة'), backgroundColor: Colors.orange));
+    if (mounted)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم حذف اسم الكنيسة'),
+          backgroundColor: Colors.orange,
+        ),
+      );
   }
 
   Future<void> _editProgramName() async {
@@ -376,7 +771,10 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
                 },
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(c), child: const Text('إلغاء')),
+                TextButton(
+                  onPressed: () => Navigator.pop(c),
+                  child: const Text('إلغاء'),
+                ),
                 FilledButton(
                   onPressed: () {
                     final error = validateProgramName(nameCtrl.text);
@@ -401,13 +799,19 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
         setState(() => _programName = result.trim());
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('تم حفظ اسم البرنامج: ${result.trim()}'), backgroundColor: Colors.green),
+            SnackBar(
+              content: Text('تم حفظ اسم البرنامج: ${result.trim()}'),
+              backgroundColor: Colors.green,
+            ),
           );
         }
       } on ArgumentError {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('الرجاء إدخال اسم برنامج صحيح'), backgroundColor: Colors.red),
+            const SnackBar(
+              content: Text('الرجاء إدخال اسم برنامج صحيح'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }
@@ -420,130 +824,277 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
     setState(() => _programName = null);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حذف اسم البرنامج'), backgroundColor: Colors.orange),
+        const SnackBar(
+          content: Text('تم حذف اسم البرنامج'),
+          backgroundColor: Colors.orange,
+        ),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(domainRevisionProvider(DataDomain.settings), (
+      previous,
+      next,
+    ) {
+      if (previous != null && next > previous) {
+        _loadChurchInfo();
+      }
+    });
+
     final servicesAsync = ref.watch(servicesRepositoryProvider);
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    final isMobile = MediaQuery.of(context).size.width < 1200;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Directionality(
       textDirection: TextDirection.rtl,
       child: SingleChildScrollView(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Header row
-          if (isMobile) ...[
-            Text('إدارة الخدمات', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              FilledButton.icon(onPressed: () => _showAddEditDialog(), icon: const Icon(Icons.add, size: 18), label: const Text('خدمة جديدة')),
-            ]),
-          ] else
-            Row(children: [
-              Text('إدارة الخدمات', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-              const Spacer(),
-              FilledButton.icon(onPressed: () => _showAddEditDialog(), icon: const Icon(Icons.add, size: 18), label: const Text('خدمة جديدة')),
-            ]),
-          const SizedBox(height: 16),
-
-          // Church info card
-          if (_loadedChurchInfo)
-            Card(
-              elevation: 3,
-              shadowColor: Colors.black12,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Theme.of(context).primaryColor.withAlpha(20), borderRadius: BorderRadius.circular(8)),
-                      child: Icon(Icons.account_balance, size: 20, color: Theme.of(context).primaryColor),
-                    ),
-                    const SizedBox(width: 12),
-                    Text('بيانات الكنيسة (تظهر في التقارير)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).primaryColor)),
-                  ]),
-                  const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1)),
-                  if (isMobile) ...[
-                    _buildChurchLogoSection(isMobile: true),
-                    const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider(height: 1, color: Colors.transparent)),
-                    _buildChurchNameSection(isMobile: true),
-                    const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider(height: 1, color: Colors.transparent)),
-                    _buildProgramNameSection(isMobile: true),
-                  ] else
-                    IntrinsicHeight(
-                      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                        Expanded(child: _buildChurchLogoSection(isMobile: false)),
-                        const VerticalDivider(width: 40, thickness: 1, indent: 4, endIndent: 4),
-                        Expanded(child: _buildChurchNameSection(isMobile: false)),
-                        const VerticalDivider(width: 40, thickness: 1, indent: 4, endIndent: 4),
-                        Expanded(child: _buildProgramNameSection(isMobile: false)),
-                      ]),
-                    ),
-                ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row
+            if (isMobile) ...[
+              Text(
+                'إدارة الخدمات',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
-            ),
-          const SizedBox(height: 12),
-
-          // Services list
-          servicesAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Text('خطأ: $e'),
-            data: (services) {
-              if (services.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('لا توجد خدمات بعد. أضف خدمة جديدة.')));
-              return Column(
-                children: services.map((svc) => Card(
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).primaryColor.withAlpha(25),
-                      backgroundImage: svc.logo != null ? MemoryImage(svc.logo!) : null,
-                      child: svc.logo == null ? Icon(Icons.church, color: Theme.of(context).primaryColor) : null,
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => _showAddEditDialog(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('خدمة جديدة'),
+                  ),
+                ],
+              ),
+            ] else
+              Row(
+                children: [
+                  Text(
+                    'إدارة الخدمات',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
-                    title: Row(
-                      children: [
-                        Text(svc.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 8),
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: _hexToColor(svc.checkColor),
-                            shape: BoxShape.circle,
+                  ),
+                  const Spacer(),
+                  FilledButton.icon(
+                    onPressed: () => _showAddEditDialog(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('خدمة جديدة'),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 16),
+
+            // Church info card
+            if (_loadedChurchInfo)
+              Card(
+                elevation: 3,
+                shadowColor: Colors.black12,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF1E293B) : Theme.of(context).primaryColor.withAlpha(20),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.account_balance,
+                              size: 20,
+                              color: isDark ? const Color(0xFF93C5FD) : Theme.of(context).primaryColor,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'بيانات الكنيسة (تظهر في التقارير)',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: isDark ? const Color(0xFF93C5FD) : Theme.of(context).primaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Divider(height: 1),
+                      ),
+                      if (isMobile) ...[
+                        _buildChurchLogoSection(isMobile: true),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Divider(height: 1, color: Colors.transparent),
+                        ),
+                        _buildChurchNameSection(isMobile: true),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Divider(height: 1, color: Colors.transparent),
+                        ),
+                        _buildProgramNameSection(isMobile: true),
+                      ] else
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: _buildChurchLogoSection(isMobile: false),
+                              ),
+                              const VerticalDivider(
+                                width: 40,
+                                thickness: 1,
+                                indent: 4,
+                                endIndent: 4,
+                              ),
+                              Expanded(
+                                child: _buildChurchNameSection(isMobile: false),
+                              ),
+                              const VerticalDivider(
+                                width: 40,
+                                thickness: 1,
+                                indent: 4,
+                                endIndent: 4,
+                              ),
+                              Expanded(
+                                child: _buildProgramNameSection(
+                                  isMobile: false,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                    subtitle: Text('${svc.dayName} - من: ${svc.formattedTime} إلى: ${svc.formattedEndTime}'),
-                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                      IconButton(icon: const Icon(Icons.edit, color: Colors.blue, size: 20), onPressed: () => _showAddEditDialog(existing: svc)),
-                      IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () => _deleteService(svc)),
-                    ]),
+                    ],
                   ),
-                )).toList(),
-              );
-            },
-          ),
-        ]),
+                ),
+              ),
+            const SizedBox(height: 12),
+
+            // Services list
+            servicesAsync.when(
+              skipLoadingOnReload: true,
+              skipError: true,
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Text('خطأ: $e'),
+              data: (services) {
+                if (services.isEmpty)
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Text('لا توجد خدمات بعد. أضف خدمة جديدة.'),
+                    ),
+                  );
+                return Column(
+                  children: services
+                      .map(
+                        (svc) => Card(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Theme.of(
+                                context,
+                              ).primaryColor.withAlpha(25),
+                              backgroundImage: svc.logo != null
+                                  ? MemoryImage(svc.logo!)
+                                  : null,
+                              child: svc.logo == null
+                                  ? Icon(
+                                      Icons.church,
+                                      color: Theme.of(context).primaryColor,
+                                    )
+                                  : null,
+                            ),
+                            title: Row(
+                              children: [
+                                Text(
+                                  svc.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: _hexToColor(svc.checkColor),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            subtitle: Text(
+                              '${svc.dayName} - من: ${svc.formattedTime} إلى: ${svc.formattedEndTime}',
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.edit,
+                                    color: Colors.blue,
+                                    size: 20,
+                                  ),
+                                  onPressed: () =>
+                                      _showAddEditDialog(existing: svc),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                    size: 20,
+                                  ),
+                                  onPressed: () => _deleteService(svc),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildChurchLogoSection({required bool isMobile}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
         Container(
-          width: 70, height: 70,
+          width: 70,
+          height: 70,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade200, width: 1.5),
-            color: Colors.grey.shade50,
+            border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200, width: 1.5),
+            color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade50,
           ),
           child: _churchLogo != null
-              ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(_churchLogo!, fit: BoxFit.cover))
-              : Icon(Icons.add_photo_alternate_outlined, color: Colors.grey.shade400, size: 30),
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(_churchLogo!, fit: BoxFit.cover),
+                )
+              : Icon(
+                  Icons.add_photo_alternate_outlined,
+                  color: Colors.grey.shade400,
+                  size: 30,
+                ),
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -551,20 +1102,37 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('لوجو الكنيسة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+              Text(
+                'لوجو الكنيسة',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: isDark ? const Color(0xFFCBD5E1) : Colors.blueGrey,
+                ),
+              ),
               const SizedBox(height: 2),
-              Row(
+              Wrap(
                 children: [
                   TextButton.icon(
                     onPressed: _pickChurchLogo,
                     icon: const Icon(Icons.drive_file_move_outlined, size: 16),
-                    label: Text(_churchLogo != null ? 'تغيير' : 'اختيار', style: const TextStyle(fontSize: 12)),
+                    label: Text(
+                      _churchLogo != null ? 'تغيير' : 'اختيار',
+                      style: const TextStyle(fontSize: 12),
+                    ),
                   ),
                   if (_churchLogo != null)
                     TextButton.icon(
                       onPressed: _deleteChurchLogo,
-                      icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
-                      label: const Text('حذف', style: TextStyle(fontSize: 12, color: Colors.red)),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        size: 16,
+                        color: Colors.red,
+                      ),
+                      label: const Text(
+                        'حذف',
+                        style: TextStyle(fontSize: 12, color: Colors.red),
+                      ),
                     ),
                 ],
               ),
@@ -576,15 +1144,22 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
   }
 
   Widget _buildChurchNameSection({required bool isMobile}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
         Container(
-          width: 70, height: 70,
+          width: 70,
+          height: 70,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            color: Theme.of(context).primaryColor.withAlpha(15),
+            border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.transparent),
+            color: isDark ? const Color(0xFF1E293B) : Theme.of(context).primaryColor.withAlpha(15),
           ),
-          child: Icon(Icons.drive_file_rename_outline_rounded, color: Theme.of(context).primaryColor, size: 32),
+          child: Icon(
+            Icons.drive_file_rename_outline_rounded,
+            color: isDark ? const Color(0xFF93C5FD) : Theme.of(context).primaryColor,
+            size: 32,
+          ),
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -592,14 +1167,23 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('اسم الكنيسة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+              Text(
+                'اسم الكنيسة',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: isDark ? const Color(0xFF94A3B8) : Colors.blueGrey,
+                ),
+              ),
               const SizedBox(height: 4),
               Text(
                 _churchName ?? 'غير محدد',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
-                  color: _churchName != null ? Colors.black87 : Colors.grey.shade400,
+                  color: _churchName != null
+                      ? (isDark ? const Color(0xFFF8FAFC) : Colors.black87)
+                      : (isDark ? const Color(0xFF64748B) : Colors.grey.shade400),
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -619,8 +1203,15 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
             if (_churchName != null)
               TextButton.icon(
                 onPressed: _deleteChurchName,
-                icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
-                label: const Text('حذف', style: TextStyle(fontSize: 12, color: Colors.red)),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  size: 16,
+                  color: Colors.red,
+                ),
+                label: const Text(
+                  'حذف',
+                  style: TextStyle(fontSize: 12, color: Colors.red),
+                ),
               ),
           ],
         ),
@@ -630,15 +1221,22 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
 
   Widget _buildProgramNameSection({required bool isMobile}) {
     final displayName = _programName ?? SettingsRepository.defaultProgramName;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
         Container(
-          width: 70, height: 70,
+          width: 70,
+          height: 70,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            color: Theme.of(context).primaryColor.withAlpha(15),
+            border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.transparent),
+            color: isDark ? const Color(0xFF1E293B) : Theme.of(context).primaryColor.withAlpha(15),
           ),
-          child: Icon(Icons.badge_outlined, color: Theme.of(context).primaryColor, size: 32),
+          child: Icon(
+            Icons.badge_outlined,
+            color: isDark ? const Color(0xFF93C5FD) : Theme.of(context).primaryColor,
+            size: 32,
+          ),
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -646,21 +1244,33 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('اسم البرنامج', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+              Text(
+                'اسم البرنامج',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: isDark ? const Color(0xFF94A3B8) : Colors.blueGrey,
+                ),
+              ),
               const SizedBox(height: 4),
               Text(
                 displayName,
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
-                  color: _programName != null ? Colors.black87 : Colors.grey.shade600,
+                  color: _programName != null
+                      ? (isDark ? const Color(0xFFF8FAFC) : Colors.black87)
+                      : (isDark ? const Color(0xFFCBD5E1) : Colors.grey.shade600),
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
               if (_programName == null) ...[
                 const SizedBox(height: 2),
-                Text('القيمة الافتراضية', style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+                Text(
+                  'القيمة الافتراضية',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                ),
               ],
             ],
           ),
@@ -677,8 +1287,15 @@ class _ServicesManagementScreenState extends ConsumerState<ServicesManagementScr
             if (_programName != null)
               TextButton.icon(
                 onPressed: _deleteProgramName,
-                icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
-                label: const Text('حذف', style: TextStyle(fontSize: 12, color: Colors.red)),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  size: 16,
+                  color: Colors.red,
+                ),
+                label: const Text(
+                  'حذف',
+                  style: TextStyle(fontSize: 12, color: Colors.red),
+                ),
               ),
           ],
         ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:io' show Platform, File;
 import 'package:file_picker/file_picker.dart';
@@ -22,7 +23,6 @@ import '../models/pdf_export_options.dart';
 import '../models/person_option.dart';
 import '../services/auth_service.dart';
 import '../repositories/persons_repository.dart';
-import '../repositories/service_eligibility_repository.dart';
 import '../repositories/stages_repository.dart';
 import '../repositories/khoros_repository.dart';
 import '../repositories/areas_repository.dart';
@@ -31,7 +31,16 @@ import '../ui/widgets/multi_select_filter.dart';
 import '../utils/arabic_helper.dart';
 import '../widgets/print_progress_dialog.dart';
 import '../services/pdf_generation_task.dart';
+import '../ui/dialogs/attendance_notes_dialog.dart';
+import '../repositories/bus_repository.dart';
+import '../ui/ribbon/ribbon_bus.dart';
 import 'qr_scanner_screen.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
+import '../utils/silent_refresh_controller.dart';
+import '../sync/person_change_source.dart';
+import '../utils/delta_page_cache.dart';
+import '../theme/app_theme.dart';
 
 class AttendanceScreen extends ConsumerStatefulWidget {
   const AttendanceScreen({super.key});
@@ -42,9 +51,14 @@ class AttendanceScreen extends ConsumerStatefulWidget {
 
 class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   static const int _defaultAttendancePoints = 2;
+  String? _changeCursor;
+  Future<void>? _refreshFlight;
+  bool _refreshAgain = false;
 
   // --- Person Data Filters ---
   String _searchQuery = '';
+  Timer? _searchDebounce;
+  bool _isResolvingCode = false;
   List<String> _filterGenders = [];
   List<int> _filterStageIds = [];
   List<int> _filterKhorosIds = [];
@@ -88,6 +102,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   int _offset = 0;
   static const int _limit = 50;
 
+  late final SilentRefreshController _refreshController;
+
   // --- Summary Counts ---
   int _totalCount = 0;
   int _presentCount = 0;
@@ -109,12 +125,17 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   bool _isCheckingOutAll = false;
   bool _isBulkActionRunning = false;
   bool _isCheckoutMode = false;
+  String _selectedQuickCheckoutType =
+      'alone'; // 'alone', 'bus', 'parent', 'other'
+  final TextEditingController _quickOtherReasonController =
+      TextEditingController();
   int _attendanceSavedPoints = 2;
   int _checkoutSavedPoints = 2;
 
   @override
   void initState() {
     super.initState();
+    _refreshController = SilentRefreshController();
     _loadInitialData();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -124,9 +145,12 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _refreshController.dispose();
     _scrollController.dispose();
     _codeFocusNode.dispose();
     _pointsController.dispose();
+    _quickOtherReasonController.dispose();
     super.dispose();
   }
 
@@ -264,19 +288,19 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   }
 
   int _lastCallId = 0;
+  bool _isLoadingMore = false;
+  Completer<void>? _pageLoad;
 
   Future<void> _loadInitialData() async {
     final callId = DateTime.now().millisecondsSinceEpoch;
     _lastCallId = callId;
+    final pageLoad = Completer<void>();
+    _pageLoad = pageLoad;
+    _refreshController.bumpGeneration();
+    final generation = _refreshController.currentGeneration;
 
     setState(() {
-      _isLoading = true;
-      _records.clear();
-      _offset = 0;
-      _hasMore = true;
-      _totalCount = 0;
-      _presentCount = 0;
-      _absentCount = 0;
+      _isLoading = _records.isEmpty;
     });
 
     final repo = ref.read(attendanceRepositoryProvider.notifier);
@@ -288,8 +312,14 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     }
 
     try {
-      if (!mounted || _lastCallId != callId) return;
+      if (!mounted ||
+          generation != _refreshController.currentGeneration ||
+          _lastCallId != callId)
+        return;
 
+      final checkpoint = await ref
+          .read(personChangeSourceProvider)
+          .read(cursor: null, knownIds: const [], domain: 'attendance');
       bool rawHasMore = false;
       final results = await Future.wait([
         repo.fetchAttendance(
@@ -342,9 +372,19 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         ),
       ]);
 
-      if (!mounted || _lastCallId != callId) return;
+      if (!mounted ||
+          generation != _refreshController.currentGeneration ||
+          _lastCallId != callId)
+        return;
 
-      final data = results[0] as List<AttendanceDTO>;
+      final data = await _completeBoundary(
+        results[0] as List<AttendanceDTO>,
+        rawHasMore,
+      );
+      if (!mounted ||
+          generation != _refreshController.currentGeneration ||
+          _lastCallId != callId)
+        return;
       final summary = results[1] as Map<String, int>;
 
       setState(() {
@@ -353,11 +393,12 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         _absentCount = summary['absent'] ?? 0;
         _records.clear();
         _records.addAll(data);
+        _changeCursor = checkpoint.cursor;
         final visiblePersonIds = data.map((r) => r.personId).toSet();
         _selectedPersonIds.removeWhere((id) => !visiblePersonIds.contains(id));
         _hasMore = rawHasMore;
         _isLoading = false;
-        _offset = _limit;
+        _offset = _rawCount(data);
       });
     } catch (e, st) {
       debugPrint('UI Debug Error [$callId] in _loadInitialData: $e\n$st');
@@ -370,11 +411,89 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           ),
         );
       }
+    } finally {
+      if (!pageLoad.isCompleted) pageLoad.complete();
+      if (identical(_pageLoad, pageLoad)) _pageLoad = null;
     }
   }
 
-  Future<void> _loadMore() async {
-    setState(() => _isLoading = true);
+  Future<List<AttendanceDTO>> _fetchPage({
+    int? limit,
+    int offset = 0,
+    List<int>? changedPersonIds,
+    String? callId,
+    void Function(bool)? onHasMore,
+  }) {
+    final dFrom = _filterSpecificDateOnly ? _selectedDate : _filterDateFrom;
+    final dTo = _filterSpecificDateOnly ? _selectedDate : _filterDateTo;
+    return ref
+        .read(attendanceRepositoryProvider.notifier)
+        .fetchAttendance(
+          month: _filterMonth,
+          year: _filterYear,
+          search: _searchQuery,
+          limit: limit,
+          offset: offset,
+          changedPersonIds: changedPersonIds,
+          dateFrom: dFrom,
+          dateTo: dTo,
+          stageIds: _filterStageIds,
+          khorosIds: _filterKhorosIds,
+          areaIds: _filterAreaIds,
+          fatherIds: _filterFatherIds,
+          genders: _filterGenders,
+          birthdayDay: _filterBirthdayDay,
+          birthdayMonth: _filterBirthdayMonth,
+          birthdayYear: _filterBirthdayYear,
+          serviceIds: _selectedServiceIds,
+          visitedStatus: _filterVisitedStatus,
+          notesFilter: _filterNotesStatus,
+          lateAfterTime: _lateAfterTimeString(),
+          status: _filterStatus,
+          customFilters: _customFilters,
+          sortBy: _sortBy,
+          callId: callId,
+          onHasMore: onHasMore,
+        );
+  }
+
+  int _rawCount(Iterable<AttendanceDTO> rows) => rows.fold(
+    0,
+    (count, row) =>
+        count + (row.serviceRecords.isEmpty ? 1 : row.serviceRecords.length),
+  );
+
+  Future<List<AttendanceDTO>> _completeBoundary(
+    List<AttendanceDTO> rows,
+    bool hasMore,
+  ) async {
+    if (!hasMore || rows.isEmpty) return rows;
+    final last = await _fetchPage(changedPersonIds: [rows.last.personId]);
+    return [...rows.take(rows.length - 1), ...last];
+  }
+
+  Future<void> _silentRefresh() {
+    if (_refreshFlight != null) {
+      _refreshAgain = true;
+      return _refreshFlight!;
+    }
+    return _refreshFlight = (() async {
+      do {
+        _refreshAgain = false;
+        await _refreshCachedPage();
+      } while (_refreshAgain && mounted);
+    })().whenComplete(() => _refreshFlight = null);
+  }
+
+  Future<void> _refreshCachedPage() async {
+    if (!mounted) return;
+    while (_pageLoad != null) {
+      await _pageLoad!.future;
+    }
+    if (!mounted) return;
+    final generation = _refreshController.currentGeneration;
+
+    final targetLimit = _offset > _limit ? _offset : _limit;
     final repo = ref.read(attendanceRepositoryProvider.notifier);
     DateTime? dFrom = _filterDateFrom;
     DateTime? dTo = _filterDateTo;
@@ -382,54 +501,181 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       dFrom = _selectedDate;
       dTo = _selectedDate;
     }
-    bool rawHasMore = false;
-    final data = await repo.fetchAttendance(
-      month: _filterMonth,
-      year: _filterYear,
-      search: _searchQuery,
-      limit: _limit,
-      offset: _offset,
-      dateFrom: dFrom,
-      dateTo: dTo,
-      stageIds: _filterStageIds,
-      khorosIds: _filterKhorosIds,
-      areaIds: _filterAreaIds,
-      fatherIds: _filterFatherIds,
-      status: _filterStatus,
-      genders: _filterGenders,
-      birthdayDay: _filterBirthdayDay,
-      birthdayMonth: _filterBirthdayMonth,
-      birthdayYear: _filterBirthdayYear,
-      serviceIds: _selectedServiceIds,
-      visitedStatus: _filterVisitedStatus,
-      notesFilter: _filterNotesStatus,
-      lateAfterTime: _lateAfterTimeString(),
-      customFilters: _customFilters,
-      sortBy: _sortBy,
-      onHasMore: (val) => rawHasMore = val,
-    );
-    if (mounted) {
+
+    try {
+      final checkpoint = await ref
+          .read(personChangeSourceProvider)
+          .read(
+            cursor: _changeCursor,
+            knownIds: _records.map((p) => p.personId),
+            domain: 'attendance',
+          );
+      final changedIds = checkpoint.personIds;
+      if (!mounted || generation != _refreshController.currentGeneration)
+        return;
+      if (changedIds != null && changedIds.isEmpty) {
+        _changeCursor = checkpoint.cursor;
+        return;
+      }
+      bool rawHasMore = false;
+      final results = await Future.wait([
+        _fetchPage(
+          limit: changedIds == null ? targetLimit : null,
+          changedPersonIds: changedIds?.toList(),
+          callId: 'SILENT-DATA',
+          onHasMore: (val) => rawHasMore = val,
+        ),
+        repo.fetchAttendanceSummary(
+          month: _filterMonth,
+          year: _filterYear,
+          search: _searchQuery,
+          dateFrom: dFrom,
+          dateTo: dTo,
+          stageIds: _filterStageIds,
+          khorosIds: _filterKhorosIds,
+          areaIds: _filterAreaIds,
+          fatherIds: _filterFatherIds,
+          genders: _filterGenders,
+          birthdayDay: _filterBirthdayDay,
+          birthdayMonth: _filterBirthdayMonth,
+          birthdayYear: _filterBirthdayYear,
+          serviceIds: _selectedServiceIds,
+          visitedStatus: _filterVisitedStatus,
+          notesFilter: _filterNotesStatus,
+          lateAfterTime: _lateAfterTimeString(),
+          status: _filterStatus,
+          customFilters: _customFilters,
+          callId: 'SILENT-SUM',
+        ),
+      ]);
+
+      if (!mounted || generation != _refreshController.currentGeneration)
+        return;
+
+      var data = results[0] as List<AttendanceDTO>;
+      if (changedIds == null) {
+        data = await _completeBoundary(data, rawHasMore);
+      } else {
+        int compare(AttendanceDTO a, AttendanceDTO b) {
+          final name = _sortBy == 'name'
+              ? a.personName.compareTo(b.personName)
+              : 0;
+          return name != 0 ? name : a.personId.compareTo(b.personId);
+        }
+
+        data = mergeChangedPrefix<AttendanceDTO>(
+          cached: _records,
+          changed: data,
+          changedIds: changedIds,
+          idOf: (p) => p.personId,
+          compare: compare,
+          hasMore: _hasMore,
+        );
+        rawHasMore = _hasMore;
+        final rawCount = _rawCount(data);
+        if (rawHasMore && rawCount < targetLimit) {
+          var tail = await _fetchPage(
+            limit: targetLimit - rawCount,
+            offset: rawCount,
+            onHasMore: (val) => rawHasMore = val,
+          );
+          tail = await _completeBoundary(tail, rawHasMore);
+          final ids = data.map((p) => p.personId).toSet();
+          data.addAll(tail.where((p) => ids.add(p.personId)));
+        }
+      }
+      if (!mounted || generation != _refreshController.currentGeneration)
+        return;
+      final summary = results[1] as Map<String, int>;
+
       setState(() {
-        _records.addAll(data);
         _isLoading = false;
-        _offset = _offset + _limit;
+        _totalCount = summary['total'] ?? 0;
+        _presentCount = summary['present'] ?? 0;
+        _absentCount = summary['absent'] ?? 0;
+        _records.clear();
+        _records.addAll(data);
+        _changeCursor = checkpoint.cursor;
+        final visiblePersonIds = data.map((r) => r.personId).toSet();
+        _selectedPersonIds.retainWhere((id) => visiblePersonIds.contains(id));
         _hasMore = rawHasMore;
+        _offset = _rawCount(data);
       });
+    } catch (e, st) {
+      debugPrint('[AttendanceScreen] Silent refresh error: $e\n$st');
+      rethrow;
     }
   }
 
-  Future<void> _reloadPreservingScroll() async {
-    final offset = _scrollController.hasClients
-        ? _scrollController.offset
-        : 0.0;
-    await _loadInitialData();
-    if (!mounted || !_scrollController.hasClients) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      final max = _scrollController.position.maxScrollExtent;
-      _scrollController.jumpTo(offset.clamp(0.0, max));
-    });
+  Future<void> _loadMore() async {
+    if (_pageLoad != null || _isLoading || _isLoadingMore || !_hasMore) return;
+    final pageLoad = Completer<void>();
+    _pageLoad = pageLoad;
+    _isLoadingMore = true;
+    _refreshController.bumpGeneration();
+    final generation = _refreshController.currentGeneration;
+    try {
+      final repo = ref.read(attendanceRepositoryProvider.notifier);
+      DateTime? dFrom = _filterDateFrom;
+      DateTime? dTo = _filterDateTo;
+      if (_filterSpecificDateOnly) {
+        dFrom = _selectedDate;
+        dTo = _selectedDate;
+      }
+      bool rawHasMore = false;
+      var data = await repo.fetchAttendance(
+        month: _filterMonth,
+        year: _filterYear,
+        search: _searchQuery,
+        limit: _limit,
+        offset: _offset,
+        dateFrom: dFrom,
+        dateTo: dTo,
+        stageIds: _filterStageIds,
+        khorosIds: _filterKhorosIds,
+        areaIds: _filterAreaIds,
+        fatherIds: _filterFatherIds,
+        status: _filterStatus,
+        genders: _filterGenders,
+        birthdayDay: _filterBirthdayDay,
+        birthdayMonth: _filterBirthdayMonth,
+        birthdayYear: _filterBirthdayYear,
+        serviceIds: _selectedServiceIds,
+        visitedStatus: _filterVisitedStatus,
+        notesFilter: _filterNotesStatus,
+        lateAfterTime: _lateAfterTimeString(),
+        customFilters: _customFilters,
+        sortBy: _sortBy,
+        onHasMore: (val) => rawHasMore = val,
+      );
+      data = await _completeBoundary(data, rawHasMore);
+      if (mounted && generation == _refreshController.currentGeneration) {
+        setState(() {
+          final ids = _records.map((r) => r.personId).toSet();
+          _records.addAll(data.where((r) => ids.add(r.personId)));
+          _offset = _rawCount(_records);
+          _hasMore = rawHasMore;
+        });
+      }
+    } catch (e) {
+      if (mounted && generation == _refreshController.currentGeneration) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('خطأ أثناء تحميل المزيد: $e')));
+      }
+    } finally {
+      _isLoadingMore = false;
+      if (!pageLoad.isCompleted) pageLoad.complete();
+      if (identical(_pageLoad, pageLoad)) _pageLoad = null;
+      if (mounted &&
+          generation == _refreshController.currentGeneration &&
+          _refreshController.isStale) {
+        _refreshController.requestRefresh(onRefresh: _silentRefresh);
+      }
+    }
   }
+
+  Future<void> _reloadPreservingScroll() => _silentRefresh();
 
   List<AttendanceDTO> get _selectedRecords =>
       _records.where((r) => _selectedPersonIds.contains(r.personId)).toList();
@@ -635,7 +881,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
     setState(() => _isBulkActionRunning = true);
     try {
-      final services = ref.read(servicesRepositoryProvider).asData?.value ?? [];
+      final services = ref.read(servicesRepositoryProvider).value ?? [];
       var count = 0;
       for (final r in targets) {
         final errorMsg = await ref
@@ -671,7 +917,12 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
   void _onSearch(String val) {
     setState(() => _searchQuery = val);
-    _loadInitialData();
+    _refreshController.bumpGeneration();
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 300),
+      _loadInitialData,
+    );
   }
 
   String _currentTime12h() {
@@ -734,7 +985,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     }
 
     // Validate service day
-    final services = ref.read(servicesRepositoryProvider).asData?.value ?? [];
+    final services = ref.read(servicesRepositoryProvider).value ?? [];
     if (services.isNotEmpty && _selectedServiceIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -769,24 +1020,28 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           return;
         }
 
-        final eligible = await ref
-            .read(serviceEligibilityRepositoryProvider)
-            .isPersonEligibleForService(
-              personId: _selectedPersonId!,
-              serviceId: sId,
-            );
-        if (!eligible) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                serviceEligibilityErrorMessageFor(
-                  personName: _selectedPersonName,
-                  serviceName: svc.name,
-                ),
+        // addAttendance validates eligibility inside its error handling. Doing
+        // the same network reads here delayed saving and let HTTP errors escape.
+      }
+    }
+
+    String? otherReason;
+    if (_isCheckoutMode && _selectedQuickCheckoutType == 'other') {
+      otherReason = _quickOtherReasonController.text.trim();
+      if (otherReason.isEmpty) {
+        otherReason = await _promptForOtherReason(
+          context,
+          _selectedPersonName ?? '',
+        );
+        if (otherReason == null || otherReason.trim().isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('⚠️ يجب كتابة سبب الانصراف عند اختيار "آخر"!'),
+                backgroundColor: Colors.red,
               ),
-              backgroundColor: Colors.red,
-            ),
-          );
+            );
+          }
           _refocusCodeField();
           return;
         }
@@ -809,7 +1064,10 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       final timeStr = _currentTime12h();
 
       String? lastError;
-      for (final sId in _selectedServiceIds) {
+      final attendanceServices = _selectedServiceIds.isEmpty
+          ? <int?>[null]
+          : _selectedServiceIds.cast<int?>();
+      for (final sId in attendanceServices) {
         final serviceName = _serviceNameById(services, sId);
         final errorMsg = await ref
             .read(attendanceRepositoryProvider.notifier)
@@ -822,6 +1080,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               serviceId: sId,
               attendTime: timeStr,
               isCheckout: _isCheckoutMode,
+              checkoutType: _isCheckoutMode ? _selectedQuickCheckoutType : null,
+              checkoutNotes:
+                  _isCheckoutMode && _selectedQuickCheckoutType == 'other'
+                  ? otherReason
+                  : null,
               personName: pName,
               serviceName: serviceName,
             );
@@ -834,11 +1097,35 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         if (lastError == null) {
           await _reloadPreservingScroll();
-          final label = _isCheckoutMode ? 'انصراف' : 'حضور';
+          ref.read(busRefreshTriggerProvider.notifier).trigger();
+          final noteSuffix =
+              (_isCheckoutMode &&
+                  _selectedQuickCheckoutType == 'other' &&
+                  otherReason != null &&
+                  otherReason.isNotEmpty)
+              ? ' (السبب: $otherReason)'
+              : '';
+          final label = _isCheckoutMode
+              ? (_selectedQuickCheckoutType == 'alone'
+                    ? 'انصراف بمفرده'
+                    : (_selectedQuickCheckoutType == 'parent'
+                          ? 'انصراف لولي الأمر (مستبعد من الأتوبيس)'
+                          : _selectedQuickCheckoutType == 'other'
+                          ? 'انصراف لسبب آخر (مستبعد من الأتوبيس)$noteSuffix'
+                          : 'انصراف بالأتوبيس'))
+              : 'حضور';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('✅ تم تسجيل $label $pName بنجاح'),
-              backgroundColor: Colors.green,
+              backgroundColor: _isCheckoutMode
+                  ? (_selectedQuickCheckoutType == 'alone'
+                        ? Colors.teal.shade700
+                        : (_selectedQuickCheckoutType == 'parent'
+                              ? Colors.orange.shade800
+                              : _selectedQuickCheckoutType == 'other'
+                              ? Colors.purple.shade700
+                              : Colors.indigo.shade700))
+                  : Colors.green,
               duration: const Duration(seconds: 2),
             ),
           );
@@ -869,7 +1156,215 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     }
   }
 
-  Future<void> _checkoutPerson(AttendanceDTO r) async {
+  Future<void> _openAttendanceNotesDialog(AttendanceDTO r) async {
+    final res = await AttendanceNotesDialog.show(
+      context,
+      personName: r.personName,
+      personId: r.personId,
+      initialAttendanceNotes: r.attendanceNotes,
+      initialCheckoutNotes: r.checkoutNotes,
+      initialCheckoutType: r.checkoutType,
+      isPresent: r.id != null,
+      isCheckoutDone: r.checkoutTime != null && r.checkoutTime!.isNotEmpty,
+    );
+
+    if (res == null) return;
+
+    if (r.id != null) {
+      await ref
+          .read(attendanceRepositoryProvider.notifier)
+          .updateAttendanceNotes(
+            id: r.id!,
+            attendanceNotes: res.attendanceNotes,
+            checkoutNotes: res.checkoutNotes,
+            checkoutType: res.checkoutType,
+          );
+      await _reloadPreservingScroll();
+      ref.read(busRefreshTriggerProvider.notifier).trigger();
+      if (mounted) {
+        final isExcluded =
+            res.checkoutType == 'parent' || res.checkoutType == 'other';
+        final parentMsg = isExcluded ? ' (تم استبعاده من الأتوبيس اليوم)' : '';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ تم حفظ ملاحظات ${r.personName}$parentMsg بنجاح'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      // Record attendance with notes directly
+      final points =
+          int.tryParse(_pointsController.text) ?? _defaultAttendancePoints;
+      final services = ref.read(servicesRepositoryProvider).value ?? [];
+      final sId = _selectedServiceIds.firstOrNull;
+      final serviceName = _serviceNameById(services, sId);
+      final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+      final timeStr = _currentTime12h();
+
+      await ref
+          .read(attendanceRepositoryProvider.notifier)
+          .addAttendance(
+            personId: r.personId,
+            dateWeek: dateStr,
+            point: points,
+            month: _selectedDate.month,
+            year: _selectedDate.year,
+            serviceId: sId,
+            attendTime: timeStr,
+            personName: r.personName,
+            serviceName: serviceName,
+            attendanceNotes: res.attendanceNotes,
+            checkoutNotes: res.checkoutNotes,
+            checkoutType: res.checkoutType,
+          );
+      await _reloadPreservingScroll();
+      ref.read(busRefreshTriggerProvider.notifier).trigger();
+    }
+  }
+
+  Future<String?> _promptForOtherReason(
+    BuildContext context,
+    String studentName, {
+    String? initialReason,
+  }) async {
+    final controller = TextEditingController(text: initialReason ?? '');
+    String? errorText;
+
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                title: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.alt_route_rounded,
+                        color: Colors.purple.shade700,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'سبب الانصراف (آخر)',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            studentName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'يرجى كتابة سبب الانصراف (مطلوب):',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'مثال: تعب مفاجئ، ظروف أسرية، مشوار خاص...',
+                        errorText: errorText,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        filled: true,
+                        fillColor: Colors.purple.shade50.withOpacity(0.3),
+                      ),
+                      onSubmitted: (val) {
+                        if (val.trim().isEmpty) {
+                          setDialogState(
+                            () => errorText = 'يجب كتابة سبب الانصراف',
+                          );
+                        } else {
+                          Navigator.of(dialogCtx).pop(val.trim());
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '💡 سيتم استبعاد الطالب تلقائياً من كشف وجدول الأتوبيس لهذا اليوم',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.purple.shade900,
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogCtx).pop(null),
+                    child: const Text('إلغاء'),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple.shade700,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: () {
+                      final val = controller.text.trim();
+                      if (val.isEmpty) {
+                        setDialogState(
+                          () => errorText = 'يجب كتابة سبب الانصراف',
+                        );
+                      } else {
+                        Navigator.of(dialogCtx).pop(val);
+                      }
+                    },
+                    child: const Text('تأكيد الانصراف'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _checkoutPerson(
+    AttendanceDTO r, {
+    String? checkoutType,
+    String? checkoutNotes,
+  }) async {
     if (_periodModeEnabled) {
       _showPeriodModeBlockedMessage();
       return;
@@ -882,34 +1377,80 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       final dateStr =
           r.dateWeek ?? DateFormat('yyyy-MM-dd').format(_selectedDate);
       final timeStr = _currentTime12h();
-       final services = ref.read(servicesRepositoryProvider).asData?.value ?? [];
+      final services = ref.read(servicesRepositoryProvider).value ?? [];
       final serviceId = r.serviceId ?? _selectedServiceIds.firstOrNull;
       final serviceName =
           r.serviceName ?? _serviceNameById(services, serviceId);
+      final effectiveType = checkoutType ?? r.checkoutType ?? 'alone';
+      final effectiveNotes = checkoutNotes ?? r.checkoutNotes;
 
-      final errorMsg = await ref
-          .read(attendanceRepositoryProvider.notifier)
-          .addAttendance(
-            personId: r.personId,
-            dateWeek: dateStr,
-            point: points,
-            month: _selectedDate.month,
-            year: _selectedDate.year,
-            serviceId: serviceId,
-            attendTime: timeStr,
-            isCheckout: true,
-            personName: r.personName,
-            serviceName: serviceName,
-          );
+      String? errorMsg;
+      final bool alreadyCheckedOut =
+          r.checkoutTime != null && r.checkoutTime!.isNotEmpty;
+
+      if (alreadyCheckedOut) {
+        final ids = _serviceRecordsFor(
+          r,
+        ).map((rec) => rec.id).whereType<int>().toList();
+        if (ids.isEmpty && r.id != null) ids.add(r.id!);
+        for (final id in ids) {
+          await ref
+              .read(attendanceRepositoryProvider.notifier)
+              .updateAttendanceNotes(
+                id: id,
+                checkoutType: effectiveType,
+                checkoutNotes: effectiveNotes,
+              );
+        }
+      } else {
+        errorMsg = await ref
+            .read(attendanceRepositoryProvider.notifier)
+            .addAttendance(
+              personId: r.personId,
+              dateWeek: dateStr,
+              point: points,
+              month: _selectedDate.month,
+              year: _selectedDate.year,
+              serviceId: serviceId,
+              attendTime: timeStr,
+              isCheckout: true,
+              personName: r.personName,
+              serviceName: serviceName,
+              checkoutType: effectiveType,
+              checkoutNotes: effectiveNotes,
+            );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         if (errorMsg == null) {
           await _reloadPreservingScroll();
+          ref.read(busRefreshTriggerProvider.notifier).trigger();
+          final isAlone = effectiveType == 'alone';
+          final isParent = effectiveType == 'parent';
+          final isOther = effectiveType == 'other';
+          final noteSuffix =
+              (effectiveNotes != null && effectiveNotes.trim().isNotEmpty)
+              ? ' (السبب: ${effectiveNotes.trim()})'
+              : '';
+          final label = isAlone
+              ? '✅ تم تسجيل انصراف ${r.personName} بمفرده (مستبعد من الأتوبيس)'
+              : (isParent
+                    ? '✅ تم تسجيل انصراف ${r.personName} لولي الأمر (مستبعد من الأتوبيس)$noteSuffix'
+                    : isOther
+                    ? '✅ تم تسجيل انصراف ${r.personName} لسبب آخر (مستبعد من الأتوبيس)$noteSuffix'
+                    : '✅ تم تسجيل انصراف ${r.personName} بنجاح');
+          final snackColor = isAlone
+              ? Colors.teal.shade700
+              : (isParent
+                    ? Colors.orange.shade800
+                    : isOther
+                    ? Colors.purple.shade700
+                    : Colors.indigo.shade700);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('✅ تم تسجيل انصراف ${r.personName} بنجاح'),
-              backgroundColor: Colors.green,
+              content: Text(label),
+              backgroundColor: snackColor,
               duration: const Duration(seconds: 2),
             ),
           );
@@ -938,6 +1479,33 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     }
   }
 
+  Future<void> _cancelCheckoutForPerson(AttendanceDTO r) async {
+    if (_periodModeEnabled) {
+      _showPeriodModeBlockedMessage();
+      return;
+    }
+    final ids = _serviceRecordsFor(
+      r,
+    ).map((rec) => rec.id).whereType<int>().toList();
+    if (ids.isEmpty && r.id != null) ids.add(r.id!);
+    if (ids.isEmpty) return;
+
+    await ref
+        .read(attendanceRepositoryProvider.notifier)
+        .clearCheckoutForIds(ids);
+    await _reloadPreservingScroll();
+    ref.read(busRefreshTriggerProvider.notifier).trigger();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم إلغاء انصراف ${r.personName} بنجاح'),
+          backgroundColor: Colors.blueGrey,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   Future<void> _saveManualAttendance() async {
     if (_periodModeEnabled) {
       _showPeriodModeBlockedMessage();
@@ -945,7 +1513,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     }
     if (_isCheckingOutAll) return;
 
-    final services = ref.read(servicesRepositoryProvider).asData?.value ?? [];
+    final services = ref.read(servicesRepositoryProvider).value ?? [];
     if (services.isNotEmpty && _selectedServiceIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -996,7 +1564,10 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     setState(() => _isCheckingOutAll = true);
     try {
       int totalCount = 0;
-      for (final sId in _selectedServiceIds) {
+      final checkoutServices = _selectedServiceIds.isEmpty
+          ? <int?>[null]
+          : _selectedServiceIds.cast<int?>();
+      for (final sId in checkoutServices) {
         final count = await ref
             .read(attendanceRepositoryProvider.notifier)
             .checkoutAll(
@@ -1062,6 +1633,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           .deleteAttendance(r.id!);
       if (mounted) {
         await _reloadPreservingScroll();
+        ref.read(busRefreshTriggerProvider.notifier).trigger();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(success ? 'تم الحذف بنجاح' : 'فشل الحذف')),
         );
@@ -1084,8 +1656,12 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
     // Set initial values from the first record
     AttendanceServiceRecord selectedRecord = records.first;
-    final pointAttendanceCtrl = TextEditingController(text: '${selectedRecord.attendancePoint ?? selectedRecord.point}');
-    final pointCheckoutCtrl = TextEditingController(text: '${selectedRecord.checkoutPoint ?? 0}');
+    final pointAttendanceCtrl = TextEditingController(
+      text: '${selectedRecord.attendancePoint ?? selectedRecord.point}',
+    );
+    final pointCheckoutCtrl = TextEditingController(
+      text: '${selectedRecord.checkoutPoint ?? 0}',
+    );
     DateTime editDate = selectedRecord.dateWeek != null
         ? (DateTime.tryParse(selectedRecord.dateWeek!) ?? DateTime.now())
         : DateTime.now();
@@ -1105,19 +1681,28 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     DropdownButtonFormField<AttendanceServiceRecord>(
                       value: selectedRecord,
                       isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'الخدمة المراد تعديلها'),
-                      items: records.map((rec) => DropdownMenuItem(
-                        value: rec,
-                        child: Text(rec.serviceName ?? 'خدمة غير معروفة'),
-                      )).toList(),
+                      decoration: const InputDecoration(
+                        labelText: 'الخدمة المراد تعديلها',
+                      ),
+                      items: records
+                          .map(
+                            (rec) => DropdownMenuItem(
+                              value: rec,
+                              child: Text(rec.serviceName ?? 'خدمة غير معروفة'),
+                            ),
+                          )
+                          .toList(),
                       onChanged: (val) {
                         if (val != null) {
                           setDlgState(() {
                             selectedRecord = val;
-                            pointAttendanceCtrl.text = '${val.attendancePoint ?? val.point}';
-                            pointCheckoutCtrl.text = '${val.checkoutPoint ?? 0}';
+                            pointAttendanceCtrl.text =
+                                '${val.attendancePoint ?? val.point}';
+                            pointCheckoutCtrl.text =
+                                '${val.checkoutPoint ?? 0}';
                             editDate = val.dateWeek != null
-                                ? (DateTime.tryParse(val.dateWeek!) ?? DateTime.now())
+                                ? (DateTime.tryParse(val.dateWeek!) ??
+                                      DateTime.now())
                                 : DateTime.now();
                           });
                         }
@@ -1134,7 +1719,9 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                   TextField(
                     controller: pointCheckoutCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'نقاط الانصراف'),
+                    decoration: const InputDecoration(
+                      labelText: 'نقاط الانصراف',
+                    ),
                   ),
                   const SizedBox(height: 12),
                   InkWell(
@@ -1162,7 +1749,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                 FilledButton(
                   onPressed: () async {
                     Navigator.pop(c);
-                    final attPoints = int.tryParse(pointAttendanceCtrl.text) ?? 0;
+                    final attPoints =
+                        int.tryParse(pointAttendanceCtrl.text) ?? 0;
                     final chkPoints = int.tryParse(pointCheckoutCtrl.text) ?? 0;
                     final totalPoints = attPoints + chkPoints;
                     final success = await ref
@@ -1196,6 +1784,88 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(sourceEpochProvider, (previous, next) {
+      _refreshController.updateEpoch(next);
+      if (mounted) {
+        setState(() {
+          _changeCursor = null;
+          _selectedPersonIds.clear();
+        });
+        _refreshController.requestRefresh(
+          onRefresh: _silentRefresh,
+          immediate: true,
+        );
+      }
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.attendance), (
+      prev,
+      next,
+    ) {
+      if (next > 1) {
+        _refreshController.markStale(next, onRefresh: _silentRefresh);
+      }
+    });
+
+    ref.listen<RibbonCommandEvent?>(ribbonCommandBusProvider, (previous, next) {
+      if (next == null) return;
+      switch (next.command) {
+        case RibbonCommand.focusQuickAttendance:
+          setState(() {
+            _isCheckoutMode = false;
+          });
+          if (next.payload != null && next.payload is PersonListDTO) {
+            final p = next.payload as PersonListDTO;
+            _selectedPersonId = p.id;
+            _selectedPersonName = p.name;
+            _autocompleteController?.text = p.name;
+          }
+          _refocusCodeField();
+          break;
+        case RibbonCommand.setCheckoutAlone:
+          setState(() {
+            _isCheckoutMode = true;
+            _selectedQuickCheckoutType = 'alone';
+          });
+          _refocusCodeField();
+          break;
+        case RibbonCommand.setCheckoutBus:
+          setState(() {
+            _isCheckoutMode = true;
+            _selectedQuickCheckoutType = 'bus';
+          });
+          _refocusCodeField();
+          break;
+        case RibbonCommand.setCheckoutParent:
+          setState(() {
+            _isCheckoutMode = true;
+            _selectedQuickCheckoutType = 'parent';
+          });
+          _refocusCodeField();
+          break;
+        case RibbonCommand.checkoutAll:
+          _saveManualAttendance();
+          break;
+        case RibbonCommand.filterAbsent2Weeks:
+        case RibbonCommand.filterAbsentMonth:
+          setState(() {
+            _filterStatus = 'absent';
+          });
+          _loadInitialData();
+          break;
+        case RibbonCommand.filterReset:
+          setState(() {
+            _filterStatus = 'all';
+          });
+          _loadInitialData();
+          break;
+        case RibbonCommand.reloadAttendance:
+          _loadInitialData();
+          break;
+        default:
+          break;
+      }
+    });
+
     final user = ref.watch(authServiceProvider).value;
     final attendancePermissions =
         user?.granularPermissions['attendance'] ??
@@ -1313,10 +1983,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildHeader(),
-                    const SizedBox(height: 16),
-                    _buildSummaryCards(),
-                    const SizedBox(height: 16),
+                    _buildDesktopHeaderRow(),
+                    const SizedBox(height: 8),
                     if (canAdd) _buildInlineForm(isMobile),
                     const SizedBox(height: 8),
                     Expanded(
@@ -1368,6 +2036,41 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     );
   }
 
+  Widget _buildDesktopHeaderRow() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.how_to_reg_rounded,
+              color: Theme.of(context).primaryColor,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'سجل الحضور',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'متابعة حضور الأشخاص وتوزيع النقاط والافتقاد',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        _buildSummaryCards(),
+      ],
+    );
+  }
+
   Widget _buildHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1394,20 +2097,45 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   }
 
   Widget _buildSummaryCards() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final surfaceColor = isDark ? const Color(0xFF151E2E) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF334155) : Colors.grey.shade200;
+    final dividerColor = isDark
+        ? const Color(0xFF334155)
+        : Colors.grey.shade300;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: surfaceColor,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.04),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        mainAxisSize: MainAxisSize.min,
         children: [
           _buildSingleCard('الإجمالي', _totalCount, Colors.blue),
-          Container(width: 1, height: 24, color: Colors.grey.shade300),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            width: 1,
+            height: 16,
+            color: dividerColor,
+          ),
           _buildSingleCard('الحضور', _presentCount, Colors.green),
-          Container(width: 1, height: 24, color: Colors.grey.shade300),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            width: 1,
+            height: 16,
+            color: dividerColor,
+          ),
           _buildSingleCard('الغياب', _absentCount, Colors.red),
         ],
       ),
@@ -1415,30 +2143,43 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   }
 
   Widget _buildSingleCard(String title, int count, Color color) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textMuted = isDark ? const Color(0xFFCBD5E1) : Colors.grey.shade700;
+    final adaptiveColor = AppTheme.getAdaptiveAccent(color, isDark);
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           title,
           style: TextStyle(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Colors.grey.shade600,
+            color: textMuted,
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 5),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
+            color: isDark
+                ? color.withValues(alpha: 0.25)
+                : color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: isDark
+                  ? color.withValues(alpha: 0.45)
+                  : color.withValues(alpha: 0.25),
+              width: 0.8,
+            ),
           ),
           child: Text(
             count.toString(),
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 12.5,
               fontWeight: FontWeight.bold,
-              color: color,
+              color: isDark ? const Color(0xFFF8FAFC) : adaptiveColor,
             ),
           ),
         ),
@@ -1448,14 +2189,18 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
   Widget _buildInlineForm(bool isMobile) {
     final servicesAsync = ref.watch(servicesRepositoryProvider);
-    final services = servicesAsync.asData?.value ?? [];
+    final services = servicesAsync.value ?? [];
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Card(
       elevation: 2,
-      color: const Color(0xFFF5F7FF),
+      color: isDark ? const Color(0xFF151E2E) : const Color(0xFFF5F7FF),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: Theme.of(context).primaryColor.withOpacity(0.3),
+          color: isDark
+              ? const Color(0xFF334155)
+              : theme.primaryColor.withValues(alpha: 0.3),
         ),
       ),
       child: Padding(
@@ -1470,7 +2215,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               children: [
                 Icon(
                   Icons.add_circle,
-                  color: Theme.of(context).primaryColor,
+                  color: isDark ? const Color(0xFF93C5FD) : theme.primaryColor,
                   size: 20,
                 ),
                 const SizedBox(width: 8),
@@ -1479,10 +2224,16 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
-                    color: Theme.of(context).primaryColor,
+                    color: isDark
+                        ? const Color(0xFF93C5FD)
+                        : theme.primaryColor,
                   ),
                 ),
                 const Spacer(),
+                if (!isMobile && _isCheckoutMode) ...[
+                  _buildTopCheckoutCards(),
+                  const SizedBox(width: 8),
+                ],
                 // Check-in / Check-out Toggle
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -1491,13 +2242,21 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                   ),
                   decoration: BoxDecoration(
                     color: _isCheckoutMode
-                        ? Colors.red.shade50
-                        : Colors.green.shade50,
+                        ? (isDark
+                              ? Colors.red.withValues(alpha: 0.22)
+                              : Colors.red.shade50)
+                        : (isDark
+                              ? Colors.green.withValues(alpha: 0.22)
+                              : Colors.green.shade50),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: _isCheckoutMode
-                          ? Colors.red.shade200
-                          : Colors.green.shade200,
+                          ? (isDark
+                                ? Colors.red.withValues(alpha: 0.5)
+                                : Colors.red.shade200)
+                          : (isDark
+                                ? Colors.green.withValues(alpha: 0.5)
+                                : Colors.green.shade200),
                     ),
                   ),
                   child: Row(
@@ -1512,6 +2271,13 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
             ),
             const SizedBox(height: 8),
             if (isMobile) ...[
+              if (_isCheckoutMode) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildTopCheckoutCards(),
+                ),
+                const SizedBox(height: 8),
+              ],
               _buildPersonAutocomplete(),
               const SizedBox(height: 10),
               if (services.isNotEmpty) ...[
@@ -1624,14 +2390,19 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       ),
     ];
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: _periodModeEnabled ? Colors.orange.shade50 : Colors.white,
+        color: _periodModeEnabled
+            ? (isDark
+                  ? Colors.orange.shade900.withValues(alpha: 0.3)
+                  : Colors.orange.shade50)
+            : (isDark ? const Color(0xFF151E2E) : Colors.white),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: _periodModeEnabled
-              ? Colors.orange.shade200
-              : Colors.grey.shade200,
+              ? (isDark ? Colors.orange.shade700 : Colors.orange.shade200)
+              : (isDark ? const Color(0xFF334155) : Colors.grey.shade200),
         ),
       ),
       child: Padding(
@@ -1673,7 +2444,9 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       label: 'الخدمات للتحضير والفلترة',
       selectedIds: _selectedServiceIds,
       allItems: services
-          .map((s) => SelectableItem(id: s.id, name: '${s.name} - ${s.dayName}'))
+          .map(
+            (s) => SelectableItem(id: s.id, name: '${s.name} - ${s.dayName}'),
+          )
           .toList(),
       onChanged: (ids) async {
         setState(() {
@@ -1688,57 +2461,96 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   Widget _buildPersonAutocomplete() {
     final personsAsync = ref.watch(personsRepositoryProvider);
     return personsAsync.when(
+      skipLoadingOnReload: true,
+      skipError: true,
       data: (persons) {
         Future<void> submitCode(String value) async {
-          if (_isSaving) return;
-          final query = value.trim();
-          if (query.isNotEmpty) {
-            final normalizedQ = normalizeArabic(query.toLowerCase());
-            final intQ = int.tryParse(query);
+          if (_isSaving || _isResolvingCode) return;
+          _isResolvingCode = true;
+          try {
+            final query = value.trim();
+            if (query.isNotEmpty) {
+              final normalizedQ = normalizeArabic(query.toLowerCase());
+              final intQ = int.tryParse(query);
 
-            final exactMatch = persons
-                .where(
-                  (p) =>
-                      p.id.toString() == query ||
-                      normalizeArabic(p.name.toLowerCase()) == normalizedQ ||
-                      (intQ != null && p.id == intQ),
-                )
-                .toList();
+              if (intQ != null && !persons.any((p) => p.id == intQ)) {
+                try {
+                  final matches = await ref
+                      .read(personsRepositoryProvider.notifier)
+                      .fetchPersonOptions(personId: intQ, limit: 1);
+                  if (!mounted) return;
+                  if (matches.isNotEmpty) {
+                    setState(() {
+                      _selectedPersonId = matches.first.id;
+                      _selectedPersonName = matches.first.name;
+                    });
+                    await _saveAttendance();
+                    return;
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('لم يتم العثور على شخص بهذا الكود'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                } catch (error) {
+                  if (mounted)
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('تعذر البحث عن الكود: $error')),
+                    );
+                  return;
+                }
+              }
 
-            final partialMatch = persons
-                .where(
-                  (p) =>
-                      normalizeArabic(p.name.toLowerCase()).contains(normalizedQ) ||
-                      p.id.toString().contains(query),
-                )
-                .toList();
+              final exactMatch = persons
+                  .where(
+                    (p) =>
+                        p.id.toString() == query ||
+                        normalizeArabic(p.name.toLowerCase()) == normalizedQ ||
+                        (intQ != null && p.id == intQ),
+                  )
+                  .toList();
 
-            final matchToUse = exactMatch.isNotEmpty
-                ? exactMatch
-                : partialMatch;
-            if (matchToUse.length == 1) {
-              setState(() {
-                _selectedPersonId = matchToUse.first.id;
-                _selectedPersonName = matchToUse.first.name;
-              });
+              final partialMatch = persons
+                  .where(
+                    (p) =>
+                        normalizeArabic(
+                          p.name.toLowerCase(),
+                        ).contains(normalizedQ) ||
+                        p.id.toString().contains(query),
+                  )
+                  .toList();
+
+              final matchToUse = exactMatch.isNotEmpty
+                  ? exactMatch
+                  : partialMatch;
+              if (matchToUse.length == 1) {
+                setState(() {
+                  _selectedPersonId = matchToUse.first.id;
+                  _selectedPersonName = matchToUse.first.name;
+                });
+                await _saveAttendance();
+              } else if (matchToUse.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('لم يتم العثور على شخص'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('أكثر من شخص بنفس الاسم. حدد بدقة.'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+            } else if (_selectedPersonId != null) {
               await _saveAttendance();
-            } else if (matchToUse.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('لم يتم العثور على شخص'),
-                  backgroundColor: Colors.orange,
-                ),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('أكثر من شخص بنفس الاسم. حدد بدقة.'),
-                  backgroundColor: Colors.orange,
-                ),
-              );
             }
-          } else if (_selectedPersonId != null) {
-            await _saveAttendance();
+          } finally {
+            _isResolvingCode = false;
           }
         }
 
@@ -1800,12 +2612,16 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                   final idMatch =
                       p.id.toString() == query ||
                       (intQ != null && p.id == intQ);
-                  return normalizeArabic(p.name.toLowerCase()).contains(normalizedQ) || idMatch;
+                  return normalizeArabic(
+                        p.name.toLowerCase(),
+                      ).contains(normalizedQ) ||
+                      idMatch;
                 })
                 .map((p) => PersonOption(id: p.id, name: p.name));
           },
           displayStringForOption: (option) => '${option.id} - ${option.name}',
           onSelected: (option) async {
+            if (_isSaving || _isResolvingCode) return;
             setState(() {
               _selectedPersonId = option.id;
               _selectedPersonName = option.name;
@@ -1858,65 +2674,20 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF1E293B)
+                    : Colors.white,
               ),
-              onSubmitted: (value) async {
-                if (_isSaving) return;
-                final query = value.trim();
-                if (query.isNotEmpty) {
-                  final lowerQ = query.toLowerCase();
-                  final intQ = int.tryParse(lowerQ);
-
-                  final exactMatch = persons
-                      .where(
-                        (p) =>
-                            p.id.toString() == lowerQ ||
-                            p.name.toLowerCase() == lowerQ ||
-                            (intQ != null && p.id == intQ),
-                      )
-                      .toList();
-
-                  final partialMatch = persons
-                      .where(
-                        (p) =>
-                            p.name.toLowerCase().contains(lowerQ) ||
-                            p.id.toString().contains(lowerQ),
-                      )
-                      .toList();
-
-                  final matchToUse = exactMatch.isNotEmpty
-                      ? exactMatch
-                      : partialMatch;
-                  if (matchToUse.length == 1) {
-                    setState(() {
-                      _selectedPersonId = matchToUse.first.id;
-                      _selectedPersonName = matchToUse.first.name;
-                    });
-                    await _saveAttendance();
-                  } else if (matchToUse.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('لم يتم العثور على شخص'),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('أكثر من شخص بنفس الاسم. حدد بدقة.'),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                  }
-                } else if (_selectedPersonId != null) {
-                  await _saveAttendance();
-                }
-              },
+              onSubmitted: submitCode,
             );
           },
         );
       },
-      error: (err, stack) => const Center(child: Text('خطأ في تحميل البيانات')),
+      error: (err, stack) => TextButton.icon(
+        onPressed: () => ref.invalidate(personsRepositoryProvider),
+        icon: const Icon(Icons.refresh),
+        label: const Text('تعذر تحميل الأسماء — إعادة المحاولة'),
+      ),
       loading: () => const Center(child: CircularProgressIndicator()),
     );
   }
@@ -1948,7 +2719,9 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           ),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF1E293B)
+              : Colors.white,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1977,12 +2750,35 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E293B)
+            : Colors.white,
       ),
     );
   }
 
   Widget _buildSaveButton() {
+    final String labelText;
+    final Color? btnColor;
+    if (_isCheckoutMode) {
+      if (_selectedQuickCheckoutType == 'alone') {
+        labelText = 'انصراف (بمفرده)';
+        btnColor = Colors.teal.shade700;
+      } else if (_selectedQuickCheckoutType == 'parent') {
+        labelText = 'انصراف (ولي أمر)';
+        btnColor = Colors.orange.shade800;
+      } else if (_selectedQuickCheckoutType == 'other') {
+        labelText = 'انصراف (آخر)';
+        btnColor = Colors.purple.shade700;
+      } else {
+        labelText = 'انصراف (أتوبيس)';
+        btnColor = Colors.indigo.shade700;
+      }
+    } else {
+      labelText = 'سجل حضور';
+      btnColor = null;
+    }
+
     return SizedBox(
       height: 42,
       child: FilledButton.icon(
@@ -1998,11 +2794,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               )
             : const Icon(Icons.check, size: 18),
         label: Text(
-          _isCheckoutMode ? 'سجل انصراف' : 'سجل حضور',
-          style: const TextStyle(fontSize: 13),
+          labelText,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
         ),
         style: FilledButton.styleFrom(
-          backgroundColor: _isCheckoutMode ? Colors.red : null,
+          backgroundColor: btnColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
@@ -2037,16 +2833,24 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               (record.checkoutTime == null || record.checkoutTime!.isEmpty),
         );
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bulkBg = selectedCount == 0
+        ? (isDark ? const Color(0xFF1E293B) : Colors.white)
+        : (isDark
+              ? Theme.of(context).primaryColor.withValues(alpha: 0.25)
+              : Colors.blue.shade50);
+    final bulkBorder = selectedCount == 0
+        ? (isDark ? const Color(0xFF334155) : Colors.grey.shade200)
+        : (isDark
+              ? Theme.of(context).primaryColor.withValues(alpha: 0.4)
+              : Colors.blue.shade100);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: selectedCount == 0 ? Colors.white : Colors.blue.shade50,
+        color: bulkBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: selectedCount == 0
-              ? Colors.grey.shade200
-              : Colors.blue.shade100,
-        ),
+        border: Border.all(color: bulkBorder),
       ),
       child: Wrap(
         spacing: 8,
@@ -2118,15 +2922,17 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           : () {
               if (_isCheckoutMode == val) return;
               setState(() {
-                final currentVal = int.tryParse(_pointsController.text) ?? _defaultAttendancePoints;
+                final currentVal =
+                    int.tryParse(_pointsController.text) ??
+                    _defaultAttendancePoints;
                 if (_isCheckoutMode) {
                   _checkoutSavedPoints = currentVal;
                 } else {
                   _attendanceSavedPoints = currentVal;
                 }
-                
+
                 _isCheckoutMode = val;
-                
+
                 if (val) {
                   _pointsController.text = '$_checkoutSavedPoints';
                 } else {
@@ -2149,6 +2955,316 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildTopCheckoutCards() {
+    final options = [
+      {
+        'type': 'alone',
+        'label': 'بمفرده',
+        'icon': Icons.directions_walk_rounded,
+        'color': Colors.teal.shade700,
+        'bg': Colors.teal.shade50,
+        'activeBg': Colors.teal.shade700,
+      },
+      {
+        'type': 'bus',
+        'label': 'أتوبيس',
+        'icon': Icons.directions_bus_rounded,
+        'color': Colors.indigo,
+        'bg': Colors.indigo.shade50,
+        'activeBg': Colors.indigo,
+      },
+      {
+        'type': 'parent',
+        'label': 'ولي أمر',
+        'icon': Icons.family_restroom_rounded,
+        'color': Colors.orange.shade800,
+        'bg': Colors.orange.shade50,
+        'activeBg': Colors.orange.shade800,
+      },
+      {
+        'type': 'other',
+        'label': 'آخر',
+        'icon': Icons.alt_route_rounded,
+        'color': Colors.purple.shade700,
+        'bg': Colors.purple.shade50,
+        'activeBg': Colors.purple.shade700,
+      },
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ...options.map((opt) {
+            final isSelected = _selectedQuickCheckoutType == opt['type'];
+            final color = opt['color'] as Color;
+            final activeBg = opt['activeBg'] as Color;
+
+            return InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                setState(() {
+                  _selectedQuickCheckoutType = opt['type'] as String;
+                });
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? activeBg
+                      : (Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF1E293B)
+                            : Colors.white),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isSelected ? activeBg : Colors.grey.shade300,
+                    width: isSelected ? 1.5 : 1.0,
+                  ),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: color.withOpacity(0.35),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      opt['icon'] as IconData,
+                      size: 15,
+                      color: isSelected ? Colors.white : color,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      opt['label'] as String,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.w600,
+                        color: isSelected
+                            ? Colors.white
+                            : (Theme.of(context).brightness == Brightness.dark
+                                  ? const Color(0xFFF8FAFC)
+                                  : Colors.black87),
+                      ),
+                    ),
+                    if (isSelected) ...[
+                      const SizedBox(width: 4),
+                      const Icon(Icons.check, size: 13, color: Colors.white),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }),
+          if (_selectedQuickCheckoutType == 'other') ...[
+            const SizedBox(width: 6),
+            SizedBox(
+              width: 160,
+              height: 32,
+              child: TextField(
+                controller: _quickOtherReasonController,
+                decoration: InputDecoration(
+                  hintText: 'اكتب السبب... *',
+                  hintStyle: TextStyle(
+                    fontSize: 11,
+                    color: Colors.purple.shade400,
+                  ),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  filled: true,
+                  fillColor: Colors.purple.shade50,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.purple.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: Colors.purple.shade700,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChildCardCheckoutButtons(AttendanceDTO r) {
+    final bool isCheckedOut =
+        r.checkoutTime != null && r.checkoutTime!.isNotEmpty;
+    final String currentType = r.checkoutType ?? 'alone';
+
+    final options = [
+      {
+        'type': 'alone',
+        'label': 'بمفرده',
+        'icon': Icons.directions_walk_rounded,
+        'color': Colors.teal.shade700,
+        'bg': Colors.teal.shade50,
+        'activeBg': Colors.teal.shade700,
+      },
+      {
+        'type': 'bus',
+        'label': 'أتوبيس',
+        'icon': Icons.directions_bus_rounded,
+        'color': Colors.indigo,
+        'bg': Colors.indigo.shade50,
+        'activeBg': Colors.indigo,
+      },
+      {
+        'type': 'parent',
+        'label': 'ولي أمر',
+        'icon': Icons.family_restroom_rounded,
+        'color': Colors.orange.shade800,
+        'bg': Colors.orange.shade50,
+        'activeBg': Colors.orange.shade800,
+      },
+      {
+        'type': 'other',
+        'label': 'آخر',
+        'icon': Icons.alt_route_rounded,
+        'color': Colors.purple.shade700,
+        'bg': Colors.purple.shade50,
+        'activeBg': Colors.purple.shade700,
+      },
+    ];
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        ...options.map((opt) {
+          final type = opt['type'] as String;
+          final isThisSelected = isCheckedOut && currentType == type;
+          final color = opt['color'] as Color;
+          final activeBg = opt['activeBg'] as Color;
+          final bg = opt['bg'] as Color;
+
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () async {
+                if (type == 'other') {
+                  final reason = await _promptForOtherReason(
+                    context,
+                    r.personName,
+                    initialReason: r.checkoutNotes,
+                  );
+                  if (reason == null || reason.trim().isEmpty) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            '⚠️ يجب كتابة سبب الانصراف عند اختيار "آخر"!',
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                    return;
+                  }
+                  _checkoutPerson(
+                    r,
+                    checkoutType: 'other',
+                    checkoutNotes: reason.trim(),
+                  );
+                } else {
+                  _checkoutPerson(r, checkoutType: type);
+                }
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isThisSelected ? activeBg : bg.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isThisSelected ? activeBg : color.withOpacity(0.4),
+                    width: isThisSelected ? 1.5 : 1.0,
+                  ),
+                  boxShadow: isThisSelected
+                      ? [
+                          BoxShadow(
+                            color: color.withOpacity(0.25),
+                            blurRadius: 3,
+                            offset: const Offset(0, 1),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      opt['icon'] as IconData,
+                      size: 13,
+                      color: isThisSelected ? Colors.white : color,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      opt['label'] as String,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isThisSelected
+                            ? FontWeight.bold
+                            : FontWeight.w600,
+                        color: isThisSelected ? Colors.white : color,
+                      ),
+                    ),
+                    if (isThisSelected) ...[
+                      const SizedBox(width: 3),
+                      const Icon(Icons.check, size: 12, color: Colors.white),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+        if (isCheckedOut) ...[
+          IconButton(
+            icon: const Icon(Icons.undo_rounded, size: 16),
+            tooltip: 'إلغاء الانصراف',
+            color: Colors.red.shade400,
+            constraints: const BoxConstraints(),
+            padding: const EdgeInsets.all(4),
+            onPressed: () => _cancelCheckoutForPerson(r),
+          ),
+        ],
+      ],
     );
   }
 
@@ -2236,7 +3352,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   }
 
   Widget _buildPersonFilters() {
-    final fields = ref.watch(fieldsRepositoryProvider).asData?.value ?? [];
+    final fields = ref.watch(fieldsRepositoryProvider).value ?? [];
     String getLabel(String key, String fallback) {
       final f = fields.where((f) => f.fieldKey == key).firstOrNull;
       return f?.name ?? fallback;
@@ -2379,8 +3495,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
         // Dynamic Custom Filters
         Consumer(
           builder: (context, ref, child) {
-            final fields =
-                ref.watch(fieldsRepositoryProvider).asData?.value ?? [];
+            final fields = ref.watch(fieldsRepositoryProvider).value ?? [];
             final filterableFields = fields
                 .where((f) => f.isFilter && f.type != 'native')
                 .toList();
@@ -2491,7 +3606,10 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                                     fontSize: 11,
                                     color: isSelected
                                         ? Colors.white
-                                        : Colors.black87,
+                                        : (Theme.of(context).brightness ==
+                                                  Brightness.dark
+                                              ? const Color(0xFFF8FAFC)
+                                              : Colors.black87),
                                   ),
                                 ),
                                 selected: isSelected,
@@ -2681,7 +3799,10 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
             contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           ),
           items: const [
-            DropdownMenuItem(value: 'code', child: Text('كود الطالب (رقم الكارنيه)')),
+            DropdownMenuItem(
+              value: 'code',
+              child: Text('كود الطالب (رقم الكارنيه)'),
+            ),
             DropdownMenuItem(value: 'name', child: Text('أبجدي (حسب الإسم)')),
           ],
           onChanged: (v) {
@@ -2700,9 +3821,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                 _loadInitialData();
               },
             ),
-            const Text(
-              'تاريخ اليوم فقط',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            const Expanded(
+              child: Text(
+                'تاريخ اليوم فقط',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
             ),
           ],
         ),
@@ -2972,7 +4095,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           ? null
           : () async {
               final servicesAsync = ref.read(servicesRepositoryProvider);
-              final services = servicesAsync.asData?.value ?? [];
+              final services = servicesAsync.value ?? [];
 
               final periodServiceResult =
                   await showDialog<PrintPeriodServicesResult>(
@@ -3134,7 +4257,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                   });
 
                   final svcsData =
-                      ref.read(servicesRepositoryProvider).asData?.value ?? [];
+                      ref.read(servicesRepositoryProvider).value ?? [];
                   final Map<int, int> serviceMinsMap = {
                     for (var s in svcsData) s.id: s.hour * 60 + s.minute,
                   };
@@ -3185,7 +4308,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           ? null
           : () async {
               final servicesAsync = ref.read(servicesRepositoryProvider);
-              final services = servicesAsync.asData?.value ?? [];
+              final services = servicesAsync.value ?? [];
 
               final periodServiceResult =
                   await showDialog<PrintPeriodServicesResult>(
@@ -3230,8 +4353,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                 );
 
                 final Map<String, String> headerData = {};
-                final fields =
-                    ref.read(fieldsRepositoryProvider).asData?.value ?? [];
+                final fields = ref.read(fieldsRepositoryProvider).value ?? [];
                 final labels = {
                   for (var f in fields)
                     if (f.fieldKey != null) f.fieldKey!: f.name,
@@ -3369,9 +4491,10 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     }
                   }
                   final svcsData =
-                      ref.read(servicesRepositoryProvider).asData?.value ?? [];
+                      ref.read(servicesRepositoryProvider).value ?? [];
                   final Map<String, int> serviceNameToMins = {
-                    for (var s in svcsData) s.name.trim(): s.hour * 60 + s.minute,
+                    for (var s in svcsData)
+                      s.name.trim(): s.hour * 60 + s.minute,
                   };
                   final Map<int, int> serviceMinsMap = {
                     for (var s in svcsData) s.id: s.hour * 60 + s.minute,
@@ -3441,7 +4564,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           ? null
           : () async {
               final servicesAsync = ref.read(servicesRepositoryProvider);
-              final services = servicesAsync.asData?.value ?? [];
+              final services = servicesAsync.value ?? [];
 
               final periodServiceResult =
                   await showDialog<PrintPeriodServicesResult>(
@@ -3610,7 +4733,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     return;
                   }
                   final svcsData =
-                      ref.read(servicesRepositoryProvider).asData?.value ?? [];
+                      ref.read(servicesRepositoryProvider).value ?? [];
                   final Map<int, int> serviceMinsMap = {
                     for (var s in svcsData) s.id: s.hour * 60 + s.minute,
                   };
@@ -3630,10 +4753,13 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     final df = periodServiceResult.dateFrom;
                     final dt = periodServiceResult.dateTo;
                     final String dateSuffix;
-                    if (df.year == dt.year && df.month == dt.month && df.day == dt.day) {
+                    if (df.year == dt.year &&
+                        df.month == dt.month &&
+                        df.day == dt.day) {
                       dateSuffix = DateFormat('yyyy-MM-dd').format(df);
                     } else {
-                      dateSuffix = '${DateFormat('yyyy-MM-dd').format(df)} - ${DateFormat('yyyy-MM-dd').format(dt)}';
+                      dateSuffix =
+                          '${DateFormat('yyyy-MM-dd').format(df)} - ${DateFormat('yyyy-MM-dd').format(dt)}';
                     }
                     final exportResult =
                         await GroupedPdfExportService.writeGroups<
@@ -3764,7 +4890,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           ? null
           : () async {
               final servicesAsync = ref.read(servicesRepositoryProvider);
-              final services = servicesAsync.asData?.value ?? [];
+              final services = servicesAsync.value ?? [];
 
               final periodServiceResult =
                   await showDialog<PrintPeriodServicesResult>(
@@ -3815,8 +4941,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                 final churchLogo = await settingsRepo.getChurchLogo();
 
                 final Map<String, String> headerData = {};
-                final fields =
-                    ref.read(fieldsRepositoryProvider).asData?.value ?? [];
+                final fields = ref.read(fieldsRepositoryProvider).value ?? [];
                 final labels = {
                   for (var f in fields)
                     if (f.fieldKey != null) f.fieldKey!: f.name,
@@ -3938,7 +5063,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                   }
 
                   final svcsData =
-                      ref.read(servicesRepositoryProvider).asData?.value ?? [];
+                      ref.read(servicesRepositoryProvider).value ?? [];
                   final Map<int, int> serviceMinsMap = {
                     for (var s in svcsData) s.id: s.hour * 60 + s.minute,
                   };
@@ -3958,10 +5083,13 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     final df = periodServiceResult.dateFrom;
                     final dt = periodServiceResult.dateTo;
                     final String dateSuffix;
-                    if (df.year == dt.year && df.month == dt.month && df.day == dt.day) {
+                    if (df.year == dt.year &&
+                        df.month == dt.month &&
+                        df.day == dt.day) {
                       dateSuffix = DateFormat('yyyy-MM-dd').format(df);
                     } else {
-                      dateSuffix = '${DateFormat('yyyy-MM-dd').format(df)} - ${DateFormat('yyyy-MM-dd').format(dt)}';
+                      dateSuffix =
+                          '${DateFormat('yyyy-MM-dd').format(df)} - ${DateFormat('yyyy-MM-dd').format(dt)}';
                     }
                     final exportResult =
                         await GroupedPdfExportService.writeGroups<
@@ -4100,6 +5228,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       shrinkWrap: shrinkWrap,
       physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
       itemCount: _records.length + (_hasMore ? 1 : 0),
+      findChildIndexCallback: (key) {
+        if (key is! ValueKey<int>) return null;
+        final index = _records.indexWhere((p) => p.personId == key.value);
+        return index < 0 ? null : index;
+      },
       itemBuilder: (context, index) {
         if (index == _records.length) {
           return Center(
@@ -4211,19 +5344,73 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     );
   }
 
+  Widget _buildAttendanceTag(IconData icon, String? label, Color color) {
+    if (label == null || label.trim().isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final adaptiveColor = AppTheme.getAdaptiveAccent(color, isDark);
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 6 : 8,
+        vertical: isMobile ? 1.5 : 2.5,
+      ),
+      decoration: BoxDecoration(
+        color: isDark
+            ? color.withValues(alpha: 0.22)
+            : color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: isDark
+              ? color.withValues(alpha: 0.45)
+              : color.withValues(alpha: 0.22),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: isMobile ? 11 : 12, color: adaptiveColor),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: isDark ? const Color(0xFFF8FAFC) : color,
+              fontSize: isMobile ? 10.5 : 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAttendanceCard(
     AttendanceDTO r, {
     bool canEdit = true,
     bool canDelete = true,
     bool canAdd = true,
   }) {
-    final fields = ref.watch(fieldsRepositoryProvider).asData?.value ?? [];
+    final fields = ref.watch(fieldsRepositoryProvider).value ?? [];
     String getLabel(String key, String fallback) {
       final f = fields.where((f) => f.fieldKey == key).firstOrNull;
       return f?.name ?? fallback;
     }
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final isMobile = MediaQuery.of(context).size.width < 600;
+    final textPrimary = isDark
+        ? const Color(0xFFF8FAFC)
+        : const Color(0xFF0F172A);
+    final textSecondary = isDark
+        ? const Color(0xFFCBD5E1)
+        : const Color(0xFF475569);
+    final textMuted = isDark
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF64748B);
+
     final bool isPresent = r.id != null && r.attendTime != null;
     final bool isSelected = _selectedPersonIds.contains(r.personId);
     final visitIcon = r.visited == 2
@@ -4233,21 +5420,540 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               : Icons.check_box_outline_blank);
     final visitColor = r.visited == 2
         ? Colors.green
-        : (r.visited == 1 ? Colors.orange : Colors.grey);
+        : (r.visited == 1
+              ? Colors.orange
+              : (isDark ? const Color(0xFF94A3B8) : Colors.grey));
 
+    final cardSurface = isPresent
+        ? (isDark ? const Color(0xFF151E2E) : Colors.white)
+        : (isDark ? const Color(0xFF0F1623) : const Color(0xFFF8FAFC));
+
+    final cardBorder = isSelected
+        ? theme.primaryColor
+        : (isPresent
+              ? (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1))
+              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0)));
+
+    Widget buildTimingBadge() {
+      if (!isPresent || r.attendTime == null || r.serviceId == null) {
+        return const SizedBox.shrink();
+      }
+      final svcs = ref.read(servicesRepositoryProvider).value ?? [];
+      final svc = svcs.where((s) => s.id == r.serviceId).firstOrNull;
+      if (svc != null && r.attendTime!.isNotEmpty) {
+        try {
+          final parts = r.attendTime!.split(' ');
+          if (parts.length >= 2) {
+            final timeParts = parts[0].split(':');
+            int h = int.parse(timeParts[0]);
+            final int m = int.parse(timeParts[1]);
+            final isPm = parts[1] == 'م';
+            if (isPm && h < 12) h += 12;
+            if (!isPm && h == 12) h = 0;
+
+            final attendMins = h * 60 + m;
+            final serviceMins = svc.hour * 60 + svc.minute;
+            final diff = attendMins - serviceMins;
+            if (diff != 0) {
+              final isLate = diff > 0;
+              final absDiff = diff.abs();
+              final badgeColor = isLate ? Colors.orange : Colors.blue;
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 5,
+                  vertical: 1.5,
+                ),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? badgeColor.withValues(alpha: 0.22)
+                      : badgeColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isDark
+                        ? badgeColor.withValues(alpha: 0.45)
+                        : badgeColor.withValues(alpha: 0.3),
+                    width: 0.8,
+                  ),
+                ),
+                child: Text(
+                  isLate ? 'تأخير: $absDiff د' : 'تبكير: $absDiff د',
+                  style: TextStyle(
+                    color: isDark
+                        ? const Color(0xFFF8FAFC)
+                        : (isLate
+                              ? Colors.orange.shade900
+                              : Colors.blue.shade900),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              );
+            }
+          }
+        } catch (_) {}
+      }
+      return const SizedBox.shrink();
+    }
+
+    if (isMobile) {
+      // Compact, responsive mobile attendance card
+      return Card(
+        key: ValueKey(r.personId),
+        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 3.5),
+        elevation: isPresent ? (isDark ? 2.5 : 1.5) : (isDark ? 0.8 : 0.5),
+        color: cardSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: cardBorder, width: isSelected ? 1.5 : 1.0),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Row 1: Checkbox + Status Indicator + Name & Code + Timing + Actions
+              Row(
+                children: [
+                  Checkbox(
+                    value: isSelected,
+                    visualDensity: VisualDensity.compact,
+                    onChanged: (selected) {
+                      setState(() {
+                        if (selected == true) {
+                          _selectedPersonIds.add(r.personId);
+                        } else {
+                          _selectedPersonIds.remove(r.personId);
+                        }
+                      });
+                    },
+                  ),
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: (isPresent ? Colors.green : Colors.red).withValues(
+                        alpha: isDark ? 0.25 : 0.15,
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isPresent
+                          ? Icons.check_circle_rounded
+                          : Icons.cancel_rounded,
+                      color: isPresent
+                          ? (isDark ? const Color(0xFF4ADE80) : Colors.green)
+                          : Colors.red,
+                      size: 16,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                r.personName ?? 'مجهول',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: isPresent
+                                      ? textPrimary
+                                      : textSecondary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.08)
+                                    : const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(5),
+                                border: Border.all(
+                                  color: isDark
+                                      ? const Color(0xFF334155)
+                                      : const Color(0xFFCBD5E1),
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Text(
+                                '#${r.personId}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (isPresent) buildTimingBadge(),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  // Trailing compact action buttons
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Badge(
+                          isLabelVisible:
+                              (r.attendanceNotes?.trim().isNotEmpty ?? false) ||
+                              (r.checkoutNotes?.trim().isNotEmpty ?? false),
+                          smallSize: 6,
+                          backgroundColor: Colors.amber.shade800,
+                          child: Icon(
+                            ((r.attendanceNotes?.trim().isNotEmpty ?? false) ||
+                                    (r.checkoutNotes?.trim().isNotEmpty ??
+                                        false))
+                                ? Icons.note_alt_rounded
+                                : Icons.note_alt_outlined,
+                            size: 18,
+                            color:
+                                ((r.attendanceNotes?.trim().isNotEmpty ??
+                                        false) ||
+                                    (r.checkoutNotes?.trim().isNotEmpty ??
+                                        false))
+                                ? Colors.amber.shade800
+                                : textMuted,
+                          ),
+                        ),
+                        onPressed: () => _openAttendanceNotesDialog(r),
+                        tooltip: 'الملاحظات',
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.all(4),
+                      ),
+                      if (isPresent && canEdit) ...[
+                        const SizedBox(width: 2),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.edit_note_rounded,
+                            size: 20,
+                            color: Colors.blueAccent,
+                          ),
+                          onPressed: () => _showEditDialog(r),
+                          tooltip: 'تعديل',
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(4),
+                        ),
+                      ],
+                      if (isPresent && canDelete) ...[
+                        const SizedBox(width: 2),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_sweep_rounded,
+                            color: Colors.redAccent,
+                            size: 19,
+                          ),
+                          onPressed: () => _deleteAttendance(r),
+                          tooltip: 'حذف',
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(4),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              // Row 2: Compact Tags Wrap (Stage, Khoros, Area, Phone)
+              Wrap(
+                spacing: 4,
+                runSpacing: 3,
+                children: [
+                  if (r.stageName != null && r.stageName!.isNotEmpty)
+                    _buildAttendanceTag(
+                      Icons.school,
+                      '${getLabel('stage', 'المرحلة')}: ${r.stageName}',
+                      Colors.blue,
+                    ),
+                  if (r.khorosName != null && r.khorosName!.isNotEmpty)
+                    _buildAttendanceTag(
+                      Icons.library_music,
+                      '${getLabel('khoros', 'الخورس')}: ${r.khorosName}',
+                      Colors.purple,
+                    ),
+                  if (r.areaName != null && r.areaName!.isNotEmpty)
+                    _buildAttendanceTag(
+                      Icons.map,
+                      '${getLabel('area', 'المنطقة')}: ${r.areaName}',
+                      Colors.teal,
+                    ),
+                  if (r.mobile != null && r.mobile!.isNotEmpty)
+                    InkWell(
+                      onTap: () async {
+                        final uri = Uri(scheme: 'tel', path: r.mobile);
+                        try {
+                          await launchUrl(
+                            uri,
+                            mode: LaunchMode.externalApplication,
+                          );
+                        } catch (_) {}
+                      },
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(
+                            alpha: isDark ? 0.22 : 0.1,
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: Colors.green.withValues(
+                              alpha: isDark ? 0.45 : 0.25,
+                            ),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.phone_rounded,
+                              size: 10.5,
+                              color: isDark
+                                  ? const Color(0xFF4ADE80)
+                                  : Colors.green.shade800,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              r.mobile!,
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                                color: isDark
+                                    ? const Color(0xFFF8FAFC)
+                                    : Colors.green.shade900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              // Row 3: Status / Attend Lines or Absent Quick-Action
+              if (isPresent) ...[
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: _serviceRecordsFor(
+                    r,
+                  ).map(_buildServiceAttendanceLine).toList(),
+                ),
+                if (canAdd && _serviceRecordsFor(r).length == 1) ...[
+                  const SizedBox(height: 4),
+                  _buildChildCardCheckoutButtons(r),
+                ],
+                if (r.checkoutType == 'other' &&
+                    (r.checkoutNotes?.trim().isNotEmpty ?? false)) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.withValues(
+                        alpha: isDark ? 0.22 : 0.08,
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: Colors.purple.withValues(
+                          alpha: isDark ? 0.45 : 0.25,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.alt_route_rounded,
+                          size: 14,
+                          color: isDark
+                              ? Colors.purple.shade200
+                              : Colors.purple.shade700,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'سبب الانصراف (آخر): ${r.checkoutNotes!.trim()}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: isDark
+                                  ? const Color(0xFFF8FAFC)
+                                  : Colors.purple.shade900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ] else ...[
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(
+                          alpha: isDark ? 0.22 : 0.1,
+                        ),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: Colors.red.withValues(
+                            alpha: isDark ? 0.45 : 0.25,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        'غائب',
+                        style: TextStyle(
+                          color: isDark
+                              ? const Color(0xFFF87171)
+                              : Colors.red.shade700,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    if (canAdd)
+                      FilledButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _selectedPersonId = r.personId;
+                            _selectedPersonName = r.personName;
+                            _autocompleteController?.text = r.personName ?? "";
+                          });
+                          _saveAttendance();
+                        },
+                        icon: const Icon(Icons.add_task_rounded, size: 14),
+                        label: const Text(
+                          'تسجيل حضور',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+              // Row 4: Visitation Section
+              if (r.id != null) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.04)
+                        : Colors.black.withValues(alpha: 0.02),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isDark
+                          ? const Color(0xFF334155)
+                          : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      InkWell(
+                        onTap: !canEdit
+                            ? null
+                            : () async {
+                                final newVal = (r.visited == 2) ? 0 : 2;
+                                await ref
+                                    .read(attendanceRepositoryProvider.notifier)
+                                    .updateVisitation(
+                                      id: r.id!,
+                                      visited: newVal,
+                                      visitNotes: r.visitNotes,
+                                    );
+                                await _reloadPreservingScroll();
+                              },
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(visitIcon, color: visitColor, size: 18),
+                            const SizedBox(width: 4),
+                            Text(
+                              r.visited == 2 ? 'تم الافتقاد' : 'لم يتم',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: visitColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: VisitationNotesTextField(
+                          attendanceId: r.id!,
+                          visited: r.visited,
+                          initialNotes: r.visitNotes ?? '',
+                          canEdit: canEdit,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Desktop/Tablet spacious layout
     return Card(
+      key: ValueKey(r.personId),
       margin: const EdgeInsets.only(bottom: 12),
       elevation: isPresent ? 4 : 1,
       shadowColor: Colors.black.withOpacity(0.1),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: isPresent
-              ? Theme.of(context).primaryColor.withOpacity(0.1)
-              : Colors.transparent,
+          color: isSelected
+              ? theme.primaryColor
+              : (isPresent
+                    ? theme.primaryColor.withOpacity(0.2)
+                    : (isDark ? const Color(0xFF334155) : Colors.transparent)),
+          width: isSelected ? 1.5 : 1.0,
         ),
       ),
-      color: isPresent ? Colors.white : Colors.grey[50],
+      color: cardSurface,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -4296,83 +6002,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                             r.personName ?? 'مجهول',
                             style: TextStyle(
                               fontWeight: FontWeight.w800,
-                              fontSize: isMobile ? 14 : 16,
-                              color: isPresent
-                                  ? Colors.black87
-                                  : Colors.grey[600],
+                              fontSize: 16,
+                              color: isPresent ? textPrimary : textSecondary,
                             ),
                           ),
-                          if (isPresent &&
-                              r.attendTime != null &&
-                              r.serviceId != null)
-                            Builder(
-                              builder: (context) {
-                                final svcs =
-                                    ref
-                                        .read(servicesRepositoryProvider)
-                                        .asData
-                                        ?.value ??
-                                    [];
-                                final svc = svcs
-                                    .where((s) => s.id == r.serviceId)
-                                    .firstOrNull;
-                                if (svc != null &&
-                                    r.attendTime != null &&
-                                    r.attendTime!.isNotEmpty) {
-                                  try {
-                                    // parse attend time (e.g. 05:30 م)
-                                    final parts = r.attendTime!.split(' ');
-                                    if (parts.length >= 2) {
-                                      final timeParts = parts[0].split(':');
-                                      int h = int.parse(timeParts[0]);
-                                      final int m = int.parse(timeParts[1]);
-                                      final isPm = parts[1] == 'م';
-                                      if (isPm && h < 12) h += 12;
-                                      if (!isPm && h == 12) h = 0;
-
-                                      final attendMins = h * 60 + m;
-                                      final serviceMins =
-                                          svc.hour * 60 + svc.minute;
-
-                                      final diff = attendMins - serviceMins;
-                                      if (diff != 0) {
-                                        final isLate = diff > 0;
-                                        final absDiff = diff.abs();
-                                        return Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                (isLate
-                                                        ? Colors.orange
-                                                        : Colors.blue)
-                                                    .withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(
-                                              6,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            isLate
-                                                ? 'تأخير: $absDiff د'
-                                                : 'تبكير: $absDiff د',
-                                            style: TextStyle(
-                                              color: isLate
-                                                  ? Colors.orange.shade800
-                                                  : Colors.blue.shade800,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  } catch (_) {}
-                                }
-                                return const SizedBox.shrink();
-                              },
-                            ),
+                          buildTimingBadge(),
                         ],
                       ),
                       const SizedBox(height: 6),
@@ -4386,124 +6020,54 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.08)
+                                  : Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.grey.shade300),
+                              border: Border.all(
+                                color: isDark
+                                    ? const Color(0xFF334155)
+                                    : Colors.grey.shade300,
+                              ),
                             ),
                             child: Text(
                               'كود: ${r.personId}',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.grey.shade800,
+                                color: textSecondary,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
                           if (r.stageName != null && r.stageName!.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.blue.shade200),
-                              ),
-                              child: Text(
-                                '${getLabel('stage', 'المرحلة')}: ${r.stageName}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.blue.shade800,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                            _buildAttendanceTag(
+                              Icons.school,
+                              '${getLabel('stage', 'المرحلة')}: ${r.stageName}',
+                              Colors.blue,
                             ),
                           if (r.khorosName != null && r.khorosName!.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.purple.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: Colors.purple.shade200,
-                                ),
-                              ),
-                              child: Text(
-                                '${getLabel('khoros', 'الخورس')}: ${r.khorosName}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.purple.shade800,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                            _buildAttendanceTag(
+                              Icons.library_music,
+                              '${getLabel('khoros', 'الخورس')}: ${r.khorosName}',
+                              Colors.purple,
                             ),
                           if (r.areaName != null && r.areaName!.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.teal.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.teal.shade200),
-                              ),
-                              child: Text(
-                                '${getLabel('area', 'المنطقة')}: ${r.areaName}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.teal.shade800,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                            _buildAttendanceTag(
+                              Icons.map,
+                              '${getLabel('area', 'المنطقة')}: ${r.areaName}',
+                              Colors.teal,
                             ),
                           if (r.mobile != null && r.mobile!.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: Colors.orange.shade200,
-                                ),
-                              ),
-                              child: Text(
-                                '${getLabel('mobile', 'تليفون')}: ${r.mobile}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.orange.shade800,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                            _buildAttendanceTag(
+                              Icons.phone,
+                              '${getLabel('mobile', 'تليفون')}: ${r.mobile}',
+                              Colors.orange,
                             ),
                           if (r.phone != null && r.phone!.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.brown.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: Colors.brown.shade200,
-                                ),
-                              ),
-                              child: Text(
-                                '${getLabel('phone', 'أرضي')}: ${r.phone}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.brown.shade800,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                            _buildAttendanceTag(
+                              Icons.phone_in_talk,
+                              '${getLabel('phone', 'أرضي')}: ${r.phone}',
+                              Colors.brown,
                             ),
                         ],
                       ),
@@ -4530,60 +6094,209 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               ],
             ),
             if (isPresent) ...[
+              if (r.checkoutType == 'other' &&
+                  (r.checkoutNotes?.trim().isNotEmpty ?? false)) ...[
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withValues(
+                      alpha: isDark ? 0.22 : 0.08,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.purple.withValues(
+                        alpha: isDark ? 0.45 : 0.25,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.alt_route_rounded,
+                        size: 16,
+                        color: Colors.purple.shade700,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'سبب الانصراف (آخر): ${r.checkoutNotes!.trim()}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: isDark
+                                ? const Color(0xFFF8FAFC)
+                                : Colors.purple.shade900,
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(6),
+                        onTap: () async {
+                          final reason = await _promptForOtherReason(
+                            context,
+                            r.personName,
+                            initialReason: r.checkoutNotes,
+                          );
+                          if (reason != null && reason.trim().isNotEmpty) {
+                            _checkoutPerson(
+                              r,
+                              checkoutType: 'other',
+                              checkoutNotes: reason.trim(),
+                            );
+                          }
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.edit_rounded,
+                                size: 14,
+                                color: Colors.purple.shade700,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'تعديل السبب',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.purple.shade700,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else if (r.checkoutType == 'parent' &&
+                  (r.checkoutNotes?.trim().isNotEmpty ?? false)) ...[
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(
+                      alpha: isDark ? 0.22 : 0.08,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.orange.withValues(
+                        alpha: isDark ? 0.45 : 0.25,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.family_restroom_rounded,
+                        size: 15,
+                        color: Colors.orange.shade800,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'ملاحظة ولي الأمر: ${r.checkoutNotes!.trim()}',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                            color: isDark
+                                ? const Color(0xFFF8FAFC)
+                                : Colors.orange.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (r.attendanceNotes?.trim().isNotEmpty ?? false) ...[
+                const SizedBox(height: 4),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: isDark ? 0.22 : 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.green.withValues(
+                        alpha: isDark ? 0.45 : 0.25,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.login_rounded,
+                        size: 14,
+                        color: Colors.green.shade700,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'ملاحظات الحضور: ${r.attendanceNotes!.trim()}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isDark
+                                ? const Color(0xFFF8FAFC)
+                                : Colors.green.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               Row(
                 children: [
                   if (isPresent &&
                       canAdd &&
                       _serviceRecordsFor(r).length == 1) ...[
-                    ElevatedButton.icon(
-                      onPressed: () => _checkoutPerson(r),
-                      icon: Icon(
-                        (r.checkoutTime == null || r.checkoutTime!.isEmpty)
-                            ? Icons.logout_rounded
-                            : Icons.refresh_rounded,
-                        size: 14,
-                      ),
-                      label: Text(
-                        (r.checkoutTime == null || r.checkoutTime!.isEmpty)
-                            ? 'تسجيل انصراف'
-                            : 'تحديث انصراف',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        elevation: 0,
-                        backgroundColor:
-                            (r.checkoutTime == null || r.checkoutTime!.isEmpty)
-                            ? Colors.red.shade50
-                            : Colors.orange.shade50,
-                        foregroundColor:
-                            (r.checkoutTime == null || r.checkoutTime!.isEmpty)
-                            ? Colors.red.shade700
-                            : Colors.orange.shade800,
-                        side: BorderSide(
-                          color:
-                              (r.checkoutTime == null ||
-                                  r.checkoutTime!.isEmpty)
-                              ? Colors.red.shade200
-                              : Colors.orange.shade300,
-                          width: 1.2,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
+                    _buildChildCardCheckoutButtons(r),
                   ],
                   const Spacer(),
+                  IconButton(
+                    icon: Badge(
+                      isLabelVisible:
+                          (r.attendanceNotes?.trim().isNotEmpty ?? false) ||
+                          (r.checkoutNotes?.trim().isNotEmpty ?? false),
+                      smallSize: 8,
+                      backgroundColor: Colors.amber.shade800,
+                      child: Icon(
+                        ((r.attendanceNotes?.trim().isNotEmpty ?? false) ||
+                                (r.checkoutNotes?.trim().isNotEmpty ?? false))
+                            ? Icons.note_alt_rounded
+                            : Icons.note_alt_outlined,
+                        size: 22,
+                        color:
+                            ((r.attendanceNotes?.trim().isNotEmpty ?? false) ||
+                                (r.checkoutNotes?.trim().isNotEmpty ?? false))
+                            ? Colors.amber.shade800
+                            : (isDark
+                                  ? const Color(0xFFCBD5E1)
+                                  : Colors.indigo.shade600),
+                      ),
+                    ),
+                    onPressed: () => _openAttendanceNotesDialog(r),
+                    tooltip: 'الملاحظات (حضور وانصراف)',
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(8),
+                  ),
                   if (canEdit)
                     IconButton(
                       icon: const Icon(
@@ -4612,28 +6325,147 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               ),
             ] else if (canAdd) ...[
               const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _selectedPersonId = r.personId;
-                      _selectedPersonName = r.personName;
-                      _autocompleteController?.text = r.personName ?? "";
-                    });
-                    _saveAttendance();
-                  },
-                  icon: const Icon(Icons.add_task_rounded, size: 16),
-                  label: const Text(
-                    'تسجيل حضور',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _selectedPersonId = r.personId;
+                          _selectedPersonName = r.personName;
+                          _autocompleteController?.text = r.personName ?? "";
+                        });
+                        _saveAttendance();
+                      },
+                      icon: const Icon(Icons.add_task_rounded, size: 16),
+                      label: const Text(
+                        'تسجيل حضور',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: Badge(
+                      isLabelVisible:
+                          (r.attendanceNotes?.trim().isNotEmpty ?? false) ||
+                          (r.checkoutNotes?.trim().isNotEmpty ?? false),
+                      smallSize: 8,
+                      backgroundColor: Colors.amber.shade800,
+                      child: Icon(
+                        ((r.attendanceNotes?.trim().isNotEmpty ?? false) ||
+                                (r.checkoutNotes?.trim().isNotEmpty ?? false))
+                            ? Icons.note_alt_rounded
+                            : Icons.note_alt_outlined,
+                        size: 22,
+                        color:
+                            ((r.attendanceNotes?.trim().isNotEmpty ?? false) ||
+                                (r.checkoutNotes?.trim().isNotEmpty ?? false))
+                            ? Colors.amber.shade800
+                            : (isDark
+                                  ? const Color(0xFFCBD5E1)
+                                  : Colors.grey.shade600),
+                      ),
+                    ),
+                    onPressed: () => _openAttendanceNotesDialog(r),
+                    tooltip: 'الملاحظات (حضور وانصراف)',
+                  ),
+                ],
+              ),
+            ],
+            if ((r.attendanceNotes?.trim().isNotEmpty ?? false) ||
+                (r.checkoutNotes?.trim().isNotEmpty ?? false)) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: isDark ? 0.22 : 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.amber.withValues(alpha: isDark ? 0.45 : 0.25),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (r.attendanceNotes?.trim().isNotEmpty ?? false)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.login_rounded,
+                            size: 14,
+                            color: Colors.green,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'ملاحظة حضور: ',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: isDark
+                                  ? const Color(0xFF4ADE80)
+                                  : Colors.green.shade900,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              r.attendanceNotes!,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    if ((r.attendanceNotes?.trim().isNotEmpty ?? false) &&
+                        (r.checkoutNotes?.trim().isNotEmpty ?? false))
+                      const SizedBox(height: 4),
+                    if (r.checkoutNotes?.trim().isNotEmpty ?? false)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.logout_rounded,
+                            size: 14,
+                            color: Colors.red,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'ملاحظة انصراف: ',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: isDark
+                                  ? const Color(0xFFF87171)
+                                  : Colors.red.shade900,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              r.checkoutNotes!,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
                 ),
               ),
             ],
@@ -4646,7 +6478,6 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     onTap: !canEdit
                         ? null
                         : () async {
-                            // Binary toggle between 0 (not visited) and 2 (visited)
                             final newVal = (r.visited == 2) ? 0 : 2;
                             await ref
                                 .read(attendanceRepositoryProvider.notifier)
@@ -4786,7 +6617,9 @@ class _VisitationNotesTextFieldState
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        fillColor: Colors.grey[50],
+        fillColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E293B)
+            : Colors.grey[50],
         filled: true,
       ),
       style: const TextStyle(fontSize: 12),

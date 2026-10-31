@@ -12,6 +12,9 @@ import '../repositories/persons_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/stages_repository.dart';
 import '../ui/widgets/multi_select_filter.dart';
+import '../sync/data_change_domains.dart';
+import '../sync/data_change_coordinator.dart';
+import '../utils/silent_refresh_controller.dart';
 
 class RohotScreen extends ConsumerStatefulWidget {
   const RohotScreen({super.key});
@@ -92,48 +95,71 @@ class _RohotScreenState extends ConsumerState<RohotScreen> {
   List<_RohotGroup> _groups = [];
   bool _loading = true;
   bool _generating = false;
+  late final SilentRefreshController _refreshController;
 
   @override
   void initState() {
     super.initState();
-    _loadSavedGroups();
+    _refreshController = SilentRefreshController(
+      onRefresh: () => _loadSavedGroups(isSilent: true),
+    );
+    _loadSavedGroups(isSilent: false);
   }
 
   @override
   void dispose() {
+    _refreshController.dispose();
     _groupsCountController.dispose();
     _groupSizeController.dispose();
     _leaderController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadSavedGroups() async {
+  Future<void> _loadSavedGroups({bool isSilent = false}) async {
+    final gen = _refreshController.currentGeneration;
+    if (!isSilent && mounted) {
+      setState(() => _loading = true);
+    }
     final raw = await ref
         .read(settingsRepositoryProvider)
         .getSetting(_storageKey);
+    if (!mounted || gen != _refreshController.currentGeneration) return;
+
+    List<_RohotGroup> loadedGroups = _groups;
     if (raw != null && raw.trim().isNotEmpty) {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
-        _groups = decoded
+        loadedGroups = decoded
             .whereType<Map>()
             .map(
               (item) => _RohotGroup.fromJson(Map<String, dynamic>.from(item)),
             )
             .toList();
       }
+    } else {
+      loadedGroups = [];
     }
+
+    List<String> loadedLeaders = _leaders;
     final rawLeaders = await ref
         .read(settingsRepositoryProvider)
         .getSetting('rohot_leaders_json');
+    if (!mounted || gen != _refreshController.currentGeneration) return;
     if (rawLeaders != null && rawLeaders.trim().isNotEmpty) {
       try {
         final decoded = jsonDecode(rawLeaders);
         if (decoded is List) {
-          _leaders = decoded.cast<String>();
+          loadedLeaders = decoded.cast<String>();
         }
       } catch (_) {}
     }
-    if (mounted) setState(() => _loading = false);
+    if (mounted && gen == _refreshController.currentGeneration) {
+      setState(() {
+        _groups = loadedGroups;
+        _leaders = loadedLeaders;
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _persistGroups() async {
@@ -451,6 +477,19 @@ class _RohotScreenState extends ConsumerState<RohotScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(sourceEpochProvider, (previous, next) {
+      _refreshController.updateEpoch(next);
+      setState(() { _groups = []; });
+      
+      _refreshController.requestRefresh(immediate: true);
+    });
+    ref.listen(domainRevisionProvider(DataDomain.settings), (previous, next) {
+      _refreshController.requestRefresh();
+    });
+    ref.listen(domainRevisionProvider(DataDomain.people), (previous, next) {
+      _refreshController.requestRefresh();
+    });
+
     final stagesAsync = ref.watch(stagesRepositoryProvider);
     return Directionality(
       textDirection: TextDirection.rtl,

@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/database_backup_service.dart';
-import '../database/database_provider.dart';
 import '../repositories/persons_repository.dart';
 import '../repositories/areas_repository.dart';
 import '../repositories/stages_repository.dart';
 import '../repositories/fathers_repository.dart';
 import '../repositories/users_repository.dart';
 import '../services/auth_service.dart';
+import '../ui/dialogs/server_connection_dialog.dart';
+import '../widgets/backup_settings_card.dart';
 
 class MaintenanceScreen extends ConsumerWidget {
   const MaintenanceScreen({super.key});
@@ -40,20 +41,44 @@ class MaintenanceScreen extends ConsumerWidget {
               Expanded(
                 child: ListView(
                   children: [
+                    if (ref.watch(authServiceProvider).value case final user?
+                        when user.canMaintenance &&
+                            !user.dataVisibilityScope.restricted)
+                      BackupSettingsCard(
+                        service: DatabaseBackupService.automatic,
+                      ),
+                    const SizedBox(height: 12),
                     _buildMaintenanceCard(
-                      context, isMobile: isMobile,
-                      title: 'نسخ احتياطي لقاعدة البيانات',
-                      subtitle: 'قم بحفظ نسخة من جميع البيانات الحالية في ملف للرجوع إليها لاحقاً.',
-                      icon: Icons.backup_outlined,
-                      color: Colors.blue,
-                      buttonText: 'إنشاء نسخة',
-                      onPressed: () => _handleBackup(context),
+                      context,
+                      isMobile: isMobile,
+                      title:
+                          'إعدادات الاتصال بالسيرفر والمزامنة الفورية (.NET + PostgreSQL + SignalR)',
+                      subtitle:
+                          'ضبط عنوان السيرفر، التبديل بين الوضع المحلي ووضع السيرفر، ورفع البيانات لقاعدة PostgreSQL.',
+                      icon: Icons.settings_ethernet_rounded,
+                      color: const Color(0xFF1A237E),
+                      buttonText: 'إعدادات الاتصال',
+                      onPressed: () => ServerConnectionDialog.show(context),
                     ),
                     const SizedBox(height: 12),
                     _buildMaintenanceCard(
-                      context, isMobile: isMobile,
+                      context,
+                      isMobile: isMobile,
+                      title: 'نسخ احتياطي لقاعدة البيانات',
+                      subtitle:
+                          'قم بحفظ نسخة من جميع البيانات الحالية في ملف للرجوع إليها لاحقاً.',
+                      icon: Icons.backup_outlined,
+                      color: Colors.blue,
+                      buttonText: 'إنشاء نسخة',
+                      onPressed: () => _handleBackup(context, ref),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildMaintenanceCard(
+                      context,
+                      isMobile: isMobile,
                       title: 'استعادة قاعدة البيانات',
-                      subtitle: 'تحذير: سيتم استبدال جميع البيانات الحالية بالبيانات المختارة.',
+                      subtitle:
+                          'تحذير: سيتم استبدال جميع البيانات الحالية بالبيانات المختارة.',
                       icon: Icons.settings_backup_restore_outlined,
                       color: Colors.orange,
                       buttonText: 'استعادة',
@@ -61,9 +86,11 @@ class MaintenanceScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 12),
                     _buildMaintenanceCard(
-                      context, isMobile: isMobile,
+                      context,
+                      isMobile: isMobile,
                       title: 'ضبط المصنع',
-                      subtitle: 'تحذير: سيتم مسح جميع البيانات نهائياً (باستثناء حسابات المستخدمين).',
+                      subtitle:
+                          'تحذير: سيتم مسح جميع البيانات نهائياً (باستثناء حسابات المستخدمين).',
                       icon: Icons.delete_forever_outlined,
                       color: Colors.red,
                       buttonText: 'مسح',
@@ -82,19 +109,23 @@ class MaintenanceScreen extends ConsumerWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'صيانة النظام',
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).primaryColor,
-              ),
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).primaryColor,
+          ),
         ),
         Text(
           'إدارة قواعد البيانات والنسخ الاحتياطي',
-          style: TextStyle(color: Colors.grey[600], fontSize: 14),
+          style: TextStyle(
+            color: isDark ? const Color(0xFF94A3B8) : Colors.grey[600],
+            fontSize: 14,
+          ),
         ),
       ],
     );
@@ -110,6 +141,7 @@ class MaintenanceScreen extends ConsumerWidget {
     required VoidCallback onPressed,
     bool isMobile = false,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final iconWidget = Container(
       padding: EdgeInsets.all(isMobile ? 8 : 12),
       decoration: BoxDecoration(
@@ -122,9 +154,22 @@ class MaintenanceScreen extends ConsumerWidget {
     final textWidget = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 14 : 16)),
+        Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: isMobile ? 14 : 16,
+            color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(subtitle, style: TextStyle(color: Colors.grey[600], fontSize: isMobile ? 12 : 13)),
+        Text(
+          subtitle,
+          style: TextStyle(
+            color: isDark ? const Color(0xFF94A3B8) : Colors.grey[600],
+            fontSize: isMobile ? 12 : 13,
+          ),
+        ),
       ],
     );
 
@@ -137,7 +182,10 @@ class MaintenanceScreen extends ConsumerWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: Colors.white,
-          padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: isMobile ? 10 : 12),
+          padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 12 : 16,
+            vertical: isMobile ? 10 : 12,
+          ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
@@ -149,43 +197,79 @@ class MaintenanceScreen extends ConsumerWidget {
       child: Padding(
         padding: EdgeInsets.all(isMobile ? 12 : 20),
         child: isMobile
-            ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [iconWidget, const SizedBox(width: 12), Expanded(child: textWidget)]),
-                const SizedBox(height: 12),
-                buttonWidget,
-              ])
-            : Row(children: [
-                iconWidget,
-                const SizedBox(width: 20),
-                Expanded(child: textWidget),
-                const SizedBox(width: 16),
-                buttonWidget,
-              ]),
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      iconWidget,
+                      const SizedBox(width: 12),
+                      Expanded(child: textWidget),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  buttonWidget,
+                ],
+              )
+            : Row(
+                children: [
+                  iconWidget,
+                  const SizedBox(width: 20),
+                  Expanded(child: textWidget),
+                  const SizedBox(width: 16),
+                  buttonWidget,
+                ],
+              ),
       ),
     );
   }
 
   Widget _buildInfoCard(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return FutureBuilder<String>(
       future: DatabaseBackupService.getDatabasePath(),
       builder: (context, snapshot) {
         return Card(
-          color: Colors.grey[50],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey[200]!)),
+          color: isDark ? const Color(0xFF1E293B) : Colors.grey[50],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: isDark ? const Color(0xFF334155) : Colors.grey[200]!,
+            ),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                const Icon(Icons.info_outline, color: Colors.grey, size: 18),
+                Icon(
+                  Icons.info_outline,
+                  color: isDark ? const Color(0xFF94A3B8) : Colors.grey,
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('مسار قاعدة البيانات:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                      Text(
+                        'مسار قاعدة البيانات:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                          color: isDark
+                              ? const Color(0xFFF8FAFC)
+                              : const Color(0xFF0F172A),
+                        ),
+                      ),
                       Text(
                         snapshot.data ?? 'جاري التحميل...',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 10, fontFeatures: const [FontFeature.tabularFigures()]),
+                        style: TextStyle(
+                          color: isDark
+                              ? const Color(0xFF94A3B8)
+                              : Colors.grey[600],
+                          fontSize: 10,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                         textDirection: TextDirection.ltr,
                         overflow: TextOverflow.ellipsis,
                         maxLines: 2,
@@ -201,18 +285,24 @@ class MaintenanceScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _handleBackup(BuildContext context) async {
+  Future<void> _handleBackup(BuildContext context, WidgetRef ref) async {
     try {
-      final path = await DatabaseBackupService.backupDatabase();
+      final path = await DatabaseBackupService.backupDatabase(ref);
       if (path != null && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم إنشاء النسخة الاحتياطية بنجاح'), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text('تم إنشاء النسخة الاحتياطية بنجاح'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل إنشاء النسخة الاحتياطية: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('فشل إنشاء النسخة الاحتياطية: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -225,9 +315,14 @@ class MaintenanceScreen extends ConsumerWidget {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Text('تأكيد الاستعادة'),
-          content: const Text('هل أنت متأكد؟ سيتم استبدال جميع البيانات الحالية بالبيانات الموجودة في الملف المختار. يوصى بعمل نسخة احتياطية أولاً.'),
+          content: const Text(
+            'هل أنت متأكد؟ سيتم استبدال جميع البيانات الحالية بالبيانات الموجودة في الملف المختار. يوصى بعمل نسخة احتياطية أولاً.',
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء'),
+            ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
               style: FilledButton.styleFrom(backgroundColor: Colors.orange),
@@ -245,7 +340,9 @@ class MaintenanceScreen extends ConsumerWidget {
           _invalidateAllProviders(ref);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✅ تمت استعادة البيانات بنجاح. سيتم تطبيق التحديثات تلقائياً.'),
+              content: Text(
+                '✅ تمت استعادة البيانات بنجاح. سيتم تطبيق التحديثات تلقائياً.',
+              ),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 3),
             ),
@@ -254,7 +351,10 @@ class MaintenanceScreen extends ConsumerWidget {
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('فشل استعادة البيانات: $e'), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text('فشل استعادة البيانات: $e'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }
@@ -268,9 +368,14 @@ class MaintenanceScreen extends ConsumerWidget {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Text('تأكيد مسح البيانات (ضبط المصنع)'),
-          content: const Text('هل أنت متأكد؟ سيتم حذف جميع البيانات نهائياً (باستثناء حسابات المستخدمين وصلاحياتهم). لا يمكن التراجع عن هذا الإجراء.'),
+          content: const Text(
+            'هل أنت متأكد؟ سيتم حذف جميع البيانات نهائياً (باستثناء حسابات المستخدمين وصلاحياتهم). لا يمكن التراجع عن هذا الإجراء.',
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء'),
+            ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
               style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -288,7 +393,9 @@ class MaintenanceScreen extends ConsumerWidget {
           _invalidateAllProviders(ref);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✅ تم مسح جميع البيانات بنجاح والحفاظ على حسابات المستخدمين'),
+              content: Text(
+                '✅ تم مسح جميع البيانات بنجاح والحفاظ على حسابات المستخدمين',
+              ),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 3),
             ),
@@ -297,7 +404,10 @@ class MaintenanceScreen extends ConsumerWidget {
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('حدث خطأ أثناء ضبط المصنع: $e'), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text('حدث خطأ أثناء ضبط المصنع: $e'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }

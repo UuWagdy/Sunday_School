@@ -4,6 +4,8 @@ import 'package:drift/drift.dart' as drift;
 import '../services/auth_service.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 import 'service_eligibility_repository.dart';
 
 part 'khoros_repository.g.dart';
@@ -31,6 +33,8 @@ class KhorosModel {
 class KhorosRepository extends _$KhorosRepository {
   @override
   FutureOr<List<KhorosModel>> build() async {
+    ref.watch(domainRevisionProvider(DataDomain.khoros));
+    ref.watch(domainRevisionProvider(DataDomain.services));
     return _fetch();
   }
 
@@ -97,17 +101,20 @@ class KhorosRepository extends _$KhorosRepository {
         ? null
         : resolvedServiceIds.first;
 
-    final khorosId = await db
-        .into(db.khoroses)
-        .insert(
-          KhorosesCompanion.insert(
-            khorosName: drift.Value(name),
-            logo: drift.Value(logo),
-            serviceId: drift.Value(legacyServiceId),
-          ),
-        );
-    await _replaceKhorosServiceLinks(db, khorosId, resolvedServiceIds);
-    ref.invalidateSelf();
+    await db.transaction(() async {
+      final khorosId = await db
+          .into(db.khoroses)
+          .insert(
+            KhorosesCompanion.insert(
+              khorosName: drift.Value(name),
+              logo: drift.Value(logo),
+              serviceId: drift.Value(legacyServiceId),
+            ),
+          );
+      await _replaceKhorosServiceLinks(db, khorosId, resolvedServiceIds);
+    });
+
+    if (ref.mounted) ref.invalidateSelf();
     return true;
   }
 
@@ -135,23 +142,25 @@ class KhorosRepository extends _$KhorosRepository {
         ? null
         : resolvedServiceIds.first;
 
-    await (db.update(db.khoroses)..where((t) => t.khorosId.equals(id))).write(
-      KhorosesCompanion(
-        khorosName: drift.Value(name),
-        logo: drift.Value(logo),
-        serviceId: drift.Value(legacyServiceId),
-      ),
-    );
-    await _replaceKhorosServiceLinks(db, id, resolvedServiceIds);
+    await db.transaction(() async {
+      await (db.update(db.khoroses)..where((t) => t.khorosId.equals(id))).write(
+        KhorosesCompanion(
+          khorosName: drift.Value(name),
+          logo: drift.Value(logo),
+          serviceId: drift.Value(legacyServiceId),
+        ),
+      );
+      await _replaceKhorosServiceLinks(db, id, resolvedServiceIds);
+  
+      final persons = await (db.select(
+        db.persons,
+      )..where((t) => t.khorosId.equals(id))).get();
+      await ServiceEligibilityRepository(
+        db,
+      ).syncResolvedServicesForPeople(persons.map((person) => person.personId));
+    });
 
-    final persons = await (db.select(
-      db.persons,
-    )..where((t) => t.khorosId.equals(id))).get();
-    await ServiceEligibilityRepository(
-      db,
-    ).syncResolvedServicesForPeople(persons.map((person) => person.personId));
-
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
     return true;
   }
 
@@ -183,7 +192,7 @@ class KhorosRepository extends _$KhorosRepository {
       ).syncResolvedServicesForPeople(persons.map((person) => person.personId));
     });
 
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
     return khorosIds.length;
   }
 
@@ -192,15 +201,9 @@ class KhorosRepository extends _$KhorosRepository {
     int khorosId,
     Iterable<int> serviceIds,
   ) async {
-    await db.customStatement(
-      'DELETE FROM "Khoros_Services" WHERE "Khoros_ID" = ?',
-      [khorosId],
-    );
+    await (db.delete(db.khorosServices)..where((t) => t.khorosId.equals(khorosId))).go();
     for (final serviceId in serviceIds.toSet()) {
-      await db.customStatement(
-        'INSERT OR IGNORE INTO "Khoros_Services" ("Khoros_ID", "Service_ID") VALUES (?, ?)',
-        [khorosId, serviceId],
-      );
+      await db.into(db.khorosServices).insertOnConflictUpdate(KhorosServicesCompanion.insert(khorosId: khorosId, serviceId: serviceId));
     }
   }
 
@@ -216,7 +219,7 @@ class KhorosRepository extends _$KhorosRepository {
     if (count > 0) return false;
 
     await (db.delete(db.khoroses)..where((t) => t.khorosId.equals(id))).go();
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
     return true;
   }
 }

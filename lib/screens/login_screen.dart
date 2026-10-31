@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../repositories/settings_repository.dart';
 import '../services/auth_service.dart';
+import '../ui/dialogs/server_connection_dialog.dart';
+import '../widgets/theme_toggle_button.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -22,7 +24,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _login() async {
     if (selectedUser != null && _passwordController.text.isNotEmpty) {
-      final success = await ref.read(authServiceProvider.notifier).login(selectedUser!, _passwordController.text);
+      final success = await ref
+          .read(authServiceProvider.notifier)
+          .login(selectedUser!, _passwordController.text);
       if (success) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -43,10 +47,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authServiceProvider);
     final usersAsync = ref.watch(allUsersProvider);
-    final programName = ref.watch(programNameProvider).maybeWhen(
-          data: (value) => value,
-          orElse: () => SettingsRepository.defaultProgramName,
-        );
+    final programName =
+        ref.watch(programNameProvider).value ??
+        SettingsRepository.defaultProgramName;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = Theme.of(context).primaryColor;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 500;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -56,29 +63,73 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Theme.of(context).primaryColor,
-                Theme.of(context).primaryColor.withBlue(100),
-              ],
+              colors: isDark
+                  ? [
+                      const Color(0xFF090D16),
+                      Color.alphaBlend(
+                        primary.withValues(alpha: 0.22),
+                        const Color(0xFF111827),
+                      ),
+                    ]
+                  : [
+                      primary,
+                      Color.alphaBlend(
+                        Colors.indigo.withValues(alpha: 0.35),
+                        primary,
+                      ),
+                    ],
             ),
           ),
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  _buildLogo(programName),
-                  const SizedBox(height: 32),
-                  _buildLoginCard(usersAsync, authState),
-                  const SizedBox(height: 24),
-                  Text(
-                    programName,
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+          child: SafeArea(
+            child: Stack(
+              children: [
+                // Top Action Bar: Server Connection on Left, Theme Toggle on Right (never overlap)
+                Positioned(
+                  top: 14,
+                  left: 14,
+                  right: 14,
+                  child: Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        ServerConnectionStatusButton(
+                          compact: isMobile,
+                          darkBackground: true,
+                        ),
+                        const ThemeToggleButton(
+                          compact: true,
+                          darkBackground: true,
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
+                ),
+                Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 40),
+                        _buildLogo(programName),
+                        const SizedBox(height: 28),
+                        _buildLoginCard(usersAsync, authState),
+                        const SizedBox(height: 20),
+                        Text(
+                          programName,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -127,7 +178,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _buildLoginCard(AsyncValue<List<User>> usersAsync, AsyncValue<User?> authState) {
+  Widget _buildLoginCard(
+    AsyncValue<List<User>> usersAsync,
+    AsyncValue<User?> authState,
+  ) {
     return Card(
       elevation: 20,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -137,28 +191,57 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'تسجيل الدخول',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const SizedBox(width: 40),
+                const Expanded(
+                  child: Text(
+                    'تسجيل الدخول',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'إعدادات الاتصال بالسيرفر والمزامنة',
+                  onPressed: () => ServerConnectionDialog.show(context),
+                  icon: Icon(
+                    Icons.settings_ethernet_rounded,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Text(
               'يرجى اختيار المستخدم وإدخال كلمة المرور',
-              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              style: TextStyle(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF94A3B8)
+                    : const Color(0xFF475569),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
             usersAsync.when(
+              skipLoadingOnReload: true,
+              skipError: true,
               data: (users) {
-                if (selectedUser != null && !users.any((u) => u.username == selectedUser)) {
+                final validSelection =
+                    users.any((u) => u.username == selectedUser)
+                    ? selectedUser
+                    : null;
+                if (selectedUser != validSelection) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted) setState(() => selectedUser = null);
                   });
                 }
 
                 return DropdownButtonFormField<String>(
-                  initialValue: selectedUser,
+                  key: ValueKey(validSelection),
+                  initialValue: validSelection,
                   decoration: const InputDecoration(
                     labelText: 'اسم المستخدم',
                     prefixIcon: Icon(Icons.person_outline),
@@ -178,7 +261,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 print(st);
                 return Column(
                   children: [
-                    Text('خطأ في تحميل البيانات: $e', style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+                    Text(
+                      'خطأ في تحميل البيانات: $e',
+                      style: const TextStyle(color: Colors.red),
+                      textAlign: TextAlign.center,
+                    ),
                     const SizedBox(height: 8),
                     ElevatedButton(
                       onPressed: () => ref.refresh(allUsersProvider),
@@ -204,17 +291,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: ElevatedButton(
                 onPressed: authState.isLoading ? null : _login,
                 style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
                 child: authState.isLoading
                     ? const SizedBox(
                         height: 24,
                         width: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Text(
                         'دخول للنظام',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
               ),
             ),

@@ -1,0 +1,6 @@
+{
+  "passed": true,
+  "http_checks": 91,
+  "database": "temporary PostgreSQL",
+  "logs": "C:\\Users\\Graphic\\AppData\\Local\\Temp\\petros-scope-test-wf9aegno"
+}

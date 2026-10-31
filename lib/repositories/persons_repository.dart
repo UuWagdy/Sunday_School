@@ -7,6 +7,10 @@ import '../database/database_provider.dart';
 import '../services/auth_service.dart';
 import 'service_eligibility_repository.dart';
 import '../utils/arabic_helper.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
+import '../sync/person_change_source.dart';
+import '../utils/delta_page_cache.dart';
 
 part 'persons_repository.g.dart';
 
@@ -66,14 +70,117 @@ class PersonListDTO {
 
 @Riverpod(keepAlive: true)
 class PersonsRepository extends _$PersonsRepository {
+  AppDatabase? _optionsDatabase;
+  String? _optionsScope, _optionsCursor;
+  List<PersonListDTO> _optionsCache = const [];
+  int _optionsGeneration = 0;
+  Future<List<PersonListDTO>> findSimilarNames(
+    String name, {
+    int? excludeId,
+  }) async {
+    final query = normalizeArabic(name).replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (query.length < 2) return [];
+    final words = query.split(' ');
+    final search = words.take(words.length > 1 ? 2 : 1).join(' ');
+    final matches = await fetchPersons(
+      search: search,
+      limit: 12,
+      includeServices: false,
+      includePhotos: false,
+    );
+    matches.removeWhere((p) => p.id == excludeId);
+    matches.sort((a, b) {
+      final aExact = normalizeArabic(a.name) == query;
+      final bExact = normalizeArabic(b.name) == query;
+      if (aExact != bExact) return aExact ? -1 : 1;
+      return a.name.compareTo(b.name);
+    });
+    return matches.take(8).toList();
+  }
+
   @override
   FutureOr<List<PersonListDTO>> build() async {
-    ref.watch(appDatabaseProvider);
-    ref.watch(authServiceProvider);
+    ref.watch(domainRevisionProvider(DataDomain.people));
+    final db = ref.watch(appDatabaseProvider);
+    final scope = ref.watch(authServiceProvider).value?.sessionSignature;
+    final source = ref.watch(personChangeSourceProvider);
+    final generation = ++_optionsGeneration;
+    final sameScope = identical(db, _optionsDatabase) && scope == _optionsScope;
+    final cached = sameScope ? _optionsCache : <PersonListDTO>[];
+    final checkpoint = await source.read(
+      cursor: sameScope ? _optionsCursor : null,
+      knownIds: cached.map((p) => p.id),
+      domain: 'people',
+    );
+    final ids = checkpoint.personIds;
+    var rows = ids == null
+        ? await fetchPersonOptions()
+        : ids.isEmpty
+        ? cached
+        : mergeChangedPrefix<PersonListDTO>(
+            cached: cached,
+            changed: await fetchPersonOptions(changedOptionIds: ids.toList()),
+            changedIds: ids,
+            idOf: (p) => p.id,
+            compare: (a, b) => b.id.compareTo(a.id),
+            hasMore: cached.length >= 1000,
+          );
+    if (rows.length > 1000) rows = rows.take(1000).toList();
+    if (ids != null &&
+        ids.isNotEmpty &&
+        cached.length >= 1000 &&
+        rows.length < 1000) {
+      final tail = await fetchPersonOptions(
+        limit: 1000 - rows.length,
+        offset: rows.length,
+      );
+      final known = rows.map((p) => p.id).toSet();
+      rows.addAll(tail.where((p) => known.add(p.id)));
+    }
+    if (ref.mounted && generation == _optionsGeneration) {
+      _optionsDatabase = db;
+      _optionsScope = scope;
+      _optionsCursor = checkpoint.cursor;
+      _optionsCache = rows;
+    }
+    return rows;
+  }
 
-    // Initial build returns a baseline of persons for autocompletion suggestions.
-    // We limit this to 1000 to balance between performance and availability of suggestions.
-    return fetchPersons(limit: 1000, includeServices: false);
+  /// The autocomplete index needs only codes and names. Detail screens keep
+  /// using fetchPersons/fetchPersonById for their complete records.
+  Future<List<PersonListDTO>> fetchPersonOptions({
+    int? personId,
+    int limit = 1000,
+    int offset = 0,
+    List<int>? changedOptionIds,
+  }) async {
+    final db = ref.read(appDatabaseProvider);
+    final query = db.selectOnly(db.persons)
+      ..addColumns([db.persons.personId, db.persons.personName])
+      ..orderBy([drift.OrderingTerm.desc(db.persons.personId)])
+      ..limit(limit, offset: offset);
+    if (personId != null) query.where(db.persons.personId.equals(personId));
+    if (changedOptionIds != null)
+      query.where(db.persons.personId.isIn(changedOptionIds));
+    final user = ref.read(authServiceProvider).value;
+    if (user != null && !user.canPersons && user.isAdvanced) {
+      await _applyVisibilityFilters(query, db, user.visibilityFilters);
+    }
+    return (await query.get())
+        .map(
+          (row) => PersonListDTO(
+            id: row.read(db.persons.personId)!,
+            name: row.read(db.persons.personName) ?? '',
+            stageName: '',
+            khorosName: '',
+            areaName: '',
+            phone: '',
+            mobile: '',
+            streetName: '',
+            fatherName: '',
+          ),
+        )
+        .toList();
   }
 
   Future<List<PersonListDTO>> fetchPersons({
@@ -92,29 +199,41 @@ class PersonsRepository extends _$PersonsRepository {
     List<String>? leaders,
     List<int>? personIds,
     bool includeServices = true,
+    bool includePhotos = true,
   }) async {
     final db = ref.read(appDatabaseProvider);
     final user = ref.read(authServiceProvider).value;
     final filters = user?.visibilityFilters ?? {};
 
-    var query = db.select(db.persons).join([
-      drift.leftOuterJoin(
-        db.stages,
-        db.stages.stageId.equalsExp(db.persons.stageId),
-      ),
-      drift.leftOuterJoin(
-        db.khoroses,
-        db.khoroses.khorosId.equalsExp(db.persons.khorosId),
-      ),
-      drift.leftOuterJoin(
-        db.areas,
-        db.areas.areaId.equalsExp(db.persons.areaId),
-      ),
-      drift.leftOuterJoin(
-        db.fathers,
-        db.fathers.fatherId.equalsExp(db.persons.fatherId),
-      ),
-    ]);
+    final query = db.selectOnly(db.persons)
+      ..addColumns(
+        db.persons.$columns.where(
+          (column) => includePhotos || column != db.persons.photo,
+        ),
+      )
+      ..join([
+        drift.leftOuterJoin(
+          db.stages,
+          db.stages.stageId.equalsExp(db.persons.stageId),
+          useColumns: true,
+        ),
+        drift.leftOuterJoin(
+          db.khoroses,
+          db.khoroses.khorosId.equalsExp(db.persons.khorosId),
+          useColumns: false,
+        ),
+        drift.leftOuterJoin(
+          db.areas,
+          db.areas.areaId.equalsExp(db.persons.areaId),
+          useColumns: true,
+        ),
+        drift.leftOuterJoin(
+          db.fathers,
+          db.fathers.fatherId.equalsExp(db.persons.fatherId),
+          useColumns: true,
+        ),
+      ])
+      ..addColumns([db.khoroses.khorosId, db.khoroses.khorosName]);
 
     if (stageIds != null && stageIds.isNotEmpty) {
       query.where(db.persons.stageId.isIn(stageIds));
@@ -186,7 +305,7 @@ class PersonsRepository extends _$PersonsRepository {
     final results = await query.get();
 
     final fetchedPersonIds = results
-        .map((row) => row.readTable(db.persons).personId)
+        .map((row) => row.read(db.persons.personId))
         .whereType<int>()
         .toList();
 
@@ -195,21 +314,15 @@ class PersonsRepository extends _$PersonsRepository {
     final personCustomValuesMap = <int, Map<int, String>>{};
 
     if (fetchedPersonIds.isNotEmpty) {
-      final allServices = await (db.select(db.personServices).join([
-        drift.innerJoin(
-          db.services,
-          db.services.serviceId.equalsExp(db.personServices.serviceId),
-        ),
-      ])..where(db.personServices.personId.isIn(fetchedPersonIds))).get();
-
-      for (final row in allServices) {
-        final ps = row.readTable(db.personServices);
-        final svc = row.readTable(db.services);
-        personServicesMap.putIfAbsent(ps.personId, () => []).add(ps.serviceId);
-        if (svc.serviceName != null && svc.serviceName!.isNotEmpty) {
-          personServiceNamesMap
-              .putIfAbsent(ps.personId, () => [])
-              .add(svc.serviceName!);
+      if (includeServices) {
+        final allServices = await ServiceEligibilityRepository(
+          db,
+        ).personServiceNames(fetchedPersonIds);
+        for (final entry in allServices.entries) {
+          personServicesMap[entry.key] = entry.value.keys.toList();
+          personServiceNamesMap[entry.key] = entry.value.values
+              .where((name) => name.isNotEmpty)
+              .toList();
         }
       }
 
@@ -223,9 +336,11 @@ class PersonsRepository extends _$PersonsRepository {
     }
 
     return results.map((row) {
-      final person = row.readTable(db.persons);
+      final person = db.persons.map(
+        row.rawData.data,
+        tablePrefix: db.persons.aliasedName,
+      );
       final stage = row.readTableOrNull(db.stages);
-      final khoros = row.readTableOrNull(db.khoroses);
       final area = row.readTableOrNull(db.areas);
       final father = row.readTableOrNull(db.fathers);
 
@@ -233,7 +348,7 @@ class PersonsRepository extends _$PersonsRepository {
         id: person.personId ?? 0,
         name: person.personName ?? 'Unknown',
         stageName: stage?.stageName ?? '',
-        khorosName: khoros?.khorosName ?? '',
+        khorosName: row.read(db.khoroses.khorosName) ?? '',
         areaName: area?.areaName ?? '',
         phone: person.phone ?? '',
         mobile: person.mobile ?? '',
@@ -292,26 +407,18 @@ class PersonsRepository extends _$PersonsRepository {
       final area = row.readTableOrNull(db.areas);
       final father = row.readTableOrNull(db.fathers);
 
-      final serviceIds = await ServiceEligibilityRepository(db)
-          .resolvedPersonServiceIds(
-            personId: id,
-            stageId: person.stageId,
-            khorosId: person.khorosId,
-          );
+      final services =
+          (await ServiceEligibilityRepository(
+            db,
+          ).personServiceNames([id]))[id] ??
+          <int, String>{};
 
       final customRows = await (db.select(
         db.personCustomFieldValues,
       )..where((t) => t.personId.equals(id))).get();
       final customValues = {for (var r in customRows) r.fieldId: r.value ?? ''};
 
-      final serviceRows = await (db.select(db.personServices).join([
-        drift.innerJoin(
-          db.services,
-          db.services.serviceId.equalsExp(db.personServices.serviceId),
-        ),
-      ])..where(db.personServices.personId.equals(id))).get();
-      final serviceNames = serviceRows
-          .map((r) => r.readTable(db.services).serviceName ?? '')
+      final serviceNames = services.values
           .where((n) => n.isNotEmpty)
           .join('، ');
 
@@ -334,7 +441,7 @@ class PersonsRepository extends _$PersonsRepository {
         year: person.year,
         jenderName: person.jenderName,
         photo: person.photo,
-        serviceIds: serviceIds.toList(),
+        serviceIds: services.keys.toList(),
         rohot: person.rohot,
         leader: person.leader,
         services: serviceNames,
@@ -426,7 +533,7 @@ class PersonsRepository extends _$PersonsRepository {
       return row.read(db.persons.personId.count()) ?? 0;
     } catch (e) {
       print('Error in fetchTotalCount: $e');
-      return 0;
+      rethrow;
     }
   }
 
@@ -540,12 +647,15 @@ class PersonsRepository extends _$PersonsRepository {
   }
 
   Future<bool> personIdExists(int id, {int? exceptId}) async {
+    if (id == exceptId) return false;
     final db = ref.read(appDatabaseProvider);
-    final query = db.select(db.persons)..where((t) => t.personId.equals(id));
-    if (exceptId != null) {
-      query.where((t) => t.personId.equals(exceptId).not());
-    }
-    return await query.getSingleOrNull() != null;
+    final row = await db
+        .customSelect(
+          'SELECT COUNT(*) AS id_exists FROM "Persons" WHERE "Person_ID" = ?',
+          variables: [drift.Variable<int>(id)],
+        )
+        .getSingle();
+    return row.read<int>('id_exists') > 0;
   }
 
   Future<int?> addPerson({
@@ -603,17 +713,16 @@ class PersonsRepository extends _$PersonsRepository {
           khorosId: khorosId,
         );
 
-        for (final entry in customValues.entries) {
-          await db
-              .into(db.personCustomFieldValues)
-              .insert(
-                PersonCustomFieldValuesCompanion.insert(
-                  personId: personId,
-                  fieldId: entry.key,
-                  value: drift.Value(entry.value),
-                ),
-              );
-        }
+        await db.batch((batch) {
+          batch.insertAll(db.personCustomFieldValues, [
+            for (final entry in customValues.entries)
+              PersonCustomFieldValuesCompanion.insert(
+                personId: personId,
+                fieldId: entry.key,
+                value: drift.Value(entry.value),
+              ),
+          ]);
+        });
       });
 
       // IMPORTANT: Do NOT invalidateSelf here.
@@ -682,21 +791,20 @@ class PersonsRepository extends _$PersonsRepository {
         await (db.delete(
           db.personCustomFieldValues,
         )..where((t) => t.personId.equals(id))).go();
-        for (final entry in customValues.entries) {
-          await db
-              .into(db.personCustomFieldValues)
-              .insert(
-                PersonCustomFieldValuesCompanion.insert(
-                  personId: id,
-                  fieldId: entry.key,
-                  value: drift.Value(entry.value),
-                ),
-              );
-        }
+        await db.batch((batch) {
+          batch.insertAll(db.personCustomFieldValues, [
+            for (final entry in customValues.entries)
+              PersonCustomFieldValuesCompanion.insert(
+                personId: id,
+                fieldId: entry.key,
+                value: drift.Value(entry.value),
+              ),
+          ]);
+        });
       });
 
       // Invalidate after all operations complete so the autocomplete list updates
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e, stack) {
       print('FLUTTER DB ERROR [updatePerson]: $e');
@@ -746,7 +854,7 @@ class PersonsRepository extends _$PersonsRepository {
         }
       });
 
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       print('Error in bulkTransfer: $e');
@@ -759,14 +867,12 @@ class PersonsRepository extends _$PersonsRepository {
       final db = ref.read(appDatabaseProvider);
 
       bool success = await db.transaction(() async {
-        await (db.delete(db.coming)..where((t) => t.personId.equals(id))).go();
-        await (db.delete(db.credit)..where((t) => t.personId.equals(id))).go();
-        await (db.delete(
-          db.absentPersons,
-        )..where((t) => t.personId.equals(id))).go();
-        await (db.delete(
-          db.absentPrint,
-        )..where((t) => t.personId.equals(id))).go();
+        await db.batch((batch) {
+          batch.deleteWhere(db.coming, (t) => t.personId.equals(id));
+          batch.deleteWhere(db.credit, (t) => t.personId.equals(id));
+          batch.deleteWhere(db.absentPersons, (t) => t.personId.equals(id));
+          batch.deleteWhere(db.absentPrint, (t) => t.personId.equals(id));
+        });
 
         final deletedRows = await (db.delete(
           db.persons,
@@ -776,7 +882,7 @@ class PersonsRepository extends _$PersonsRepository {
 
       if (!success) return false;
 
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       print('Error deleting person: $e');
@@ -825,7 +931,7 @@ class PersonsRepository extends _$PersonsRepository {
         );
       }
     });
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
   }
 
   Future<bool> bulkDeletePersons(List<int> ids) async {
@@ -852,7 +958,7 @@ class PersonsRepository extends _$PersonsRepository {
         }
       });
 
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       print('Error in bulkDeletePersons: $e');
@@ -899,10 +1005,28 @@ class PersonsRepository extends _$PersonsRepository {
           leader: leader,
         );
 
+        final hasPersonUpdates =
+            stageId.present ||
+            khorosId.present ||
+            areaId.present ||
+            fatherId.present ||
+            streetName.present ||
+            phone.present ||
+            mobile.present ||
+            day.present ||
+            month.present ||
+            year.present ||
+            jenderName.present ||
+            photo.present ||
+            rohot.present ||
+            leader.present;
+
         for (final id in ids) {
-          await (db.update(
-            db.persons,
-          )..where((t) => t.personId.equals(id))).write(companion);
+          if (hasPersonUpdates) {
+            await (db.update(
+              db.persons,
+            )..where((t) => t.personId.equals(id))).write(companion);
+          }
 
           if (serviceIds != null) {
             int? currentStageId;
@@ -957,7 +1081,7 @@ class PersonsRepository extends _$PersonsRepository {
         }
       });
 
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e, stack) {
       print('FLUTTER DB ERROR [bulkUpdatePersons]: $e');

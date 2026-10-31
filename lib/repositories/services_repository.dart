@@ -5,6 +5,8 @@ import 'package:drift/drift.dart' as drift;
 import '../services/auth_service.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 
 part 'services_repository.g.dart';
 
@@ -67,6 +69,7 @@ class ServiceDTO {
 class ServicesRepository extends _$ServicesRepository {
   @override
   FutureOr<List<ServiceDTO>> build() async {
+    ref.watch(domainRevisionProvider(DataDomain.services));
     return fetchAll();
   }
 
@@ -123,7 +126,7 @@ class ServicesRepository extends _$ServicesRepository {
         logo: drift.Value(logo),
         checkColor: drift.Value(checkColor),
       ));
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       print('Error adding service: $e');
@@ -156,7 +159,7 @@ class ServicesRepository extends _$ServicesRepository {
           checkColor: drift.Value(checkColor),
         ),
       );
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       print('Error updating service: $e');
@@ -168,7 +171,7 @@ class ServicesRepository extends _$ServicesRepository {
     try {
       final db = ref.read(appDatabaseProvider);
       await (db.delete(db.services)..where((t) => t.serviceId.equals(id))).go();
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       print('Error deleting service: $e');

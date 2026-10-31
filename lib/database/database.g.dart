@@ -2139,6 +2139,39 @@ class $ComingTable extends Coming with TableInfo<$ComingTable, ComingData> {
     requiredDuringInsert: false,
     defaultValue: const Constant(5),
   );
+  static const VerificationMeta _attendanceNotesMeta = const VerificationMeta(
+    'attendanceNotes',
+  );
+  @override
+  late final GeneratedColumn<String> attendanceNotes = GeneratedColumn<String>(
+    'Attendance_Notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _checkoutNotesMeta = const VerificationMeta(
+    'checkoutNotes',
+  );
+  @override
+  late final GeneratedColumn<String> checkoutNotes = GeneratedColumn<String>(
+    'Checkout_Notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _checkoutTypeMeta = const VerificationMeta(
+    'checkoutType',
+  );
+  @override
+  late final GeneratedColumn<String> checkoutType = GeneratedColumn<String>(
+    'Checkout_Type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2155,6 +2188,9 @@ class $ComingTable extends Coming with TableInfo<$ComingTable, ComingData> {
     visited,
     visitNotes,
     behavior,
+    attendanceNotes,
+    checkoutNotes,
+    checkoutType,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2258,6 +2294,33 @@ class $ComingTable extends Coming with TableInfo<$ComingTable, ComingData> {
         behavior.isAcceptableOrUnknown(data['Behavior']!, _behaviorMeta),
       );
     }
+    if (data.containsKey('Attendance_Notes')) {
+      context.handle(
+        _attendanceNotesMeta,
+        attendanceNotes.isAcceptableOrUnknown(
+          data['Attendance_Notes']!,
+          _attendanceNotesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('Checkout_Notes')) {
+      context.handle(
+        _checkoutNotesMeta,
+        checkoutNotes.isAcceptableOrUnknown(
+          data['Checkout_Notes']!,
+          _checkoutNotesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('Checkout_Type')) {
+      context.handle(
+        _checkoutTypeMeta,
+        checkoutType.isAcceptableOrUnknown(
+          data['Checkout_Type']!,
+          _checkoutTypeMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2323,6 +2386,18 @@ class $ComingTable extends Coming with TableInfo<$ComingTable, ComingData> {
         DriftSqlType.int,
         data['${effectivePrefix}Behavior'],
       ),
+      attendanceNotes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Attendance_Notes'],
+      ),
+      checkoutNotes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Checkout_Notes'],
+      ),
+      checkoutType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Checkout_Type'],
+      ),
     );
   }
 
@@ -2347,6 +2422,9 @@ class ComingData extends DataClass implements Insertable<ComingData> {
   final int? visited;
   final String? visitNotes;
   final int? behavior;
+  final String? attendanceNotes;
+  final String? checkoutNotes;
+  final String? checkoutType;
   const ComingData({
     this.id,
     this.personId,
@@ -2362,6 +2440,9 @@ class ComingData extends DataClass implements Insertable<ComingData> {
     this.visited,
     this.visitNotes,
     this.behavior,
+    this.attendanceNotes,
+    this.checkoutNotes,
+    this.checkoutType,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2408,6 +2489,15 @@ class ComingData extends DataClass implements Insertable<ComingData> {
     if (!nullToAbsent || behavior != null) {
       map['Behavior'] = Variable<int>(behavior);
     }
+    if (!nullToAbsent || attendanceNotes != null) {
+      map['Attendance_Notes'] = Variable<String>(attendanceNotes);
+    }
+    if (!nullToAbsent || checkoutNotes != null) {
+      map['Checkout_Notes'] = Variable<String>(checkoutNotes);
+    }
+    if (!nullToAbsent || checkoutType != null) {
+      map['Checkout_Type'] = Variable<String>(checkoutType);
+    }
     return map;
   }
 
@@ -2453,6 +2543,15 @@ class ComingData extends DataClass implements Insertable<ComingData> {
       behavior: behavior == null && nullToAbsent
           ? const Value.absent()
           : Value(behavior),
+      attendanceNotes: attendanceNotes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(attendanceNotes),
+      checkoutNotes: checkoutNotes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(checkoutNotes),
+      checkoutType: checkoutType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(checkoutType),
     );
   }
 
@@ -2476,6 +2575,9 @@ class ComingData extends DataClass implements Insertable<ComingData> {
       visited: serializer.fromJson<int?>(json['visited']),
       visitNotes: serializer.fromJson<String?>(json['visitNotes']),
       behavior: serializer.fromJson<int?>(json['behavior']),
+      attendanceNotes: serializer.fromJson<String?>(json['attendanceNotes']),
+      checkoutNotes: serializer.fromJson<String?>(json['checkoutNotes']),
+      checkoutType: serializer.fromJson<String?>(json['checkoutType']),
     );
   }
   @override
@@ -2496,6 +2598,9 @@ class ComingData extends DataClass implements Insertable<ComingData> {
       'visited': serializer.toJson<int?>(visited),
       'visitNotes': serializer.toJson<String?>(visitNotes),
       'behavior': serializer.toJson<int?>(behavior),
+      'attendanceNotes': serializer.toJson<String?>(attendanceNotes),
+      'checkoutNotes': serializer.toJson<String?>(checkoutNotes),
+      'checkoutType': serializer.toJson<String?>(checkoutType),
     };
   }
 
@@ -2514,6 +2619,9 @@ class ComingData extends DataClass implements Insertable<ComingData> {
     Value<int?> visited = const Value.absent(),
     Value<String?> visitNotes = const Value.absent(),
     Value<int?> behavior = const Value.absent(),
+    Value<String?> attendanceNotes = const Value.absent(),
+    Value<String?> checkoutNotes = const Value.absent(),
+    Value<String?> checkoutType = const Value.absent(),
   }) => ComingData(
     id: id.present ? id.value : this.id,
     personId: personId.present ? personId.value : this.personId,
@@ -2533,6 +2641,13 @@ class ComingData extends DataClass implements Insertable<ComingData> {
     visited: visited.present ? visited.value : this.visited,
     visitNotes: visitNotes.present ? visitNotes.value : this.visitNotes,
     behavior: behavior.present ? behavior.value : this.behavior,
+    attendanceNotes: attendanceNotes.present
+        ? attendanceNotes.value
+        : this.attendanceNotes,
+    checkoutNotes: checkoutNotes.present
+        ? checkoutNotes.value
+        : this.checkoutNotes,
+    checkoutType: checkoutType.present ? checkoutType.value : this.checkoutType,
   );
   ComingData copyWithCompanion(ComingCompanion data) {
     return ComingData(
@@ -2560,6 +2675,15 @@ class ComingData extends DataClass implements Insertable<ComingData> {
           ? data.visitNotes.value
           : this.visitNotes,
       behavior: data.behavior.present ? data.behavior.value : this.behavior,
+      attendanceNotes: data.attendanceNotes.present
+          ? data.attendanceNotes.value
+          : this.attendanceNotes,
+      checkoutNotes: data.checkoutNotes.present
+          ? data.checkoutNotes.value
+          : this.checkoutNotes,
+      checkoutType: data.checkoutType.present
+          ? data.checkoutType.value
+          : this.checkoutType,
     );
   }
 
@@ -2579,7 +2703,10 @@ class ComingData extends DataClass implements Insertable<ComingData> {
           ..write('checkoutTime: $checkoutTime, ')
           ..write('visited: $visited, ')
           ..write('visitNotes: $visitNotes, ')
-          ..write('behavior: $behavior')
+          ..write('behavior: $behavior, ')
+          ..write('attendanceNotes: $attendanceNotes, ')
+          ..write('checkoutNotes: $checkoutNotes, ')
+          ..write('checkoutType: $checkoutType')
           ..write(')'))
         .toString();
   }
@@ -2600,6 +2727,9 @@ class ComingData extends DataClass implements Insertable<ComingData> {
     visited,
     visitNotes,
     behavior,
+    attendanceNotes,
+    checkoutNotes,
+    checkoutType,
   );
   @override
   bool operator ==(Object other) =>
@@ -2618,7 +2748,10 @@ class ComingData extends DataClass implements Insertable<ComingData> {
           other.checkoutTime == this.checkoutTime &&
           other.visited == this.visited &&
           other.visitNotes == this.visitNotes &&
-          other.behavior == this.behavior);
+          other.behavior == this.behavior &&
+          other.attendanceNotes == this.attendanceNotes &&
+          other.checkoutNotes == this.checkoutNotes &&
+          other.checkoutType == this.checkoutType);
 }
 
 class ComingCompanion extends UpdateCompanion<ComingData> {
@@ -2636,6 +2769,9 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
   final Value<int?> visited;
   final Value<String?> visitNotes;
   final Value<int?> behavior;
+  final Value<String?> attendanceNotes;
+  final Value<String?> checkoutNotes;
+  final Value<String?> checkoutType;
   final Value<int> rowid;
   const ComingCompanion({
     this.id = const Value.absent(),
@@ -2652,6 +2788,9 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
     this.visited = const Value.absent(),
     this.visitNotes = const Value.absent(),
     this.behavior = const Value.absent(),
+    this.attendanceNotes = const Value.absent(),
+    this.checkoutNotes = const Value.absent(),
+    this.checkoutType = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ComingCompanion.insert({
@@ -2669,6 +2808,9 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
     this.visited = const Value.absent(),
     this.visitNotes = const Value.absent(),
     this.behavior = const Value.absent(),
+    this.attendanceNotes = const Value.absent(),
+    this.checkoutNotes = const Value.absent(),
+    this.checkoutType = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   static Insertable<ComingData> custom({
@@ -2686,6 +2828,9 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
     Expression<int>? visited,
     Expression<String>? visitNotes,
     Expression<int>? behavior,
+    Expression<String>? attendanceNotes,
+    Expression<String>? checkoutNotes,
+    Expression<String>? checkoutType,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2703,6 +2848,9 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
       if (visited != null) 'Visited': visited,
       if (visitNotes != null) 'Visit_Notes': visitNotes,
       if (behavior != null) 'Behavior': behavior,
+      if (attendanceNotes != null) 'Attendance_Notes': attendanceNotes,
+      if (checkoutNotes != null) 'Checkout_Notes': checkoutNotes,
+      if (checkoutType != null) 'Checkout_Type': checkoutType,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2722,6 +2870,9 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
     Value<int?>? visited,
     Value<String?>? visitNotes,
     Value<int?>? behavior,
+    Value<String?>? attendanceNotes,
+    Value<String?>? checkoutNotes,
+    Value<String?>? checkoutType,
     Value<int>? rowid,
   }) {
     return ComingCompanion(
@@ -2739,6 +2890,9 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
       visited: visited ?? this.visited,
       visitNotes: visitNotes ?? this.visitNotes,
       behavior: behavior ?? this.behavior,
+      attendanceNotes: attendanceNotes ?? this.attendanceNotes,
+      checkoutNotes: checkoutNotes ?? this.checkoutNotes,
+      checkoutType: checkoutType ?? this.checkoutType,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2788,6 +2942,15 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
     if (behavior.present) {
       map['Behavior'] = Variable<int>(behavior.value);
     }
+    if (attendanceNotes.present) {
+      map['Attendance_Notes'] = Variable<String>(attendanceNotes.value);
+    }
+    if (checkoutNotes.present) {
+      map['Checkout_Notes'] = Variable<String>(checkoutNotes.value);
+    }
+    if (checkoutType.present) {
+      map['Checkout_Type'] = Variable<String>(checkoutType.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2811,6 +2974,9 @@ class ComingCompanion extends UpdateCompanion<ComingData> {
           ..write('visited: $visited, ')
           ..write('visitNotes: $visitNotes, ')
           ..write('behavior: $behavior, ')
+          ..write('attendanceNotes: $attendanceNotes, ')
+          ..write('checkoutNotes: $checkoutNotes, ')
+          ..write('checkoutType: $checkoutType, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -11868,6 +12034,759 @@ class FamilyRelationshipsCompanion extends UpdateCompanion<FamilyRelationship> {
   }
 }
 
+class $BusDriversTable extends BusDrivers
+    with TableInfo<$BusDriversTable, BusDriver> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BusDriversTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'ID',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'Name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _phoneMeta = const VerificationMeta('phone');
+  @override
+  late final GeneratedColumn<String> phone = GeneratedColumn<String>(
+    'Phone',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _busNumberMeta = const VerificationMeta(
+    'busNumber',
+  );
+  @override
+  late final GeneratedColumn<String> busNumber = GeneratedColumn<String>(
+    'Bus_Number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'Notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'Created_At',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    phone,
+    busNumber,
+    notes,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'Bus_Drivers';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BusDriver> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('ID')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['ID']!, _idMeta));
+    }
+    if (data.containsKey('Name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['Name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('Phone')) {
+      context.handle(
+        _phoneMeta,
+        phone.isAcceptableOrUnknown(data['Phone']!, _phoneMeta),
+      );
+    }
+    if (data.containsKey('Bus_Number')) {
+      context.handle(
+        _busNumberMeta,
+        busNumber.isAcceptableOrUnknown(data['Bus_Number']!, _busNumberMeta),
+      );
+    }
+    if (data.containsKey('Notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['Notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('Created_At')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['Created_At']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  BusDriver map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BusDriver(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ID'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Name'],
+      )!,
+      phone: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Phone'],
+      ),
+      busNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Bus_Number'],
+      ),
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Notes'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}Created_At'],
+      )!,
+    );
+  }
+
+  @override
+  $BusDriversTable createAlias(String alias) {
+    return $BusDriversTable(attachedDatabase, alias);
+  }
+}
+
+class BusDriver extends DataClass implements Insertable<BusDriver> {
+  final int id;
+  final String name;
+  final String? phone;
+  final String? busNumber;
+  final String? notes;
+  final DateTime createdAt;
+  const BusDriver({
+    required this.id,
+    required this.name,
+    this.phone,
+    this.busNumber,
+    this.notes,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['ID'] = Variable<int>(id);
+    map['Name'] = Variable<String>(name);
+    if (!nullToAbsent || phone != null) {
+      map['Phone'] = Variable<String>(phone);
+    }
+    if (!nullToAbsent || busNumber != null) {
+      map['Bus_Number'] = Variable<String>(busNumber);
+    }
+    if (!nullToAbsent || notes != null) {
+      map['Notes'] = Variable<String>(notes);
+    }
+    map['Created_At'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  BusDriversCompanion toCompanion(bool nullToAbsent) {
+    return BusDriversCompanion(
+      id: Value(id),
+      name: Value(name),
+      phone: phone == null && nullToAbsent
+          ? const Value.absent()
+          : Value(phone),
+      busNumber: busNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(busNumber),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory BusDriver.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BusDriver(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      phone: serializer.fromJson<String?>(json['phone']),
+      busNumber: serializer.fromJson<String?>(json['busNumber']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'phone': serializer.toJson<String?>(phone),
+      'busNumber': serializer.toJson<String?>(busNumber),
+      'notes': serializer.toJson<String?>(notes),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  BusDriver copyWith({
+    int? id,
+    String? name,
+    Value<String?> phone = const Value.absent(),
+    Value<String?> busNumber = const Value.absent(),
+    Value<String?> notes = const Value.absent(),
+    DateTime? createdAt,
+  }) => BusDriver(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    phone: phone.present ? phone.value : this.phone,
+    busNumber: busNumber.present ? busNumber.value : this.busNumber,
+    notes: notes.present ? notes.value : this.notes,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  BusDriver copyWithCompanion(BusDriversCompanion data) {
+    return BusDriver(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      phone: data.phone.present ? data.phone.value : this.phone,
+      busNumber: data.busNumber.present ? data.busNumber.value : this.busNumber,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BusDriver(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('phone: $phone, ')
+          ..write('busNumber: $busNumber, ')
+          ..write('notes: $notes, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, phone, busNumber, notes, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BusDriver &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.phone == this.phone &&
+          other.busNumber == this.busNumber &&
+          other.notes == this.notes &&
+          other.createdAt == this.createdAt);
+}
+
+class BusDriversCompanion extends UpdateCompanion<BusDriver> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String?> phone;
+  final Value<String?> busNumber;
+  final Value<String?> notes;
+  final Value<DateTime> createdAt;
+  const BusDriversCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.phone = const Value.absent(),
+    this.busNumber = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  BusDriversCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    this.phone = const Value.absent(),
+    this.busNumber = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : name = Value(name);
+  static Insertable<BusDriver> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? phone,
+    Expression<String>? busNumber,
+    Expression<String>? notes,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'ID': id,
+      if (name != null) 'Name': name,
+      if (phone != null) 'Phone': phone,
+      if (busNumber != null) 'Bus_Number': busNumber,
+      if (notes != null) 'Notes': notes,
+      if (createdAt != null) 'Created_At': createdAt,
+    });
+  }
+
+  BusDriversCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String?>? phone,
+    Value<String?>? busNumber,
+    Value<String?>? notes,
+    Value<DateTime>? createdAt,
+  }) {
+    return BusDriversCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      phone: phone ?? this.phone,
+      busNumber: busNumber ?? this.busNumber,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['ID'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['Name'] = Variable<String>(name.value);
+    }
+    if (phone.present) {
+      map['Phone'] = Variable<String>(phone.value);
+    }
+    if (busNumber.present) {
+      map['Bus_Number'] = Variable<String>(busNumber.value);
+    }
+    if (notes.present) {
+      map['Notes'] = Variable<String>(notes.value);
+    }
+    if (createdAt.present) {
+      map['Created_At'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BusDriversCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('phone: $phone, ')
+          ..write('busNumber: $busNumber, ')
+          ..write('notes: $notes, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $BusAssignmentsTable extends BusAssignments
+    with TableInfo<$BusAssignmentsTable, BusAssignment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BusAssignmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'ID',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _driverIdMeta = const VerificationMeta(
+    'driverId',
+  );
+  @override
+  late final GeneratedColumn<int> driverId = GeneratedColumn<int>(
+    'Driver_ID',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES Bus_Drivers (ID) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _personIdMeta = const VerificationMeta(
+    'personId',
+  );
+  @override
+  late final GeneratedColumn<int> personId = GeneratedColumn<int>(
+    'Person_ID',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES Persons (Person_ID) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'Notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'Created_At',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    driverId,
+    personId,
+    notes,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'Bus_Assignments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BusAssignment> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('ID')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['ID']!, _idMeta));
+    }
+    if (data.containsKey('Driver_ID')) {
+      context.handle(
+        _driverIdMeta,
+        driverId.isAcceptableOrUnknown(data['Driver_ID']!, _driverIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_driverIdMeta);
+    }
+    if (data.containsKey('Person_ID')) {
+      context.handle(
+        _personIdMeta,
+        personId.isAcceptableOrUnknown(data['Person_ID']!, _personIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_personIdMeta);
+    }
+    if (data.containsKey('Notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['Notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('Created_At')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['Created_At']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {personId},
+  ];
+  @override
+  BusAssignment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BusAssignment(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ID'],
+      )!,
+      driverId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}Driver_ID'],
+      )!,
+      personId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}Person_ID'],
+      )!,
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Notes'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}Created_At'],
+      )!,
+    );
+  }
+
+  @override
+  $BusAssignmentsTable createAlias(String alias) {
+    return $BusAssignmentsTable(attachedDatabase, alias);
+  }
+}
+
+class BusAssignment extends DataClass implements Insertable<BusAssignment> {
+  final int id;
+  final int driverId;
+  final int personId;
+  final String? notes;
+  final DateTime createdAt;
+  const BusAssignment({
+    required this.id,
+    required this.driverId,
+    required this.personId,
+    this.notes,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['ID'] = Variable<int>(id);
+    map['Driver_ID'] = Variable<int>(driverId);
+    map['Person_ID'] = Variable<int>(personId);
+    if (!nullToAbsent || notes != null) {
+      map['Notes'] = Variable<String>(notes);
+    }
+    map['Created_At'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  BusAssignmentsCompanion toCompanion(bool nullToAbsent) {
+    return BusAssignmentsCompanion(
+      id: Value(id),
+      driverId: Value(driverId),
+      personId: Value(personId),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory BusAssignment.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BusAssignment(
+      id: serializer.fromJson<int>(json['id']),
+      driverId: serializer.fromJson<int>(json['driverId']),
+      personId: serializer.fromJson<int>(json['personId']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'driverId': serializer.toJson<int>(driverId),
+      'personId': serializer.toJson<int>(personId),
+      'notes': serializer.toJson<String?>(notes),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  BusAssignment copyWith({
+    int? id,
+    int? driverId,
+    int? personId,
+    Value<String?> notes = const Value.absent(),
+    DateTime? createdAt,
+  }) => BusAssignment(
+    id: id ?? this.id,
+    driverId: driverId ?? this.driverId,
+    personId: personId ?? this.personId,
+    notes: notes.present ? notes.value : this.notes,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  BusAssignment copyWithCompanion(BusAssignmentsCompanion data) {
+    return BusAssignment(
+      id: data.id.present ? data.id.value : this.id,
+      driverId: data.driverId.present ? data.driverId.value : this.driverId,
+      personId: data.personId.present ? data.personId.value : this.personId,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BusAssignment(')
+          ..write('id: $id, ')
+          ..write('driverId: $driverId, ')
+          ..write('personId: $personId, ')
+          ..write('notes: $notes, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, driverId, personId, notes, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BusAssignment &&
+          other.id == this.id &&
+          other.driverId == this.driverId &&
+          other.personId == this.personId &&
+          other.notes == this.notes &&
+          other.createdAt == this.createdAt);
+}
+
+class BusAssignmentsCompanion extends UpdateCompanion<BusAssignment> {
+  final Value<int> id;
+  final Value<int> driverId;
+  final Value<int> personId;
+  final Value<String?> notes;
+  final Value<DateTime> createdAt;
+  const BusAssignmentsCompanion({
+    this.id = const Value.absent(),
+    this.driverId = const Value.absent(),
+    this.personId = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  BusAssignmentsCompanion.insert({
+    this.id = const Value.absent(),
+    required int driverId,
+    required int personId,
+    this.notes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : driverId = Value(driverId),
+       personId = Value(personId);
+  static Insertable<BusAssignment> custom({
+    Expression<int>? id,
+    Expression<int>? driverId,
+    Expression<int>? personId,
+    Expression<String>? notes,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'ID': id,
+      if (driverId != null) 'Driver_ID': driverId,
+      if (personId != null) 'Person_ID': personId,
+      if (notes != null) 'Notes': notes,
+      if (createdAt != null) 'Created_At': createdAt,
+    });
+  }
+
+  BusAssignmentsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? driverId,
+    Value<int>? personId,
+    Value<String?>? notes,
+    Value<DateTime>? createdAt,
+  }) {
+    return BusAssignmentsCompanion(
+      id: id ?? this.id,
+      driverId: driverId ?? this.driverId,
+      personId: personId ?? this.personId,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['ID'] = Variable<int>(id.value);
+    }
+    if (driverId.present) {
+      map['Driver_ID'] = Variable<int>(driverId.value);
+    }
+    if (personId.present) {
+      map['Person_ID'] = Variable<int>(personId.value);
+    }
+    if (notes.present) {
+      map['Notes'] = Variable<String>(notes.value);
+    }
+    if (createdAt.present) {
+      map['Created_At'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BusAssignmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('driverId: $driverId, ')
+          ..write('personId: $personId, ')
+          ..write('notes: $notes, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -11906,6 +12825,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $FamilyRelationshipsTable familyRelationships =
       $FamilyRelationshipsTable(this);
+  late final $BusDriversTable busDrivers = $BusDriversTable(this);
+  late final $BusAssignmentsTable busAssignments = $BusAssignmentsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -11937,6 +12858,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     personCustomFieldValues,
     personDocuments,
     familyRelationships,
+    busDrivers,
+    busAssignments,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -12076,6 +12999,20 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('Family_Relationships', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'Bus_Drivers',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('Bus_Assignments', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'Persons',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('Bus_Assignments', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -13090,6 +14027,9 @@ typedef $$ComingTableCreateCompanionBuilder =
       Value<int?> visited,
       Value<String?> visitNotes,
       Value<int?> behavior,
+      Value<String?> attendanceNotes,
+      Value<String?> checkoutNotes,
+      Value<String?> checkoutType,
       Value<int> rowid,
     });
 typedef $$ComingTableUpdateCompanionBuilder =
@@ -13108,6 +14048,9 @@ typedef $$ComingTableUpdateCompanionBuilder =
       Value<int?> visited,
       Value<String?> visitNotes,
       Value<int?> behavior,
+      Value<String?> attendanceNotes,
+      Value<String?> checkoutNotes,
+      Value<String?> checkoutType,
       Value<int> rowid,
     });
 
@@ -13187,6 +14130,21 @@ class $$ComingTableFilterComposer
 
   ColumnFilters<int> get behavior => $composableBuilder(
     column: $table.behavior,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get attendanceNotes => $composableBuilder(
+    column: $table.attendanceNotes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get checkoutNotes => $composableBuilder(
+    column: $table.checkoutNotes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get checkoutType => $composableBuilder(
+    column: $table.checkoutType,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -13269,6 +14227,21 @@ class $$ComingTableOrderingComposer
     column: $table.behavior,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get attendanceNotes => $composableBuilder(
+    column: $table.attendanceNotes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get checkoutNotes => $composableBuilder(
+    column: $table.checkoutNotes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get checkoutType => $composableBuilder(
+    column: $table.checkoutType,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ComingTableAnnotationComposer
@@ -13331,6 +14304,21 @@ class $$ComingTableAnnotationComposer
 
   GeneratedColumn<int> get behavior =>
       $composableBuilder(column: $table.behavior, builder: (column) => column);
+
+  GeneratedColumn<String> get attendanceNotes => $composableBuilder(
+    column: $table.attendanceNotes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get checkoutNotes => $composableBuilder(
+    column: $table.checkoutNotes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get checkoutType => $composableBuilder(
+    column: $table.checkoutType,
+    builder: (column) => column,
+  );
 }
 
 class $$ComingTableTableManager
@@ -13375,6 +14363,9 @@ class $$ComingTableTableManager
                 Value<int?> visited = const Value.absent(),
                 Value<String?> visitNotes = const Value.absent(),
                 Value<int?> behavior = const Value.absent(),
+                Value<String?> attendanceNotes = const Value.absent(),
+                Value<String?> checkoutNotes = const Value.absent(),
+                Value<String?> checkoutType = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ComingCompanion(
                 id: id,
@@ -13391,6 +14382,9 @@ class $$ComingTableTableManager
                 visited: visited,
                 visitNotes: visitNotes,
                 behavior: behavior,
+                attendanceNotes: attendanceNotes,
+                checkoutNotes: checkoutNotes,
+                checkoutType: checkoutType,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -13409,6 +14403,9 @@ class $$ComingTableTableManager
                 Value<int?> visited = const Value.absent(),
                 Value<String?> visitNotes = const Value.absent(),
                 Value<int?> behavior = const Value.absent(),
+                Value<String?> attendanceNotes = const Value.absent(),
+                Value<String?> checkoutNotes = const Value.absent(),
+                Value<String?> checkoutType = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ComingCompanion.insert(
                 id: id,
@@ -13425,6 +14422,9 @@ class $$ComingTableTableManager
                 visited: visited,
                 visitNotes: visitNotes,
                 behavior: behavior,
+                attendanceNotes: attendanceNotes,
+                checkoutNotes: checkoutNotes,
+                checkoutType: checkoutType,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -13645,6 +14645,27 @@ final class $$PersonsTableReferences
     final cache = $_typedResult.readTableOrNull(
       _relatedPersonRelationshipsTable($_db),
     );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$BusAssignmentsTable, List<BusAssignment>>
+  _busAssignmentsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.busAssignments,
+    aliasName: $_aliasNameGenerator(
+      db.persons.personId,
+      db.busAssignments.personId,
+    ),
+  );
+
+  $$BusAssignmentsTableProcessedTableManager get busAssignmentsRefs {
+    final manager = $$BusAssignmentsTableTableManager($_db, $_db.busAssignments)
+        .filter(
+          (f) => f.personId.personId.sqlEquals($_itemColumn<int>('Person_ID')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(_busAssignmentsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -13882,6 +14903,31 @@ class $$PersonsTableFilterComposer
           }) => $$FamilyRelationshipsTableFilterComposer(
             $db: $db,
             $table: $db.familyRelationships,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> busAssignmentsRefs(
+    Expression<bool> Function($$BusAssignmentsTableFilterComposer f) f,
+  ) {
+    final $$BusAssignmentsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.busAssignments,
+      getReferencedColumn: (t) => t.personId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusAssignmentsTableFilterComposer(
+            $db: $db,
+            $table: $db.busAssignments,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -14198,6 +15244,31 @@ class $$PersonsTableAnnotationComposer
         );
     return f(composer);
   }
+
+  Expression<T> busAssignmentsRefs<T extends Object>(
+    Expression<T> Function($$BusAssignmentsTableAnnotationComposer a) f,
+  ) {
+    final $$BusAssignmentsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.busAssignments,
+      getReferencedColumn: (t) => t.personId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusAssignmentsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.busAssignments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$PersonsTableTableManager
@@ -14220,6 +15291,7 @@ class $$PersonsTableTableManager
             bool personDocumentsRefs,
             bool personRelationships,
             bool relatedPersonRelationships,
+            bool busAssignmentsRefs,
           })
         > {
   $$PersonsTableTableManager(_$AppDatabase db, $PersonsTable table)
@@ -14321,6 +15393,7 @@ class $$PersonsTableTableManager
                 personDocumentsRefs = false,
                 personRelationships = false,
                 relatedPersonRelationships = false,
+                busAssignmentsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -14331,6 +15404,7 @@ class $$PersonsTableTableManager
                     if (personDocumentsRefs) db.personDocuments,
                     if (personRelationships) db.familyRelationships,
                     if (relatedPersonRelationships) db.familyRelationships,
+                    if (busAssignmentsRefs) db.busAssignments,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -14461,6 +15535,27 @@ class $$PersonsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (busAssignmentsRefs)
+                        await $_getPrefetchedData<
+                          Person,
+                          $PersonsTable,
+                          BusAssignment
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PersonsTableReferences
+                              ._busAssignmentsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PersonsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).busAssignmentsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.personId == item.personId,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -14488,6 +15583,7 @@ typedef $$PersonsTableProcessedTableManager =
         bool personDocumentsRefs,
         bool personRelationships,
         bool relatedPersonRelationships,
+        bool busAssignmentsRefs,
       })
     >;
 typedef $$ServicesTableCreateCompanionBuilder =
@@ -22144,6 +23240,734 @@ typedef $$FamilyRelationshipsTableProcessedTableManager =
       FamilyRelationship,
       PrefetchHooks Function({bool personId, bool relatedPersonId})
     >;
+typedef $$BusDriversTableCreateCompanionBuilder =
+    BusDriversCompanion Function({
+      Value<int> id,
+      required String name,
+      Value<String?> phone,
+      Value<String?> busNumber,
+      Value<String?> notes,
+      Value<DateTime> createdAt,
+    });
+typedef $$BusDriversTableUpdateCompanionBuilder =
+    BusDriversCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> phone,
+      Value<String?> busNumber,
+      Value<String?> notes,
+      Value<DateTime> createdAt,
+    });
+
+final class $$BusDriversTableReferences
+    extends BaseReferences<_$AppDatabase, $BusDriversTable, BusDriver> {
+  $$BusDriversTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$BusAssignmentsTable, List<BusAssignment>>
+  _busAssignmentsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.busAssignments,
+    aliasName: $_aliasNameGenerator(
+      db.busDrivers.id,
+      db.busAssignments.driverId,
+    ),
+  );
+
+  $$BusAssignmentsTableProcessedTableManager get busAssignmentsRefs {
+    final manager = $$BusAssignmentsTableTableManager(
+      $_db,
+      $_db.busAssignments,
+    ).filter((f) => f.driverId.id.sqlEquals($_itemColumn<int>('ID')!));
+
+    final cache = $_typedResult.readTableOrNull(_busAssignmentsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$BusDriversTableFilterComposer
+    extends Composer<_$AppDatabase, $BusDriversTable> {
+  $$BusDriversTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get phone => $composableBuilder(
+    column: $table.phone,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get busNumber => $composableBuilder(
+    column: $table.busNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> busAssignmentsRefs(
+    Expression<bool> Function($$BusAssignmentsTableFilterComposer f) f,
+  ) {
+    final $$BusAssignmentsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.busAssignments,
+      getReferencedColumn: (t) => t.driverId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusAssignmentsTableFilterComposer(
+            $db: $db,
+            $table: $db.busAssignments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$BusDriversTableOrderingComposer
+    extends Composer<_$AppDatabase, $BusDriversTable> {
+  $$BusDriversTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get phone => $composableBuilder(
+    column: $table.phone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get busNumber => $composableBuilder(
+    column: $table.busNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BusDriversTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BusDriversTable> {
+  $$BusDriversTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get phone =>
+      $composableBuilder(column: $table.phone, builder: (column) => column);
+
+  GeneratedColumn<String> get busNumber =>
+      $composableBuilder(column: $table.busNumber, builder: (column) => column);
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  Expression<T> busAssignmentsRefs<T extends Object>(
+    Expression<T> Function($$BusAssignmentsTableAnnotationComposer a) f,
+  ) {
+    final $$BusAssignmentsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.busAssignments,
+      getReferencedColumn: (t) => t.driverId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusAssignmentsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.busAssignments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$BusDriversTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BusDriversTable,
+          BusDriver,
+          $$BusDriversTableFilterComposer,
+          $$BusDriversTableOrderingComposer,
+          $$BusDriversTableAnnotationComposer,
+          $$BusDriversTableCreateCompanionBuilder,
+          $$BusDriversTableUpdateCompanionBuilder,
+          (BusDriver, $$BusDriversTableReferences),
+          BusDriver,
+          PrefetchHooks Function({bool busAssignmentsRefs})
+        > {
+  $$BusDriversTableTableManager(_$AppDatabase db, $BusDriversTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BusDriversTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BusDriversTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BusDriversTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> phone = const Value.absent(),
+                Value<String?> busNumber = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => BusDriversCompanion(
+                id: id,
+                name: name,
+                phone: phone,
+                busNumber: busNumber,
+                notes: notes,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                Value<String?> phone = const Value.absent(),
+                Value<String?> busNumber = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => BusDriversCompanion.insert(
+                id: id,
+                name: name,
+                phone: phone,
+                busNumber: busNumber,
+                notes: notes,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$BusDriversTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({busAssignmentsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (busAssignmentsRefs) db.busAssignments,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (busAssignmentsRefs)
+                    await $_getPrefetchedData<
+                      BusDriver,
+                      $BusDriversTable,
+                      BusAssignment
+                    >(
+                      currentTable: table,
+                      referencedTable: $$BusDriversTableReferences
+                          ._busAssignmentsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$BusDriversTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).busAssignmentsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.driverId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$BusDriversTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BusDriversTable,
+      BusDriver,
+      $$BusDriversTableFilterComposer,
+      $$BusDriversTableOrderingComposer,
+      $$BusDriversTableAnnotationComposer,
+      $$BusDriversTableCreateCompanionBuilder,
+      $$BusDriversTableUpdateCompanionBuilder,
+      (BusDriver, $$BusDriversTableReferences),
+      BusDriver,
+      PrefetchHooks Function({bool busAssignmentsRefs})
+    >;
+typedef $$BusAssignmentsTableCreateCompanionBuilder =
+    BusAssignmentsCompanion Function({
+      Value<int> id,
+      required int driverId,
+      required int personId,
+      Value<String?> notes,
+      Value<DateTime> createdAt,
+    });
+typedef $$BusAssignmentsTableUpdateCompanionBuilder =
+    BusAssignmentsCompanion Function({
+      Value<int> id,
+      Value<int> driverId,
+      Value<int> personId,
+      Value<String?> notes,
+      Value<DateTime> createdAt,
+    });
+
+final class $$BusAssignmentsTableReferences
+    extends BaseReferences<_$AppDatabase, $BusAssignmentsTable, BusAssignment> {
+  $$BusAssignmentsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $BusDriversTable _driverIdTable(_$AppDatabase db) =>
+      db.busDrivers.createAlias(
+        $_aliasNameGenerator(db.busAssignments.driverId, db.busDrivers.id),
+      );
+
+  $$BusDriversTableProcessedTableManager get driverId {
+    final $_column = $_itemColumn<int>('Driver_ID')!;
+
+    final manager = $$BusDriversTableTableManager(
+      $_db,
+      $_db.busDrivers,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_driverIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $PersonsTable _personIdTable(_$AppDatabase db) =>
+      db.persons.createAlias(
+        $_aliasNameGenerator(db.busAssignments.personId, db.persons.personId),
+      );
+
+  $$PersonsTableProcessedTableManager get personId {
+    final $_column = $_itemColumn<int>('Person_ID')!;
+
+    final manager = $$PersonsTableTableManager(
+      $_db,
+      $_db.persons,
+    ).filter((f) => f.personId.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_personIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$BusAssignmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $BusAssignmentsTable> {
+  $$BusAssignmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$BusDriversTableFilterComposer get driverId {
+    final $$BusDriversTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.driverId,
+      referencedTable: $db.busDrivers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusDriversTableFilterComposer(
+            $db: $db,
+            $table: $db.busDrivers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$PersonsTableFilterComposer get personId {
+    final $$PersonsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.personId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableFilterComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$BusAssignmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $BusAssignmentsTable> {
+  $$BusAssignmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$BusDriversTableOrderingComposer get driverId {
+    final $$BusDriversTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.driverId,
+      referencedTable: $db.busDrivers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusDriversTableOrderingComposer(
+            $db: $db,
+            $table: $db.busDrivers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$PersonsTableOrderingComposer get personId {
+    final $$PersonsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.personId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableOrderingComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$BusAssignmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BusAssignmentsTable> {
+  $$BusAssignmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$BusDriversTableAnnotationComposer get driverId {
+    final $$BusDriversTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.driverId,
+      referencedTable: $db.busDrivers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusDriversTableAnnotationComposer(
+            $db: $db,
+            $table: $db.busDrivers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$PersonsTableAnnotationComposer get personId {
+    final $$PersonsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.personId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$BusAssignmentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BusAssignmentsTable,
+          BusAssignment,
+          $$BusAssignmentsTableFilterComposer,
+          $$BusAssignmentsTableOrderingComposer,
+          $$BusAssignmentsTableAnnotationComposer,
+          $$BusAssignmentsTableCreateCompanionBuilder,
+          $$BusAssignmentsTableUpdateCompanionBuilder,
+          (BusAssignment, $$BusAssignmentsTableReferences),
+          BusAssignment,
+          PrefetchHooks Function({bool driverId, bool personId})
+        > {
+  $$BusAssignmentsTableTableManager(
+    _$AppDatabase db,
+    $BusAssignmentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BusAssignmentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BusAssignmentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BusAssignmentsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> driverId = const Value.absent(),
+                Value<int> personId = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => BusAssignmentsCompanion(
+                id: id,
+                driverId: driverId,
+                personId: personId,
+                notes: notes,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int driverId,
+                required int personId,
+                Value<String?> notes = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => BusAssignmentsCompanion.insert(
+                id: id,
+                driverId: driverId,
+                personId: personId,
+                notes: notes,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$BusAssignmentsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({driverId = false, personId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (driverId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.driverId,
+                                referencedTable: $$BusAssignmentsTableReferences
+                                    ._driverIdTable(db),
+                                referencedColumn:
+                                    $$BusAssignmentsTableReferences
+                                        ._driverIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (personId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.personId,
+                                referencedTable: $$BusAssignmentsTableReferences
+                                    ._personIdTable(db),
+                                referencedColumn:
+                                    $$BusAssignmentsTableReferences
+                                        ._personIdTable(db)
+                                        .personId,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$BusAssignmentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BusAssignmentsTable,
+      BusAssignment,
+      $$BusAssignmentsTableFilterComposer,
+      $$BusAssignmentsTableOrderingComposer,
+      $$BusAssignmentsTableAnnotationComposer,
+      $$BusAssignmentsTableCreateCompanionBuilder,
+      $$BusAssignmentsTableUpdateCompanionBuilder,
+      (BusAssignment, $$BusAssignmentsTableReferences),
+      BusAssignment,
+      PrefetchHooks Function({bool driverId, bool personId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -22205,4 +24029,8 @@ class $AppDatabaseManager {
       $$PersonDocumentsTableTableManager(_db, _db.personDocuments);
   $$FamilyRelationshipsTableTableManager get familyRelationships =>
       $$FamilyRelationshipsTableTableManager(_db, _db.familyRelationships);
+  $$BusDriversTableTableManager get busDrivers =>
+      $$BusDriversTableTableManager(_db, _db.busDrivers);
+  $$BusAssignmentsTableTableManager get busAssignments =>
+      $$BusAssignmentsTableTableManager(_db, _db.busAssignments);
 }

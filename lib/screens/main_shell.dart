@@ -23,6 +23,11 @@ import 'behavior_screen.dart';
 import 'meetings_screen.dart';
 import 'monthly_fund_screen.dart';
 import 'rohot_screen.dart';
+import 'buses_screen.dart';
+import '../repositories/bus_repository.dart';
+import '../sync/data_change_coordinator.dart';
+import '../ui/dialogs/server_connection_dialog.dart';
+import '../widgets/theme_toggle_button.dart';
 
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
@@ -31,9 +36,30 @@ class MainShell extends ConsumerStatefulWidget {
   ConsumerState<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends ConsumerState<MainShell> {
+class _MainShellState extends ConsumerState<MainShell>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed)
+      ref.read(coordinatorInstanceProvider).notifyAllStale();
+  }
+
   int _selectedIndex = 0;
   int? _lastUserId;
+  String? _selectedNavLabel;
+  final Set<String> _visitedTabs = {};
 
   Widget _buildDevCard(
     BuildContext context, {
@@ -43,24 +69,31 @@ class _MainShellState extends ConsumerState<MainShell> {
     required Color color,
     String? phone,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardSurface = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textPrimary = isDark ? const Color(0xFFF8FAFC) : Colors.black87;
+    final textSecondary = isDark ? const Color(0xFFCBD5E1) : Colors.grey.shade600;
+    final logoBg = isDark ? const Color(0xFF151E2E) : Colors.white;
+    final borderColor = color.withOpacity(isDark ? 0.35 : 0.15);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardSurface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.06),
+            color: color.withOpacity(isDark ? 0.12 : 0.06),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.02),
             blurRadius: 2,
             offset: const Offset(0, 1),
           ),
         ],
-        border: Border.all(color: color.withOpacity(0.15), width: 1),
+        border: Border.all(color: borderColor, width: 1),
       ),
       child: Row(
         children: [
@@ -68,9 +101,9 @@ class _MainShellState extends ConsumerState<MainShell> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: logoBg,
               shape: BoxShape.circle,
-              border: Border.all(color: color.withOpacity(0.2), width: 1.5),
+              border: Border.all(color: color.withOpacity(0.3), width: 1.5),
               boxShadow: [
                 BoxShadow(
                   color: color.withOpacity(0.08),
@@ -93,17 +126,17 @@ class _MainShellState extends ConsumerState<MainShell> {
               children: [
                 Text(
                   name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 14.5,
-                    color: Colors.black87,
+                    color: textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   role,
                   style: TextStyle(
-                    color: Colors.grey.shade600,
+                    color: textSecondary,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -192,6 +225,11 @@ class _MainShellState extends ConsumerState<MainShell> {
   }
 
   void _showInfoDialog(BuildContext context, String programName) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dialogBg = isDark ? const Color(0xFF151E2E) : Colors.white;
+    final logoBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textMuted = isDark ? const Color(0xFF94A3B8) : Colors.grey;
+
     showDialog(
       context: context,
       builder: (context) {
@@ -201,7 +239,7 @@ class _MainShellState extends ConsumerState<MainShell> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(24),
             ),
-            backgroundColor: Colors.white,
+            backgroundColor: dialogBg,
             contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
             content: SizedBox(
               width: 380,
@@ -211,7 +249,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                   Align(
                     alignment: Alignment.topLeft,
                     child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.grey),
+                      icon: Icon(Icons.close, color: textMuted),
                       onPressed: () => Navigator.pop(context),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
@@ -222,10 +260,10 @@ class _MainShellState extends ConsumerState<MainShell> {
                     height: 72,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white,
+                      color: logoBg,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
+                          color: Colors.black.withOpacity(isDark ? 0.35 : 0.08),
                           blurRadius: 16,
                           offset: const Offset(0, 6),
                         ),
@@ -268,16 +306,16 @@ class _MainShellState extends ConsumerState<MainShell> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const Align(
+                  Align(
                     alignment: Alignment.centerRight,
                     child: Padding(
-                      padding: EdgeInsets.only(bottom: 10, right: 4),
+                      padding: const EdgeInsets.only(bottom: 10, right: 4),
                       child: Text(
                         'فريق العمل والتطوير:',
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 13,
-                          color: Colors.grey,
+                          color: textMuted,
                         ),
                       ),
                     ),
@@ -312,12 +350,9 @@ class _MainShellState extends ConsumerState<MainShell> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authServiceProvider).value;
-    final programName = ref
-        .watch(programNameProvider)
-        .maybeWhen(
-          data: (value) => value,
-          orElse: () => SettingsRepository.defaultProgramName,
-        );
+    final programName =
+        ref.watch(programNameProvider).value ??
+        SettingsRepository.defaultProgramName;
 
     if (user == null) {
       return const LoginScreen();
@@ -326,11 +361,12 @@ class _MainShellState extends ConsumerState<MainShell> {
     // Reset index when user changes
     if (_lastUserId != user.id) {
       _selectedIndex = 0;
+      _selectedNavLabel = null;
       _lastUserId = user.id;
+      _visitedTabs.clear();
     }
 
     final filteredNav = _getFilteredNav(user);
-    final filteredScreens = filteredNav.map((n) => n.screen).toList();
 
     // If no permissions at all, show a fallback screen
     if (filteredNav.isEmpty) {
@@ -344,10 +380,44 @@ class _MainShellState extends ConsumerState<MainShell> {
       );
     }
 
-    // Clamp index
-    if (_selectedIndex >= filteredNav.length) {
-      _selectedIndex = 0;
+    // Preserve tab identity by label if permissions or list changed
+    if (_selectedNavLabel != null) {
+      final foundIdx = filteredNav.indexWhere(
+        (n) => n.label == _selectedNavLabel,
+      );
+      if (foundIdx != -1) {
+        _selectedIndex = foundIdx;
+      } else {
+        _selectedIndex = 0;
+        _selectedNavLabel = filteredNav.first.label;
+      }
+    } else {
+      if (_selectedIndex >= filteredNav.length) {
+        _selectedIndex = 0;
+      }
+      _selectedNavLabel = filteredNav[_selectedIndex].label;
     }
+
+    final activeLabel = filteredNav[_selectedIndex].label;
+    _visitedTabs.retainWhere(
+      (label) => filteredNav.any((n) => n.label == label),
+    );
+    _visitedTabs.add(activeLabel);
+    // Keep visited tabs and their drafts, but never mount an unopened screen.
+    // TickerMode also pauses animations/listeners in hidden tabs.
+    final filteredScreens = filteredNav
+        .map(
+          (n) => KeyedSubtree(
+            key: ValueKey(n.label),
+            child: TickerMode(
+              enabled: n.label == activeLabel,
+              child: _visitedTabs.contains(n.label)
+                  ? n.screen
+                  : const SizedBox.shrink(),
+            ),
+          ),
+        )
+        .toList();
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -400,6 +470,12 @@ class _MainShellState extends ConsumerState<MainShell> {
         'الحضور',
         const AttendanceScreen(),
         user.canAbsence,
+      ),
+      _NavData(
+        Icons.directions_bus_filled_rounded,
+        'الاتوبيسات',
+        const BusesScreen(),
+        granularFeature('buses'),
       ),
       _NavData(
         Icons.volunteer_activism,
@@ -518,6 +594,14 @@ class _MainShellState extends ConsumerState<MainShell> {
             ),
           ),
           const SizedBox(width: 8),
+          const ThemeToggleButton(),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.settings_ethernet_rounded),
+            tooltip: 'إعدادات الاتصال بالسيرفر والمزامنة',
+            onPressed: () => ServerConnectionDialog.show(context),
+          ),
+          const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.info_outline),
             tooltip: 'حول البرنامج',
@@ -534,6 +618,7 @@ class _MainShellState extends ConsumerState<MainShell> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
           return Row(
             textDirection: TextDirection.ltr,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -545,7 +630,17 @@ class _MainShellState extends ConsumerState<MainShell> {
                     child: NavigationRail(
                       selectedIndex: safeIndex,
                       onDestinationSelected: (int index) {
-                        setState(() => _selectedIndex = index);
+                        setState(() {
+                          _selectedIndex = index;
+                          _selectedNavLabel = navItems[index].label;
+                        });
+                        if (index >= 0 &&
+                            index < navItems.length &&
+                            navItems[index].label == 'الاتوبيسات') {
+                          ref
+                              .read(busRefreshTriggerProvider.notifier)
+                              .trigger();
+                        }
                       },
                       leading: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -556,16 +651,22 @@ class _MainShellState extends ConsumerState<MainShell> {
                       useIndicator: true,
                       indicatorColor: Theme.of(
                         context,
-                      ).colorScheme.primary.withOpacity(0.1),
+                      ).colorScheme.primary.withValues(alpha: isDark ? 0.25 : 0.1),
                       selectedLabelTextStyle: TextStyle(
-                        color: Theme.of(context).primaryColor,
+                        color: isDark ? const Color(0xFF60A5FA) : Theme.of(context).primaryColor,
                         fontSize: 12.0,
                         fontWeight: FontWeight.bold,
                       ),
-                      unselectedLabelTextStyle: const TextStyle(
+                      unselectedLabelTextStyle: TextStyle(
                         fontSize: 12.0,
-                        color: Colors.black87,
+                        color: isDark ? const Color(0xFF94A3B8) : Colors.black87,
                         fontWeight: FontWeight.bold,
+                      ),
+                      unselectedIconTheme: IconThemeData(
+                        color: isDark ? const Color(0xFF94A3B8) : Colors.black54,
+                      ),
+                      selectedIconTheme: IconThemeData(
+                        color: isDark ? const Color(0xFF60A5FA) : Theme.of(context).primaryColor,
                       ),
                       destinations: navItems
                           .map(
@@ -573,7 +674,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                               icon: Icon(item.icon),
                               selectedIcon: Icon(
                                 item.icon,
-                                color: Theme.of(context).primaryColor,
+                                color: isDark ? const Color(0xFF60A5FA) : Theme.of(context).primaryColor,
                               ),
                               label: Text(
                                 item.label,
@@ -586,7 +687,11 @@ class _MainShellState extends ConsumerState<MainShell> {
                   ),
                 ),
               ),
-              const VerticalDivider(thickness: 1, width: 1),
+              VerticalDivider(
+                thickness: 1, 
+                width: 1, 
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              ),
               Expanded(
                 child: Container(
                   color: Theme.of(context).scaffoldBackgroundColor,
@@ -627,6 +732,12 @@ class _MainShellState extends ConsumerState<MainShell> {
           ],
         ),
         actions: [
+          const ThemeToggleButton(),
+          IconButton(
+            icon: const Icon(Icons.settings_ethernet_rounded),
+            tooltip: 'إعدادات الاتصال بالسيرفر والمزامنة',
+            onPressed: () => ServerConnectionDialog.show(context),
+          ),
           IconButton(
             icon: const Icon(Icons.info_outline),
             tooltip: 'حول البرنامج',
@@ -662,7 +773,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              decoration: const BoxDecoration(color: Color(0xFF1A237E)),
+              decoration: BoxDecoration(color: Theme.of(context).primaryColor),
             ),
             Expanded(
               child: ListView(
@@ -690,7 +801,15 @@ class _MainShellState extends ConsumerState<MainShell> {
                       context,
                     ).primaryColor.withOpacity(0.05),
                     onTap: () {
-                      setState(() => _selectedIndex = i);
+                      setState(() {
+                        _selectedIndex = i;
+                        _selectedNavLabel = navItems[i].label;
+                      });
+                      if (i >= 0 &&
+                          i < navItems.length &&
+                          navItems[i].label == 'الاتوبيسات') {
+                        ref.read(busRefreshTriggerProvider.notifier).trigger();
+                      }
                       Navigator.pop(context);
                     },
                   );
@@ -698,6 +817,14 @@ class _MainShellState extends ConsumerState<MainShell> {
               ),
             ),
             const Divider(),
+            ListTile(
+              leading: const Icon(Icons.settings_ethernet_rounded),
+              title: const Text('إعدادات الاتصال بالسيرفر'),
+              onTap: () {
+                Navigator.pop(context);
+                ServerConnectionDialog.show(context);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.info_outline),
               title: const Text('حول التطبيق'),
@@ -723,7 +850,15 @@ class _MainShellState extends ConsumerState<MainShell> {
         child: NavigationBar(
           selectedIndex: safeIndex < bottomItems.length ? safeIndex : 0,
           onDestinationSelected: (index) {
-            setState(() => _selectedIndex = index);
+            setState(() {
+              _selectedIndex = index;
+              _selectedNavLabel = bottomItems[index].label;
+            });
+            if (index >= 0 &&
+                index < bottomItems.length &&
+                bottomItems[index].label == 'الاتوبيسات') {
+              ref.read(busRefreshTriggerProvider.notifier).trigger();
+            }
           },
           destinations: bottomItems
               .map(

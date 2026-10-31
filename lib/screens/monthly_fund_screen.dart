@@ -9,6 +9,9 @@ import 'package:printing/printing.dart';
 
 import '../repositories/persons_repository.dart';
 import '../repositories/settings_repository.dart';
+import '../sync/data_change_domains.dart';
+import '../sync/data_change_coordinator.dart';
+import '../utils/silent_refresh_controller.dart';
 
 class MonthlyFundScreen extends ConsumerStatefulWidget {
   const MonthlyFundScreen({super.key});
@@ -24,10 +27,13 @@ class _MonthlyFundScreenState extends ConsumerState<MonthlyFundScreen> {
   final _amountController = TextEditingController(text: '70');
   final _searchController = TextEditingController();
   final Map<int, TextEditingController> _paymentControllers = {};
+  final Set<int> _dirtyPersonIds = {};
+  bool _amountDirty = false;
   List<PersonListDTO> _persons = [];
   Map<int, double> _payments = {};
   String _search = '';
   bool _loading = true;
+  late final SilentRefreshController _refreshController;
 
   double get _annualAmount => double.tryParse(_amountController.text) ?? 0;
   double get _totalPaid =>
@@ -46,11 +52,19 @@ class _MonthlyFundScreenState extends ConsumerState<MonthlyFundScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _refreshController = SilentRefreshController(
+      onRefresh: () => _load(isSilent: true),
+    );
+    _load(isSilent: false);
+  }
+
+  void _onAmountChanged() {
+    _amountDirty = true;
   }
 
   @override
   void dispose() {
+    _refreshController.dispose();
     _amountController.dispose();
     _searchController.dispose();
     for (final controller in _paymentControllers.values) {
@@ -59,41 +73,67 @@ class _MonthlyFundScreenState extends ConsumerState<MonthlyFundScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool isSilent = false}) async {
+    final gen = _refreshController.currentGeneration;
+    if (!isSilent && mounted) {
+      setState(() => _loading = true);
+    }
     final settings = ref.read(settingsRepositoryProvider);
     final savedAmount = await settings.getSetting(_amountKey);
-    if (savedAmount != null && savedAmount.trim().isNotEmpty) {
-      _amountController.text = savedAmount;
-    }
 
     final rawPayments = await settings.getSetting(_paymentsKey);
+    Map<int, double> loadedPayments = {
+      for (final id in _dirtyPersonIds)
+        if (_payments.containsKey(id)) id: _payments[id]!,
+    };
     if (rawPayments != null && rawPayments.trim().isNotEmpty) {
       final decoded = jsonDecode(rawPayments);
       if (decoded is Map) {
-        _payments = decoded.map(
+        final parsed = decoded.map(
           (key, value) => MapEntry(
             int.tryParse(key.toString()) ?? 0,
             (value as num?)?.toDouble() ?? 0,
           ),
         )..removeWhere((key, value) => key == 0);
+        for (final entry in parsed.entries) {
+          if (!_dirtyPersonIds.contains(entry.key)) {
+            loadedPayments[entry.key] = entry.value;
+          }
+        }
       }
     }
 
-    _persons = await ref
+    final newPersons = await ref
         .read(personsRepositoryProvider.notifier)
         .fetchPersons(limit: null, offset: 0, includeServices: false);
-    _syncControllers();
-    if (mounted) setState(() => _loading = false);
+
+    if (!mounted || gen != _refreshController.currentGeneration) return;
+
+    setState(() {
+      if (savedAmount != null &&
+          savedAmount.trim().isNotEmpty &&
+          !_amountDirty) {
+        _amountController.text = savedAmount;
+      }
+      _payments = loadedPayments;
+      _persons = newPersons;
+      _syncControllers();
+      _loading = false;
+    });
   }
 
   void _syncControllers() {
     for (final person in _persons) {
-      _paymentControllers.putIfAbsent(
-        person.id,
-        () => TextEditingController(
+      if (_paymentControllers.containsKey(person.id)) {
+        if (!_dirtyPersonIds.contains(person.id)) {
+          _paymentControllers[person.id]!.text = (_payments[person.id] ?? 0)
+              .toStringAsFixed(0);
+        }
+      } else {
+        _paymentControllers[person.id] = TextEditingController(
           text: (_payments[person.id] ?? 0).toStringAsFixed(0),
-        ),
-      );
+        );
+      }
     }
   }
 
@@ -109,16 +149,23 @@ class _MonthlyFundScreenState extends ConsumerState<MonthlyFundScreen> {
   }
 
   Future<void> _saveAnnualAmount() async {
+    final submitted = _amountController.text.trim();
     await ref
         .read(settingsRepositoryProvider)
-        .saveSetting(_amountKey, _amountController.text.trim());
-    setState(() {});
+        .saveSetting(_amountKey, submitted);
+    if (mounted)
+      setState(() {
+        if (_amountController.text.trim() == submitted) _amountDirty = false;
+      });
   }
 
   Future<void> _setPayment(int personId, String value) async {
     final parsed = double.tryParse(value.trim()) ?? 0;
     setState(() => _payments[personId] = parsed);
     await _persistPayments();
+    if (mounted && _paymentControllers[personId]?.text.trim() == value.trim()) {
+      _dirtyPersonIds.remove(personId);
+    }
   }
 
   Future<void> _exportPdf() async {
@@ -216,6 +263,23 @@ class _MonthlyFundScreenState extends ConsumerState<MonthlyFundScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(sourceEpochProvider, (previous, next) {
+      _refreshController.updateEpoch(next);
+      setState(() {
+        _persons = [];
+        _payments = {};
+        _dirtyPersonIds.clear();
+      });
+
+      _refreshController.requestRefresh(immediate: true);
+    });
+    ref.listen(domainRevisionProvider(DataDomain.people), (previous, next) {
+      _refreshController.requestRefresh();
+    });
+    ref.listen(domainRevisionProvider(DataDomain.settings), (previous, next) {
+      _refreshController.requestRefresh();
+    });
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -314,6 +378,7 @@ class _MonthlyFundScreenState extends ConsumerState<MonthlyFundScreen> {
                   Expanded(
                     child: TextField(
                       controller: _amountController,
+                      onChanged: (_) => _onAmountChanged(),
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         labelText: 'المبلغ السنوي',
@@ -405,6 +470,7 @@ class _MonthlyFundScreenState extends ConsumerState<MonthlyFundScreen> {
               width: 180,
               child: TextField(
                 controller: _amountController,
+                onChanged: (_) => _onAmountChanged(),
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: 'المبلغ السنوي',
@@ -498,6 +564,7 @@ class _MonthlyFundScreenState extends ConsumerState<MonthlyFundScreen> {
                         suffixText: 'ج',
                         isDense: true,
                       ),
+                      onChanged: (value) => _dirtyPersonIds.add(person.id),
                       onSubmitted: (value) => _setPayment(person.id, value),
                       onEditingComplete: () =>
                           _setPayment(person.id, controller.text),

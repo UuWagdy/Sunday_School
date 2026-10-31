@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
@@ -19,6 +20,8 @@ import '../repositories/areas_repository.dart' hide Area;
 import '../repositories/fathers_repository.dart';
 import '../repositories/services_repository.dart';
 import '../widgets/hierarchical_area_picker.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 
 class PersonDialog extends ConsumerStatefulWidget {
   final PersonListDTO? person;
@@ -41,6 +44,86 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   Uint8List? _photoBytes;
   bool _isLoading = false;
   bool _isInitDataLoaded = false;
+  Timer? _nameSuggestionTimer;
+  int _nameSuggestionGeneration = 0;
+  List<PersonListDTO> _nameSuggestions = [];
+
+  void _searchSimilarNames(String text) {
+    _nameSuggestionTimer?.cancel();
+    final generation = ++_nameSuggestionGeneration;
+    if (text.trim().length < 2) {
+      setState(() => _nameSuggestions = []);
+      return;
+    }
+    _nameSuggestionTimer = Timer(const Duration(milliseconds: 250), () async {
+      try {
+        final matches = await ref
+            .read(personsRepositoryProvider.notifier)
+            .findSimilarNames(text, excludeId: _currentPerson?.id);
+        if (mounted && generation == _nameSuggestionGeneration)
+          setState(() => _nameSuggestions = matches);
+      } catch (_) {
+        if (mounted && generation == _nameSuggestionGeneration)
+          setState(() => _nameSuggestions = []);
+      }
+    });
+  }
+
+  Widget _buildNameField(String label) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      TextFormField(
+        controller: _nameC,
+        onChanged: _searchSimilarNames,
+        decoration: InputDecoration(
+          labelText: '$label *',
+          prefixIcon: const Icon(Icons.person_outline),
+        ),
+        validator: (v) =>
+            (v == null || v.trim().isEmpty) ? 'يرجى إدخال $label' : null,
+      ),
+      if (_nameSuggestions.isNotEmpty)
+        Card(
+          color: Colors.amber.shade50,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text(
+                  'أسماء مشابهة مسجلة بالفعل — راجع الكود قبل إضافة شخص جديد',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              for (final person in _nameSuggestions)
+                ListTile(
+                  dense: true,
+                  title: Text(person.name),
+                  subtitle: Text(
+                    'الكود: ${person.id} — ${person.stageName}${person.mobile.isEmpty ? '' : ' — ${person.mobile}'}',
+                  ),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: () => showDialog<void>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: Text(person.name),
+                      content: Text(
+                        'الكود: ${person.id}\nالمرحلة: ${person.stageName}\nالموبايل: ${person.mobile}',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text('إغلاق'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+    ],
+  );
 
   // Internal state to manage the person being edited/added
   PersonListDTO? _currentPerson;
@@ -91,6 +174,8 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
 
   @override
   void dispose() {
+    _nameSuggestionTimer?.cancel();
+    _nameSuggestionGeneration++;
     _idC.dispose();
     _nameC.dispose();
     _streetC.dispose();
@@ -197,26 +282,23 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       return;
     }
 
-    final idExists = await ref
-        .read(personsRepositoryProvider.notifier)
-        .personIdExists(enteredId);
-    if (widget.person == null && !_hasBeenAdded && idExists) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'رقم الكارنيه $enteredId مستخدم بالفعل، اختر رقمًا آخر',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-      setState(() => _isLoading = false);
-      return;
-    }
-
     final bool isBrandNew = widget.person == null && !_hasBeenAdded;
 
     try {
       final repo = ref.read(personsRepositoryProvider.notifier);
+      if (isBrandNew && await repo.personIdExists(enteredId)) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'رقم الكارنيه $enteredId مستخدم بالفعل، اختر رقمًا آخر',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      if (!mounted) return;
 
       if (!isBrandNew) {
         // Update Case
@@ -300,6 +382,12 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(domainRevisionProvider(DataDomain.settings), (prev, next) {
+      if (prev != null && next > prev) {
+        _loadRohotGroupsMap();
+      }
+    });
+
     if (!_isInitDataLoaded) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -360,6 +448,8 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                                 fieldsRepositoryProvider,
                               );
                               return fieldsAsync.when(
+                                skipLoadingOnReload: true,
+                                skipError: true,
                                 data: (fields) => Form(
                                   key: _formKey,
                                   child: Column(
@@ -454,11 +544,12 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   }
 
   Widget _buildAreaDropdown(AppDatabase db, String label) {
+    ref.watch(domainRevisionProvider(DataDomain.areas));
     return FutureBuilder<List<Area>>(
       future: db.select(db.areas).get(),
       builder: (_, snap) {
         final data = snap.data ?? [];
-        if (snap.connectionState == ConnectionState.waiting) {
+        if (snap.connectionState == ConnectionState.waiting && data.isEmpty) {
           return const Align(
             alignment: Alignment.centerLeft,
             child: SizedBox(
@@ -481,31 +572,23 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   }
 
   Widget _buildFatherDropdown(AppDatabase db, String label) {
-    return FutureBuilder<List<Father>>(
-      future: db.select(db.fathers).get(),
-      builder: (_, snap) {
-        final data = snap.data ?? [];
-        final effectiveValue = data.any((f) => f.fatherId == _fatherId)
-            ? _fatherId
-            : null;
-        return DropdownButtonFormField<int?>(
-          value: effectiveValue,
-          decoration: InputDecoration(
-            labelText: label,
-            prefixIcon: const Icon(Icons.person_pin_outlined),
-          ),
-          items: [
-            DropdownMenuItem(value: null, child: Text('اختر $label')),
-            ...data.map(
-              (f) => DropdownMenuItem(
-                value: f.fatherId,
-                child: Text(f.fatherName ?? ''),
-              ),
-            ),
-          ],
-          onChanged: (v) => setState(() => _fatherId = v),
-        );
-      },
+    final fathers = ref.watch(fathersRepositoryProvider).value ?? [];
+    final effectiveValue = fathers.any((f) => f.id == _fatherId)
+        ? _fatherId
+        : null;
+    return DropdownButtonFormField<int?>(
+      value: effectiveValue,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.person_pin_outlined),
+      ),
+      items: [
+        DropdownMenuItem(value: null, child: Text('اختر $label')),
+        ...fathers.map(
+          (f) => DropdownMenuItem(value: f.id, child: Text(f.name)),
+        ),
+      ],
+      onChanged: (v) => setState(() => _fatherId = v),
     );
   }
 
@@ -591,14 +674,19 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
 
   Widget _buildActions() {
     final isMobile = MediaQuery.of(context).size.width < 600;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: isMobile ? 12 : 24,
         vertical: 12,
       ),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        border: Border(top: BorderSide(color: Colors.grey.shade200)),
+        color: isDark ? const Color(0xFF151E2E) : Colors.grey[50],
+        border: Border(
+          top: BorderSide(
+            color: isDark ? const Color(0xFF334155) : Colors.grey.shade200,
+          ),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
@@ -1038,6 +1126,7 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   }
 
   Widget _buildStaticIdField() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return TextFormField(
       controller: _idC,
       readOnly: isEditing,
@@ -1045,7 +1134,7 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       keyboardType: TextInputType.number,
       style: TextStyle(
         fontWeight: FontWeight.bold,
-        color: isEditing ? Colors.grey.shade700 : Colors.black87,
+        color: isEditing ? (isDark ? const Color(0xFFCBD5E1) : Colors.grey.shade700) : (isDark ? const Color(0xFFF8FAFC) : Colors.black87),
       ),
       decoration: InputDecoration(
         labelText: 'رقم الكارنيه',
@@ -1054,7 +1143,7 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
             : 'يمكنك ترك الرقم التلقائي أو تغييره قبل الحفظ',
         prefixIcon: const Icon(Icons.qr_code),
         filled: true,
-        fillColor: isEditing ? Colors.grey.shade200 : Colors.white,
+        fillColor: isEditing ? (isDark ? const Color(0xFF1E293B) : Colors.grey.shade200) : (isDark ? const Color(0xFF1E293B) : Colors.white),
         border: const OutlineInputBorder(),
       ),
       validator: (value) {
@@ -1069,15 +1158,7 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
     if (f.type == 'native') {
       switch (f.fieldKey) {
         case 'name':
-          return TextFormField(
-            controller: _nameC,
-            decoration: InputDecoration(
-              labelText: '${f.name} *',
-              prefixIcon: const Icon(Icons.person_outline),
-            ),
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'يرجى إدخال ${f.name}' : null,
-          );
+          return _buildNameField(f.name);
         case 'gender':
           return _buildGenderDropdown(db, f.name);
         case 'stage':
@@ -1444,85 +1525,69 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
   }
 
   Widget _buildStageDropdown(AppDatabase db, String label) {
-    return FutureBuilder<List<Stage>>(
-      future: db.select(db.stages).get(),
-      builder: (_, snap) {
-        final data = snap.data ?? [];
-        final effectiveValue = data.any((s) => s.stageId == _stageId)
-            ? _stageId
-            : null;
-        return DropdownButtonFormField<int?>(
-          value: effectiveValue,
-          decoration: InputDecoration(
-            labelText: label,
-            prefixIcon: const Icon(Icons.school_outlined),
-          ),
-          items: [
-            DropdownMenuItem(value: null, child: Text('اختر $label')),
-            ...data.map(
-              (s) => DropdownMenuItem(
-                value: s.stageId,
-                child: Text(s.stageName ?? ''),
-              ),
-            ),
-          ],
-          onChanged: (v) async {
-            final linkedServices = await ServiceEligibilityRepository(
-              db,
-            ).stageServiceIds(v);
-            if (!mounted) return;
-            setState(() {
-              _stageId = v;
-              for (final serviceId in linkedServices) {
-                if (!_selectedServiceIds.contains(serviceId)) {
-                  _selectedServiceIds.add(serviceId);
-                }
-              }
-            });
-          },
-        );
+    final stages = ref.watch(stagesRepositoryProvider).value ?? [];
+    final effectiveValue = stages.any((s) => s.id == _stageId)
+        ? _stageId
+        : null;
+    return DropdownButtonFormField<int?>(
+      value: effectiveValue,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.school_outlined),
+      ),
+      items: [
+        DropdownMenuItem(value: null, child: Text('اختر $label')),
+        ...stages.map(
+          (s) => DropdownMenuItem(value: s.id, child: Text(s.name)),
+        ),
+      ],
+      onChanged: (v) async {
+        final linkedServices = await ServiceEligibilityRepository(
+          db,
+        ).stageServiceIds(v);
+        if (!mounted) return;
+        setState(() {
+          _stageId = v;
+          for (final serviceId in linkedServices) {
+            if (!_selectedServiceIds.contains(serviceId)) {
+              _selectedServiceIds.add(serviceId);
+            }
+          }
+        });
       },
     );
   }
 
   Widget _buildKhorosDropdown(AppDatabase db, String label) {
-    return FutureBuilder<List<Khorose>>(
-      future: db.select(db.khoroses).get(),
-      builder: (_, snap) {
-        final data = snap.data ?? [];
-        final effectiveValue = data.any((k) => k.khorosId == _khorosId)
-            ? _khorosId
-            : null;
-        return DropdownButtonFormField<int?>(
-          value: effectiveValue,
-          decoration: InputDecoration(
-            labelText: label,
-            prefixIcon: const Icon(Icons.library_music_outlined),
-          ),
-          items: [
-            DropdownMenuItem(value: null, child: Text('اختر $label')),
-            ...data.map(
-              (k) => DropdownMenuItem(
-                value: k.khorosId,
-                child: Text(k.khorosName ?? ''),
-              ),
-            ),
-          ],
-          onChanged: (v) async {
-            final linkedServices = await ServiceEligibilityRepository(
-              db,
-            ).khorosServiceIds(v);
-            if (!mounted) return;
-            setState(() {
-              _khorosId = v;
-              for (final serviceId in linkedServices) {
-                if (!_selectedServiceIds.contains(serviceId)) {
-                  _selectedServiceIds.add(serviceId);
-                }
-              }
-            });
-          },
-        );
+    final khoroses = ref.watch(khorosRepositoryProvider).value ?? [];
+    final effectiveValue = khoroses.any((k) => k.id == _khorosId)
+        ? _khorosId
+        : null;
+    return DropdownButtonFormField<int?>(
+      value: effectiveValue,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.library_music_outlined),
+      ),
+      items: [
+        DropdownMenuItem(value: null, child: Text('اختر $label')),
+        ...khoroses.map(
+          (k) => DropdownMenuItem(value: k.id, child: Text(k.name)),
+        ),
+      ],
+      onChanged: (v) async {
+        final linkedServices = await ServiceEligibilityRepository(
+          db,
+        ).khorosServiceIds(v);
+        if (!mounted) return;
+        setState(() {
+          _khorosId = v;
+          for (final serviceId in linkedServices) {
+            if (!_selectedServiceIds.contains(serviceId)) {
+              _selectedServiceIds.add(serviceId);
+            }
+          }
+        });
       },
     );
   }
@@ -1633,13 +1698,14 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
             .where((s) => _selectedServiceIds.contains(s.serviceId))
             .toList();
 
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.grey.shade50,
+            color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade50,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade300),
+            border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1738,10 +1804,10 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                             size: 16,
                             color: Colors.red,
                           ),
-                          backgroundColor: Colors.white,
+                          backgroundColor: isDark ? const Color(0xFF151E2E) : Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
-                            side: BorderSide(color: Colors.grey.shade300),
+                            side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
                           ),
                         );
                       }).toList(),

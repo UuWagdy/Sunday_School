@@ -2,8 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../services/auth_service.dart';
 import 'package:drift/drift.dart';
-import '../database/database.dart';
 import '../database/database_provider.dart';
+import '../sync/data_change_domains.dart';
+import '../sync/data_change_coordinator.dart';
 
 part 'reports_repository.g.dart';
 
@@ -66,6 +67,9 @@ Future<List<PersonReportDTO>> personsReport(Ref ref, {int? stageId, int? areaId}
 
   final db = ref.watch(appDatabaseProvider);
   final auth = ref.watch(authServiceProvider);
+  ref.watch(domainRevisionProvider(DataDomain.people));
+  ref.watch(domainRevisionProvider(DataDomain.stages));
+  ref.watch(domainRevisionProvider(DataDomain.areas));
   final user = auth.value;
 
 
@@ -157,6 +161,8 @@ Future<List<AttendanceReportDTO>> attendanceReport(Ref ref, {int? month, int? ye
 
   final db = ref.watch(appDatabaseProvider);
   final auth = ref.watch(authServiceProvider);
+  ref.watch(domainRevisionProvider(DataDomain.attendance));
+  ref.watch(domainRevisionProvider(DataDomain.people));
   final user = auth.value;
 
   final query = db.select(db.coming).join([
@@ -250,6 +256,8 @@ Future<List<StageStatDTO>> stageStatistics(Ref ref) async {
 
   final db = ref.watch(appDatabaseProvider);
   final auth = ref.watch(authServiceProvider);
+  ref.watch(domainRevisionProvider(DataDomain.people));
+  ref.watch(domainRevisionProvider(DataDomain.stages));
   final user = auth.value;
 
   final query = db.selectOnly(db.persons).join([

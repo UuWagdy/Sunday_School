@@ -122,6 +122,8 @@ class _FathersScreenState extends ConsumerState<FathersScreen> {
 
   Widget _buildMobileList(AsyncValue<List<FatherModel>> dataAsync) {
     return dataAsync.when(
+      skipLoadingOnReload: true,
+              skipError: true,
       data: (list) {
         if (list.isEmpty) {
           return const Card(child: Padding(padding: EdgeInsets.all(32), child: Center(child: Text('لا يوجد آباء إعتراف مسجلين حالياً'))));
@@ -242,6 +244,8 @@ class _FathersScreenState extends ConsumerState<FathersScreen> {
             const SizedBox(height: 16),
             Expanded(
               child: dataAsync.when(
+                skipLoadingOnReload: true,
+              skipError: true,
                 data: (list) {
                   if (list.isEmpty) {
                     return const Center(child: Text('لا يوجد آباء إعتراف مسجلين حالياً'));

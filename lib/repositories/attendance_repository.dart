@@ -5,7 +5,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
 import '../services/auth_service.dart';
-import 'persons_repository.dart';
 import 'service_eligibility_repository.dart';
 import '../utils/arabic_helper.dart';
 
@@ -42,6 +41,9 @@ class AttendanceDTO {
   final Map<int, String> customValues;
   final List<AttendanceServiceRecord> serviceRecords;
   final String? checkColor;
+  final String? attendanceNotes;
+  final String? checkoutNotes;
+  final String? checkoutType;
 
   AttendanceDTO({
     this.id,
@@ -73,6 +75,9 @@ class AttendanceDTO {
     this.customValues = const {},
     this.serviceRecords = const [],
     this.checkColor,
+    this.attendanceNotes,
+    this.checkoutNotes,
+    this.checkoutType,
   });
 }
 
@@ -87,6 +92,9 @@ class AttendanceServiceRecord {
   final int? attendancePoint;
   final int? checkoutPoint;
   final String? checkColor;
+  final String? attendanceNotes;
+  final String? checkoutNotes;
+  final String? checkoutType;
 
   const AttendanceServiceRecord({
     required this.id,
@@ -99,6 +107,9 @@ class AttendanceServiceRecord {
     this.attendancePoint,
     this.checkoutPoint,
     this.checkColor,
+    this.attendanceNotes,
+    this.checkoutNotes,
+    this.checkoutType,
   });
 }
 
@@ -107,14 +118,14 @@ class AttendanceRepository extends _$AttendanceRepository {
   @override
   FutureOr<List<AttendanceDTO>> build() async {
     ref.watch(appDatabaseProvider);
-    ref.watch(personsRepositoryProvider);
-    final auth = ref.watch(authServiceProvider);
-    if (auth.isLoading) return [];
-
-    return fetchAttendance(status: 'all');
+    ref.watch(authServiceProvider);
+    // Screens request their own filtered pages. Initializing this notifier must
+    // not also download the entire attendance history in the background.
+    return const [];
   }
 
   Future<List<AttendanceDTO>> fetchAttendance({
+    List<int>? changedPersonIds,
     List<int>? month,
     List<int>? year,
     String? search,
@@ -172,29 +183,41 @@ class AttendanceRepository extends _$AttendanceRepository {
         joinCondition = joinCondition & db.coming.serviceId.isIn(serviceIds);
       }
 
-      final personQuery = db.select(db.persons).join([
-        drift.leftOuterJoin(
-          db.stages,
-          db.stages.stageId.equalsExp(db.persons.stageId),
-        ),
-        drift.leftOuterJoin(
-          db.khoroses,
-          db.khoroses.khorosId.equalsExp(db.persons.khorosId),
-        ),
-        drift.leftOuterJoin(
-          db.areas,
-          db.areas.areaId.equalsExp(db.persons.areaId),
-        ),
-        drift.leftOuterJoin(
-          db.fathers,
-          db.fathers.fatherId.equalsExp(db.persons.fatherId),
-        ),
-        drift.leftOuterJoin(db.coming, joinCondition),
-        drift.leftOuterJoin(
-          db.services,
-          db.services.serviceId.equalsExp(db.coming.serviceId),
-        ),
-      ]);
+      final personQuery = db.selectOnly(db.persons)
+        ..addColumns(db.persons.$columns.where((c) => c != db.persons.photo))
+        ..join([
+          drift.leftOuterJoin(
+            db.stages,
+            db.stages.stageId.equalsExp(db.persons.stageId),
+            useColumns: true,
+          ),
+          drift.leftOuterJoin(
+            db.khoroses,
+            db.khoroses.khorosId.equalsExp(db.persons.khorosId),
+            useColumns: false,
+          ),
+          drift.leftOuterJoin(
+            db.areas,
+            db.areas.areaId.equalsExp(db.persons.areaId),
+            useColumns: true,
+          ),
+          drift.leftOuterJoin(
+            db.fathers,
+            db.fathers.fatherId.equalsExp(db.persons.fatherId),
+            useColumns: true,
+          ),
+          drift.leftOuterJoin(db.coming, joinCondition, useColumns: true),
+          drift.leftOuterJoin(
+            db.services,
+            db.services.serviceId.equalsExp(db.coming.serviceId),
+            useColumns: false,
+          ),
+        ])
+        ..addColumns([
+          db.khoroses.khorosName,
+          db.services.serviceName,
+          db.services.checkColor,
+        ]);
 
       if (stageIds != null && stageIds.isNotEmpty)
         personQuery.where(db.persons.stageId.isIn(stageIds));
@@ -205,6 +228,9 @@ class AttendanceRepository extends _$AttendanceRepository {
           areaIds,
         );
         personQuery.where(db.persons.areaId.isIn(descendantIds));
+      }
+      if (changedPersonIds != null) {
+        personQuery.where(db.persons.personId.isIn(changedPersonIds));
       }
       if (fatherIds != null && fatherIds.isNotEmpty)
         personQuery.where(db.persons.fatherId.isIn(fatherIds));
@@ -283,6 +309,7 @@ class AttendanceRepository extends _$AttendanceRepository {
             expression: db.persons.personName,
             mode: drift.OrderingMode.asc,
           ),
+          drift.OrderingTerm.asc(db.persons.personId),
           drift.OrderingTerm(
             expression: db.coming.dateWeek,
             mode: drift.OrderingMode.desc,
@@ -310,7 +337,7 @@ class AttendanceRepository extends _$AttendanceRepository {
       }
 
       final personIds = rows
-          .map((r) => r.readTable(db.persons).personId)
+          .map((r) => r.read(db.persons.personId)!)
           .toSet()
           .toList();
       final Map<int, Map<int, String>> personCustomValues = {};
@@ -325,15 +352,22 @@ class AttendanceRepository extends _$AttendanceRepository {
               r.value ?? '';
         }
 
-        final serviceRows = await (db.select(db.personServices).join([
-          drift.innerJoin(
-            db.services,
-            db.services.serviceId.equalsExp(db.personServices.serviceId),
-          ),
-        ])..where(db.personServices.personId.isIn(personIds))).get();
+        final serviceRows =
+            await (db.select(db.personServices).join([
+                    drift.innerJoin(
+                      db.services,
+                      db.services.serviceId.equalsExp(
+                        db.personServices.serviceId,
+                      ),
+                      useColumns: false,
+                    ),
+                  ])
+                  ..addColumns([db.services.serviceName])
+                  ..where(db.personServices.personId.isIn(personIds)))
+                .get();
         for (final r in serviceRows) {
           final pId = r.readTable(db.personServices).personId;
-          final sName = r.readTable(db.services).serviceName ?? '';
+          final sName = r.read(db.services.serviceName) ?? '';
           if (sName.isNotEmpty) {
             personServicesNames.putIfAbsent(pId, () => []).add(sName);
           }
@@ -344,7 +378,10 @@ class AttendanceRepository extends _$AttendanceRepository {
       if (deduplicatePeople) {
         final Map<int, AttendanceDTO> uniqueResults = {};
         for (final row in rows) {
-          final person = row.readTable(db.persons);
+          final person = db.persons.map(
+            row.rawData.data,
+            tablePrefix: db.persons.aliasedName,
+          );
           final coming = row.readTableOrNull(db.coming);
           if (!uniqueResults.containsKey(person.personId)) {
             uniqueResults[person.personId] = AttendanceDTO(
@@ -356,18 +393,21 @@ class AttendanceRepository extends _$AttendanceRepository {
               month: coming?.mont1,
               year: coming?.year1,
               stageName: row.readTableOrNull(db.stages)?.stageName,
-              khorosName: row.readTableOrNull(db.khoroses)?.khorosName,
+              khorosName: row.read(db.khoroses.khorosName),
               areaName: row.readTableOrNull(db.areas)?.areaName,
               fatherName: row.readTableOrNull(db.fathers)?.fatherName,
               phone: person.phone,
               mobile: person.mobile,
               address: person.streetName,
               serviceId: coming?.serviceId,
-              serviceName: row.readTableOrNull(db.services)?.serviceName,
+              serviceName: row.read(db.services.serviceName),
               attendTime: coming?.attendTime,
               checkoutTime: coming?.checkoutTime,
               visited: coming?.visited,
               visitNotes: coming?.visitNotes,
+              attendanceNotes: coming?.attendanceNotes,
+              checkoutNotes: coming?.checkoutNotes,
+              checkoutType: coming?.checkoutType,
               gender: person.jenderName,
               behavior: coming?.behavior,
               rohot: person.rohot,
@@ -375,7 +415,7 @@ class AttendanceRepository extends _$AttendanceRepository {
               services: personServicesNames[person.personId]?.join('، ') ?? '',
               customValues: personCustomValues[person.personId] ?? {},
               serviceRecords: <AttendanceServiceRecord>[],
-              checkColor: row.readTableOrNull(db.services)?.checkColor,
+              checkColor: row.read(db.services.checkColor),
             );
           }
           if (coming != null) {
@@ -387,14 +427,17 @@ class AttendanceRepository extends _$AttendanceRepository {
                 AttendanceServiceRecord(
                   id: comingId,
                   serviceId: coming.serviceId,
-                  serviceName: row.readTableOrNull(db.services)?.serviceName,
+                  serviceName: row.read(db.services.serviceName),
                   dateWeek: coming.dateWeek,
                   attendTime: coming.attendTime,
                   checkoutTime: coming.checkoutTime,
                   point: coming.point ?? 0,
                   attendancePoint: coming.attendancePoint,
                   checkoutPoint: coming.checkoutPoint,
-                  checkColor: row.readTableOrNull(db.services)?.checkColor,
+                  checkColor: row.read(db.services.checkColor),
+                  attendanceNotes: coming.attendanceNotes,
+                  checkoutNotes: coming.checkoutNotes,
+                  checkoutType: coming.checkoutType,
                 ),
               );
             }
@@ -404,7 +447,10 @@ class AttendanceRepository extends _$AttendanceRepository {
       } else {
         final Set<String> seenKeys = {};
         for (final row in rows) {
-          final person = row.readTable(db.persons);
+          final person = db.persons.map(
+            row.rawData.data,
+            tablePrefix: db.persons.aliasedName,
+          );
           final coming = row.readTableOrNull(db.coming);
           final key = coming != null
               ? 'coming_${coming.id}'
@@ -421,18 +467,21 @@ class AttendanceRepository extends _$AttendanceRepository {
                 month: coming?.mont1,
                 year: coming?.year1,
                 stageName: row.readTableOrNull(db.stages)?.stageName,
-                khorosName: row.readTableOrNull(db.khoroses)?.khorosName,
+                khorosName: row.read(db.khoroses.khorosName),
                 areaName: row.readTableOrNull(db.areas)?.areaName,
                 fatherName: row.readTableOrNull(db.fathers)?.fatherName,
                 phone: person.phone,
                 mobile: person.mobile,
                 address: person.streetName,
                 serviceId: coming?.serviceId,
-                serviceName: row.readTableOrNull(db.services)?.serviceName,
+                serviceName: row.read(db.services.serviceName),
                 attendTime: coming?.attendTime,
                 checkoutTime: coming?.checkoutTime,
                 visited: coming?.visited,
                 visitNotes: coming?.visitNotes,
+                attendanceNotes: coming?.attendanceNotes,
+                checkoutNotes: coming?.checkoutNotes,
+                checkoutType: coming?.checkoutType,
                 gender: person.jenderName,
                 behavior: coming?.behavior,
                 rohot: person.rohot,
@@ -440,7 +489,7 @@ class AttendanceRepository extends _$AttendanceRepository {
                 services:
                     personServicesNames[person.personId]?.join('، ') ?? '',
                 customValues: personCustomValues[person.personId] ?? {},
-                checkColor: row.readTableOrNull(db.services)?.checkColor,
+                checkColor: row.read(db.services.checkColor),
               ),
             );
           }
@@ -449,7 +498,7 @@ class AttendanceRepository extends _$AttendanceRepository {
       return resultList;
     } catch (e, st) {
       print('REPO ERROR in [$cid][fetchAttendance]: $e\n$st');
-      return [];
+      rethrow;
     }
   }
 
@@ -640,8 +689,20 @@ class AttendanceRepository extends _$AttendanceRepository {
       return {'total': total, 'present': present, 'absent': total - present};
     } catch (e, st) {
       print('REPO ERROR in [$cid][fetchAttendanceSummary]: $e\n$st');
-      return {'total': 0, 'present': 0, 'absent': 0};
+      rethrow;
     }
+  }
+
+  Future<drift.Value<int?>> _newAttendanceId(AppDatabase db) async {
+    // Server mode uses PostgreSQL SERIAL, which reserves distinct IDs across
+    // devices. Legacy local Coming tables still need an explicit nullable Id.
+    if (!db.visibilityContext.applyLocally) return const drift.Value.absent();
+    final row = await db
+        .customSelect(
+          'SELECT COALESCE(MAX(COALESCE("Id", rowid)), 0) AS max_id FROM "Coming"',
+        )
+        .getSingle();
+    return drift.Value(row.read<int>('max_id') + 1);
   }
 
   Future<String?> addAttendance({
@@ -656,6 +717,9 @@ class AttendanceRepository extends _$AttendanceRepository {
     int? behavior,
     String? personName,
     String? serviceName,
+    String? attendanceNotes,
+    String? checkoutNotes,
+    String? checkoutType,
   }) async {
     final db = ref.read(appDatabaseProvider);
     try {
@@ -724,6 +788,12 @@ class AttendanceRepository extends _$AttendanceRepository {
             behavior: behavior != null
                 ? drift.Value(behavior)
                 : const drift.Value.absent(),
+            checkoutType: checkoutType != null
+                ? drift.Value(checkoutType)
+                : const drift.Value.absent(),
+            checkoutNotes: checkoutNotes != null
+                ? drift.Value(checkoutNotes)
+                : const drift.Value.absent(),
           ),
         );
       } else {
@@ -742,24 +812,22 @@ class AttendanceRepository extends _$AttendanceRepository {
                 attendTime: drift.Value(
                   attendTime ?? DateFormat('HH:mm').format(DateTime.now()),
                 ),
+                attendanceNotes: attendanceNotes != null
+                    ? drift.Value(attendanceNotes)
+                    : const drift.Value.absent(),
               ),
             );
             return null;
           }
         }
 
-        final maxIdRow = await db
-            .customSelect(
-              'SELECT COALESCE(MAX(COALESCE("Id", rowid)), 0) AS max_id FROM "Coming"',
-            )
-            .getSingle();
-        final newId = maxIdRow.read<int>('max_id') + 1;
+        final newId = await _newAttendanceId(db);
 
         await db
             .into(db.coming)
             .insert(
               ComingCompanion(
-                id: drift.Value(newId),
+                id: newId,
                 personId: drift.Value(personId),
                 dateWeek: drift.Value(dateWeek),
                 point: drift.Value(point ?? 0),
@@ -771,6 +839,9 @@ class AttendanceRepository extends _$AttendanceRepository {
                 attendTime: drift.Value(attendTime),
                 visited: const drift.Value(0),
                 behavior: drift.Value(behavior ?? 5),
+                attendanceNotes: attendanceNotes != null
+                    ? drift.Value(attendanceNotes)
+                    : const drift.Value.absent(),
               ),
             );
       }
@@ -961,6 +1032,25 @@ class AttendanceRepository extends _$AttendanceRepository {
     return true;
   }
 
+  Future<bool> updateAttendanceNotes({
+    required int id,
+    String? attendanceNotes,
+    String? checkoutNotes,
+    String? checkoutType,
+  }) async {
+    final db = ref.read(appDatabaseProvider);
+    await (db.update(db.coming)..where((t) => t.id.equals(id))).write(
+      ComingCompanion(
+        attendanceNotes: drift.Value(attendanceNotes),
+        checkoutNotes: drift.Value(checkoutNotes),
+        checkoutType: checkoutType != null
+            ? drift.Value(checkoutType)
+            : const drift.Value.absent(),
+      ),
+    );
+    return true;
+  }
+
   Future<bool> deleteAttendance(int id) async {
     final db = ref.read(appDatabaseProvider);
     await (db.delete(db.coming)..where((t) => t.id.equals(id))).go();
@@ -1004,18 +1094,13 @@ class AttendanceRepository extends _$AttendanceRepository {
                     ..where((t) => t.id.equals(exists.id!)))
                   .write(ComingCompanion(behavior: drift.Value(score)));
             } else {
-              final maxIdRow = await db
-                  .customSelect(
-                    'SELECT COALESCE(MAX(COALESCE("Id", rowid)), 0) AS max_id FROM "Coming"',
-                  )
-                  .getSingle();
-              final newId = maxIdRow.read<int>('max_id') + 1;
+              final newId = await _newAttendanceId(db);
 
               await db
                   .into(db.coming)
                   .insert(
                     ComingCompanion(
-                      id: drift.Value(newId),
+                      id: newId,
                       personId: drift.Value(personId),
                       dateWeek: drift.Value(dateWeek),
                       point: const drift.Value(0),

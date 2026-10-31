@@ -1,0 +1,16 @@
+Build Center verification — 24 October 2026
+
+5 verification groups passed:
+1. All seven BAT launchers dispatch correctly from an unrelated working directory.
+2. Four-output orchestration, paths containing spaces, pubspec version discovery,
+   one dependency restore per project, shared output names and metadata.
+3. A simulated later compiler failure returns a failure code and preserves the
+   previously published deliverables.
+4. Successful replacement keeps the same destination name. A locked destination
+   is preserved, and temporary replacement copies are cleaned up.
+5. A small real Inno Setup compilation verifies injected version 9.8.7, a fixed
+   output name, and an output directory containing spaces.
+
+The orchestration tests used disposable mock compilers and isolated output files.
+They did not rebuild or install the two actual applications. Run the appropriate
+BAT launcher to build current deliverables into Build-Center\Output.

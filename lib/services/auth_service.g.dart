@@ -33,7 +33,7 @@ final class AuthServiceProvider
   AuthService create() => AuthService();
 }
 
-String _$authServiceHash() => r'103e6f7def4907c390f8c7824de6eb47b61dc3e8';
+String _$authServiceHash() => r'd22e813f3e96c7989fb9ae647b115dcc5df49c34';
 
 abstract class _$AuthService extends $AsyncNotifier<User?> {
   FutureOr<User?> build();
@@ -68,7 +68,7 @@ final class AllUsersProvider
     : super(
         from: null,
         argument: null,
-        retry: null,
+        retry: _noLoginUsersRetry,
         name: r'allUsersProvider',
         isAutoDispose: true,
         dependencies: null,
@@ -89,4 +89,4 @@ final class AllUsersProvider
   }
 }
 
-String _$allUsersHash() => r'f6b467c8e9376e43797d5681d17f5752d9eeba3e';
+String _$allUsersHash() => r'fe4e5ba19b010e99069cfd740c5c0b61d5be2213';

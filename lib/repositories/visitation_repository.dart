@@ -116,24 +116,31 @@ class VisitationRepository {
     final user = ref.read(authServiceProvider).value;
     final filters = user?.visibilityFilters ?? {};
 
-    final query = db.select(db.persons).join([
-      drift.leftOuterJoin(
-        db.stages,
-        db.stages.stageId.equalsExp(db.persons.stageId),
-      ),
-      drift.leftOuterJoin(
-        db.khoroses,
-        db.khoroses.khorosId.equalsExp(db.persons.khorosId),
-      ),
-      drift.leftOuterJoin(
-        db.areas,
-        db.areas.areaId.equalsExp(db.persons.areaId),
-      ),
-      drift.leftOuterJoin(
-        db.fathers,
-        db.fathers.fatherId.equalsExp(db.persons.fatherId),
-      ),
-    ]);
+    final query = db.selectOnly(db.persons)
+      ..addColumns(db.persons.$columns.where((c) => c != db.persons.photo))
+      ..join([
+        drift.leftOuterJoin(
+          db.stages,
+          db.stages.stageId.equalsExp(db.persons.stageId),
+          useColumns: true,
+        ),
+        drift.leftOuterJoin(
+          db.khoroses,
+          db.khoroses.khorosId.equalsExp(db.persons.khorosId),
+          useColumns: false,
+        ),
+        drift.leftOuterJoin(
+          db.areas,
+          db.areas.areaId.equalsExp(db.persons.areaId),
+          useColumns: true,
+        ),
+        drift.leftOuterJoin(
+          db.fathers,
+          db.fathers.fatherId.equalsExp(db.persons.fatherId),
+          useColumns: true,
+        ),
+      ])
+      ..addColumns([db.khoroses.khorosName]);
 
     if (stageIds != null && stageIds.isNotEmpty) {
       query.where(db.persons.stageId.isIn(stageIds));
@@ -198,7 +205,7 @@ class VisitationRepository {
     if (rows.isEmpty) return [];
 
     final personIds = rows
-        .map((row) => row.readTable(db.persons).personId)
+        .map((row) => row.read(db.persons.personId))
         .whereType<int>()
         .toList();
 
@@ -206,20 +213,24 @@ class VisitationRepository {
     final personServiceNamesMap = <int, List<String>>{};
     final serviceNameById = <int, String>{};
 
-    final serviceRows = await (db.select(db.personServices).join([
-      drift.innerJoin(
-        db.services,
-        db.services.serviceId.equalsExp(db.personServices.serviceId),
-      ),
-    ])..where(db.personServices.personId.isIn(personIds))).get();
+    final serviceRows =
+        await (db.select(db.personServices).join([
+                drift.innerJoin(
+                  db.services,
+                  db.services.serviceId.equalsExp(db.personServices.serviceId),
+                  useColumns: false,
+                ),
+              ])
+              ..addColumns([db.services.serviceId, db.services.serviceName])
+              ..where(db.personServices.personId.isIn(personIds)))
+            .get();
 
     for (final row in serviceRows) {
       final ps = row.readTable(db.personServices);
-      final service = row.readTable(db.services);
       personServicesMap.putIfAbsent(ps.personId, () => []).add(ps.serviceId);
-      final serviceName = service.serviceName ?? '';
+      final serviceName = row.read(db.services.serviceName) ?? '';
       if (serviceName.isNotEmpty) {
-        serviceNameById[service.serviceId] = serviceName;
+        serviceNameById[ps.serviceId] = serviceName;
         personServiceNamesMap
             .putIfAbsent(ps.personId, () => [])
             .add(serviceName);
@@ -274,7 +285,10 @@ class VisitationRepository {
     final selectedServices = serviceIds?.toSet() ?? const <int>{};
 
     for (final row in rows) {
-      final person = row.readTable(db.persons);
+      final person = db.persons.map(
+        row.rawData.data,
+        tablePrefix: db.persons.aliasedName,
+      );
       final personId = person.personId;
 
       final linkedServiceIds = personServicesMap[personId] ?? const <int>[];
@@ -300,7 +314,6 @@ class VisitationRepository {
       }
 
       final stage = row.readTableOrNull(db.stages);
-      final khoros = row.readTableOrNull(db.khoroses);
       final area = row.readTableOrNull(db.areas);
       final father = row.readTableOrNull(db.fathers);
       final selectedServiceId = selectedServices.length == 1
@@ -319,7 +332,7 @@ class VisitationRepository {
           stageId: person.stageId,
           stageName: stage?.stageName ?? '',
           khorosId: person.khorosId,
-          khorosName: khoros?.khorosName ?? '',
+          khorosName: row.read(db.khoroses.khorosName) ?? '',
           areaId: person.areaId,
           areaName: area?.areaName ?? '',
           fatherId: person.fatherId,

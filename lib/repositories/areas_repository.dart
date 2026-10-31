@@ -4,6 +4,8 @@ import 'package:drift/drift.dart' as drift;
 import '../services/auth_service.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 
 part 'areas_repository.g.dart';
 
@@ -27,6 +29,7 @@ class Area {
 class AreasRepository extends _$AreasRepository {
   @override
   FutureOr<List<Area>> build() async {
+    ref.watch(domainRevisionProvider(DataDomain.areas));
     return _fetchAreas();
   }
 
@@ -106,7 +109,7 @@ class AreasRepository extends _$AreasRepository {
     areaPath = '$areaPath$id/';
     await (db.update(db.areas)..where((t) => t.areaId.equals(id))).write(AreasCompanion(areaPath: drift.Value(areaPath)));
 
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
     return true;
   }
 
@@ -117,7 +120,7 @@ class AreasRepository extends _$AreasRepository {
     if (exists != null) return false;
 
     await (db.update(db.areas)..where((t) => t.areaId.equals(id))).write(AreasCompanion(areaName: drift.Value(newName)));
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
     return true;
   }
 
@@ -131,7 +134,7 @@ class AreasRepository extends _$AreasRepository {
     if (personsCount > 0) return false; 
 
     await (db.delete(db.areas)..where((t) => t.areaId.equals(id))).go();
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
     return true;
   }
 
@@ -145,7 +148,7 @@ class AreasRepository extends _$AreasRepository {
     for (var root in roots) {
       await _updateDescendantsPath(db, root.areaId!, '/${root.areaId}/', 0);
     }
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
   }
 
   Future<void> _updateDescendantsPath(AppDatabase db, int areaId, String path, int level) async {

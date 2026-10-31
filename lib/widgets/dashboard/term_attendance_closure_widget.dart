@@ -8,6 +8,9 @@ import '../../repositories/settings_repository.dart';
 import '../../repositories/term_attendance_repository.dart';
 import '../../services/term_attendance_excel_service.dart';
 import '../../services/term_attendance_pdf_service.dart';
+import '../../sync/data_change_domains.dart';
+import '../../sync/data_change_coordinator.dart';
+import '../../utils/silent_refresh_controller.dart';
 
 class TermAttendanceClosureWidget extends ConsumerStatefulWidget {
   const TermAttendanceClosureWidget({super.key});
@@ -36,6 +39,18 @@ class _TermAttendanceClosureWidgetState
   DateTime _startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _endDate = DateTime.now();
   TermAttendanceReport? _report;
+  ({
+    List<int> services,
+    DateTime start,
+    DateTime end,
+    double max,
+    double dayMax,
+    bool behavior,
+  })?
+  _executedQuery;
+  int _calculationGeneration = 0;
+  late final SilentRefreshController _refreshController =
+      SilentRefreshController(onRefresh: () => _calculate(isSilent: true));
   bool _isLoading = false;
   bool _isExporting = false;
   bool _isPdfExporting = false;
@@ -43,6 +58,8 @@ class _TermAttendanceClosureWidgetState
 
   @override
   void dispose() {
+    _refreshController.dispose();
+    _calculationGeneration++;
     _maxGradeController.dispose();
     _dayMaxGradeController.dispose();
     _tableHorizontalController.dispose();
@@ -51,9 +68,30 @@ class _TermAttendanceClosureWidgetState
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(sourceEpochProvider, (prev, next) {
+      _refreshController.updateEpoch(next);
+      _calculationGeneration++;
+      setState(() => _report = null);
+      _refreshController.requestRefresh(immediate: true);
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.attendance), (
+      prev,
+      next,
+    ) {
+      if (prev != null && prev != next && _executedQuery != null) {
+        _refreshController.requestRefresh();
+      }
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.people), (prev, next) {
+      if (prev != null && prev != next && _executedQuery != null) {
+        _refreshController.requestRefresh();
+      }
+    });
+
     final servicesAsync = ref.watch(servicesRepositoryProvider);
     final isMobile = MediaQuery.of(context).size.width < 700;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
       elevation: 8,
       shadowColor: Colors.black12,
@@ -61,10 +99,16 @@ class _TermAttendanceClosureWidgetState
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Colors.white, Colors.grey.shade50],
+          color: isDark ? const Color(0xFF151E2E) : null,
+          gradient: isDark
+              ? null
+              : LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Colors.white, Colors.grey.shade50],
+                ),
+          border: Border.all(
+            color: isDark ? const Color(0xFF334155) : Colors.transparent,
           ),
         ),
         padding: EdgeInsets.all(isMobile ? 14 : 24),
@@ -74,6 +118,8 @@ class _TermAttendanceClosureWidgetState
             _buildHeader(context, isMobile),
             const SizedBox(height: 20),
             servicesAsync.when(
+              skipLoadingOnReload: true,
+              skipError: true,
               data: (services) => _buildControls(context, services, isMobile),
               loading: () => const Center(
                 child: Padding(
@@ -200,6 +246,8 @@ class _TermAttendanceClosureWidgetState
                       _selectedServiceIds.remove(service.id);
                     }
                     _report = null;
+                    _executedQuery = null;
+                    _calculationGeneration++;
                   });
                 },
                 avatar: selected ? const Icon(Icons.check, size: 16) : null,
@@ -285,6 +333,8 @@ class _TermAttendanceClosureWidgetState
                 setState(() {
                   _addBehavior = value;
                   _report = null;
+                  _executedQuery = null;
+                  _calculationGeneration++;
                 });
               },
               avatar: _addBehavior ? const Icon(Icons.check, size: 16) : null,
@@ -664,18 +714,21 @@ class _TermAttendanceClosureWidgetState
   }
 
   Widget _buildEmptyState(BuildContext context, String message) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       height: 170,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: Colors.grey.withValues(alpha: 0.05),
+        color: isDark ? const Color(0xFF1E293B) : Colors.grey.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : Colors.grey.withValues(alpha: 0.1),
+        ),
       ),
       child: Text(
         message,
         style: TextStyle(
-          color: Colors.grey.shade700,
+          color: isDark ? const Color(0xFF94A3B8) : Colors.grey.shade700,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -700,48 +753,57 @@ class _TermAttendanceClosureWidgetState
         if (_startDate.isAfter(_endDate)) _startDate = picked;
       }
       _report = null;
+      _executedQuery = null;
+      _calculationGeneration++;
     });
   }
 
-  Future<void> _calculate() async {
-    if (_selectedServiceIds.isEmpty) {
-      _showMessage('اختار خدمة واحدة على الأقل');
-      return;
+  Future<void> _calculate({bool isSilent = false}) async {
+    if (!isSilent) {
+      final max = double.tryParse(_maxGradeController.text);
+      final day = double.tryParse(_dayMaxGradeController.text);
+      if (_selectedServiceIds.isEmpty ||
+          max == null ||
+          max <= 0 ||
+          day == null ||
+          day <= 0) {
+        _showMessage('اختار الخدمات واكتب درجات صحيحة');
+        return;
+      }
+      _executedQuery = (
+        services: List.unmodifiable(_selectedServiceIds),
+        start: _startDate,
+        end: _endDate,
+        max: max,
+        dayMax: day,
+        behavior: _addBehavior,
+      );
     }
-
-    final maxGrade = double.tryParse(_maxGradeController.text);
-    if (maxGrade == null || maxGrade <= 0) {
-      _showMessage('اكتب درجة حضور صحيحة');
-      return;
-    }
-
-    final dayMaxGrade = double.tryParse(_dayMaxGradeController.text);
-    if (dayMaxGrade == null || dayMaxGrade <= 0) {
-      _showMessage('اكتب درجة يوم صحيحة');
-      return;
-    }
-
-    setState(() => _isLoading = true);
+    final query = _executedQuery;
+    if (query == null) return;
+    final generation = ++_calculationGeneration;
+    if (!isSilent) setState(() => _isLoading = true);
     try {
       final report = await ref
           .read(termAttendanceRepositoryProvider)
           .buildReport(
-            serviceIds: _selectedServiceIds.toList(),
-            startDate: _startDate,
-            endDate: _endDate,
-            maxGrade: maxGrade,
-            dayMaxGrade: dayMaxGrade,
-            addBehavior: _addBehavior,
+            serviceIds: query.services,
+            startDate: query.start,
+            endDate: query.end,
+            maxGrade: query.max,
+            dayMaxGrade: query.dayMax,
+            addBehavior: query.behavior,
           );
-      if (!mounted) return;
+      if (!mounted || generation != _calculationGeneration) return;
       setState(() {
         _report = report;
         _isLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _calculationGeneration) return;
       setState(() => _isLoading = false);
-      _showMessage('تعذر حساب درجات الحضور: $error', isError: true);
+      if (!isSilent) _showMessage('تعذر حساب درجات الحضور', isError: true);
+      if (isSilent) rethrow;
     }
   }
 
@@ -874,12 +936,15 @@ class _StatPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : Colors.grey.shade200,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),

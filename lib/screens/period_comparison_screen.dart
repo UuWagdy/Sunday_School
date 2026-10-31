@@ -4,6 +4,9 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../database/database.dart';
 import '../database/database_provider.dart';
 import '../repositories/period_comparison_repository.dart';
+import '../utils/silent_refresh_controller.dart';
+import '../sync/data_change_domains.dart';
+import '../sync/data_change_coordinator.dart';
 
 class PeriodComparisonScreen extends ConsumerStatefulWidget {
   const PeriodComparisonScreen({super.key});
@@ -16,10 +19,7 @@ class PeriodComparisonScreen extends ConsumerStatefulWidget {
 class _PeriodComparisonScreenState
     extends ConsumerState<PeriodComparisonScreen> {
   // ── Periods ──
-  final List<_PeriodEntry> _periods = [
-    _PeriodEntry(),
-    _PeriodEntry(),
-  ];
+  final List<_PeriodEntry> _periods = [_PeriodEntry(), _PeriodEntry()];
 
   // ── Person selection ──
   List<Person> _allPersons = [];
@@ -36,8 +36,13 @@ class _PeriodComparisonScreenState
   // ── Results ──
   List<PersonComparisonResult> _results = [];
   bool _isComparing = false;
+  List<ComparePeriod>? _executedPeriods;
+  List<int> _executedPersonIds = [];
+  bool _executedAggregate = false;
   bool _hasCompared = false;
   bool _isAggregate = false; // New: Toggle between Individual and Aggregate
+
+  late final SilentRefreshController _comparisonRefreshController;
 
   // Period colors - Premium Palette
   static const _periodColors = [
@@ -52,16 +57,48 @@ class _PeriodComparisonScreenState
   @override
   void initState() {
     super.initState();
+    _comparisonRefreshController = SilentRefreshController(
+      debounceDuration: const Duration(milliseconds: 300),
+      onRefresh: () async {
+        await _revalidateComparisonSilently();
+      },
+    );
     _loadPersons();
   }
 
-  Future<void> _loadPersons() async {
+  @override
+  void dispose() {
+    _comparisonRefreshController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadPersons({bool isSilent = false}) async {
     final db = ref.read(appDatabaseProvider);
     final persons = await db.select(db.persons).get();
+    if (!mounted) return;
     setState(() {
       _allPersons = persons;
+      final validIds = persons.map((p) => p.personId).toSet();
+      _selectedPersonIds.retainWhere((id) => validIds.contains(id));
       _applyPersonFilter();
     });
+  }
+
+  Future<void> _revalidateComparisonSilently() async {
+    final periods = _executedPeriods;
+    if (periods == null || !mounted) return;
+    final generation = _comparisonRefreshController.currentGeneration;
+    final results = await ref
+        .read(periodComparisonRepositoryProvider.notifier)
+        .compareAttendance(
+          periods: periods,
+          personIds: _executedPersonIds,
+          isAggregate: _executedAggregate,
+        );
+    if (!mounted ||
+        generation != _comparisonRefreshController.currentGeneration)
+      return;
+    setState(() => _results = results);
   }
 
   void _applyPersonFilter() {
@@ -84,8 +121,7 @@ class _PeriodComparisonScreenState
     setState(() {
       _selectAll = value ?? false;
       if (_selectAll) {
-        _selectedPersonIds
-            .addAll(_filteredPersons.map((p) => p.personId));
+        _selectedPersonIds.addAll(_filteredPersons.map((p) => p.personId));
       } else {
         _selectedPersonIds.clear();
       }
@@ -124,6 +160,8 @@ class _PeriodComparisonScreenState
       return;
     }
 
+    _comparisonRefreshController.bumpGeneration();
+    final generation = _comparisonRefreshController.currentGeneration;
     setState(() => _isComparing = true);
 
     final periods = _periods.asMap().entries.map((e) {
@@ -134,6 +172,9 @@ class _PeriodComparisonScreenState
       );
     }).toList();
 
+    _executedPeriods = List.unmodifiable(periods);
+    _executedPersonIds = List.unmodifiable(_selectedPersonIds);
+    _executedAggregate = _isAggregate;
     final repo = ref.read(periodComparisonRepositoryProvider.notifier);
     final results = await repo.compareAttendance(
       periods: periods,
@@ -141,6 +182,9 @@ class _PeriodComparisonScreenState
       isAggregate: _isAggregate,
     );
 
+    if (!mounted ||
+        generation != _comparisonRefreshController.currentGeneration)
+      return;
     setState(() {
       _results = results;
       _isComparing = false;
@@ -154,6 +198,32 @@ class _PeriodComparisonScreenState
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(sourceEpochProvider, (previous, next) {
+      _comparisonRefreshController.updateEpoch(next);
+      setState(() {
+        _allPersons = [];
+        _results = [];
+      });
+      _loadPersons(isSilent: true);
+      _comparisonRefreshController.requestRefresh(immediate: true);
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.people), (prev, next) {
+      if (prev != null && prev != next) {
+        _loadPersons(isSilent: true);
+        if (_hasCompared) {
+          _comparisonRefreshController.requestRefresh();
+        }
+      }
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.attendance), (
+      prev,
+      next,
+    ) {
+      if (prev != null && prev != next && _hasCompared) {
+        _comparisonRefreshController.requestRefresh();
+      }
+    });
+
     final isMobile = MediaQuery.of(context).size.width < 600;
     final theme = Theme.of(context);
 
@@ -231,14 +301,21 @@ class _PeriodComparisonScreenState
                   color: theme.primaryColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.date_range, color: theme.primaryColor, size: 20),
+                child: Icon(
+                  Icons.date_range,
+                  color: theme.primaryColor,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
-              Text('تحديد فترات المقارنة',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: theme.primaryColor)),
+              Text(
+                'تحديد فترات المقارنة',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: theme.primaryColor,
+                ),
+              ),
               const Spacer(),
               _ModernTextButton(
                 onPressed: _addPeriod,
@@ -254,8 +331,7 @@ class _PeriodComparisonScreenState
               scrollDirection: Axis.horizontal,
               itemCount: _periods.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (context, i) =>
-                  _buildPeriodCard(i, isMobile, theme),
+              itemBuilder: (context, i) => _buildPeriodCard(i, isMobile, theme),
             ),
           ),
         ],
@@ -270,8 +346,10 @@ class _PeriodComparisonScreenState
         children: [
           const Icon(Icons.hub_outlined, size: 18, color: Colors.grey),
           const SizedBox(width: 10),
-          const Text('نظام المقارنة:',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          const Text(
+            'نظام المقارنة:',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
           const Spacer(),
           _ToggleOption(
             label: 'فردية',
@@ -309,16 +387,26 @@ class _PeriodComparisonScreenState
           Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('فترة', style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold)),
+              Text(
+                'فترة',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 2),
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                child: Text('${index + 1}',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14)),
+                child: Text(
+                  '${index + 1}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
               ),
             ],
           ),
@@ -362,7 +450,11 @@ class _PeriodComparisonScreenState
           ),
           if (_periods.length > 2)
             IconButton(
-              icon: const Icon(Icons.remove_circle_outline, size: 20, color: Colors.grey),
+              icon: const Icon(
+                Icons.remove_circle_outline,
+                size: 20,
+                color: Colors.grey,
+              ),
               onPressed: () => _removePeriod(index),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
@@ -380,9 +472,11 @@ class _PeriodComparisonScreenState
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withOpacity(0.25)),
       ),
-      child: Text(text,
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 11, color: color)),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 11, color: color),
+      ),
     );
   }
 
@@ -416,12 +510,17 @@ class _PeriodComparisonScreenState
                   Text(
                     '${_selectedPersonIds.length} شخص مختار',
                     style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white),
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(Icons.keyboard_arrow_down, size: 16, color: Colors.white70),
+                  const Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 16,
+                    color: Colors.white70,
+                  ),
                 ],
               ),
             ),
@@ -436,19 +535,31 @@ class _PeriodComparisonScreenState
                 backgroundColor: theme.colorScheme.secondary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
                 elevation: 4,
                 shadowColor: theme.colorScheme.secondary.withOpacity(0.4),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                   if (_isComparing)
-                    const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  if (_isComparing)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   else
                     const Icon(Icons.auto_graph, size: 20),
                   const SizedBox(width: 10),
-                  const Text('مقارنة الآن', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'مقارنة الآن',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
             ),
@@ -484,8 +595,9 @@ class _PeriodComparisonScreenState
             _filterGender = gender;
             _searchQuery = search;
             _applyPersonFilter();
-            _selectAll =
-                _filteredPersons.every((p) => _selectedPersonIds.contains(p.personId));
+            _selectAll = _filteredPersons.every(
+              (p) => _selectedPersonIds.contains(p.personId),
+            );
           });
         },
       ),
@@ -502,11 +614,16 @@ class _PeriodComparisonScreenState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.compare_arrows,
-                size: 64, color: Colors.grey.withOpacity(0.3)),
+            Icon(
+              Icons.compare_arrows,
+              size: 64,
+              color: Colors.grey.withOpacity(0.3),
+            ),
             const SizedBox(height: 12),
-            Text('اختر الفترات والأشخاص ثم اضغط "مقارنة"',
-                style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+            Text(
+              'اختر الفترات والأشخاص ثم اضغط "مقارنة"',
+              style: TextStyle(color: Colors.grey[500], fontSize: 14),
+            ),
           ],
         ),
       );
@@ -524,7 +641,10 @@ class _PeriodComparisonScreenState
   }
 
   Widget _buildPersonCard(
-      PersonComparisonResult person, bool isMobile, ThemeData theme) {
+    PersonComparisonResult person,
+    bool isMobile,
+    ThemeData theme,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -546,25 +666,33 @@ class _PeriodComparisonScreenState
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: theme.primaryColor.withOpacity(0.06),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
             ),
             child: Row(
               children: [
                 CircleAvatar(
                   radius: 16,
                   backgroundColor: theme.primaryColor.withOpacity(0.12),
-                  child: Text('${person.personId}',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: theme.primaryColor)),
+                  child: Text(
+                    '${person.personId}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: theme.primaryColor,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(person.personName,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14)),
+                  child: Text(
+                    person.personName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -596,18 +724,29 @@ class _PeriodComparisonScreenState
           children: [
             Container(
               padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
               child: const Icon(Icons.verified, color: Colors.green, size: 18),
             ),
             const SizedBox(width: 10),
-            const Text('تحليل الحضور الاستراتيجي',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green)),
+            const Text(
+              'تحليل الحضور الاستراتيجي',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: Colors.green,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
-            final cardWidth = isMobile ? constraints.maxWidth : (constraints.maxWidth - 12) / 2;
+            final cardWidth = isMobile
+                ? constraints.maxWidth
+                : (constraints.maxWidth - 12) / 2;
             return Wrap(
               spacing: 12,
               runSpacing: 12,
@@ -625,7 +764,10 @@ class _PeriodComparisonScreenState
                   decoration: BoxDecoration(
                     color: pColor.withOpacity(0.03),
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: pColor.withOpacity(0.12), width: 1),
+                    border: Border.all(
+                      color: pColor.withOpacity(0.12),
+                      width: 1,
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -633,26 +775,43 @@ class _PeriodComparisonScreenState
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: pColor,
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Text(r.periodLabel,
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                            child: Text(
+                              r.periodLabel,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
                           const Spacer(),
-                          Text('${r.attendedCount} من ${r.totalPossibleAttendances}',
-                              style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+                          Text(
+                            '${r.attendedCount} من ${r.totalPossibleAttendances}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 14),
-                      Text('${pct.toStringAsFixed(1)}%',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 24,
-                              color: pColor)),
+                      Text(
+                        '${pct.toStringAsFixed(1)}%',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 24,
+                          color: pColor,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       // Premium Progress Line
                       Stack(
@@ -670,10 +829,16 @@ class _PeriodComparisonScreenState
                             child: Container(
                               height: 8,
                               decoration: BoxDecoration(
-                                gradient: LinearGradient(colors: [pColor, pColor.withOpacity(0.6)]),
+                                gradient: LinearGradient(
+                                  colors: [pColor, pColor.withOpacity(0.6)],
+                                ),
                                 borderRadius: BorderRadius.circular(10),
                                 boxShadow: [
-                                  BoxShadow(color: pColor.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))
+                                  BoxShadow(
+                                    color: pColor.withOpacity(0.2),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
                                 ],
                               ),
                             ),
@@ -700,7 +865,9 @@ class _PeriodComparisonScreenState
     final isUp = direction == 'increase';
     final isSame = direction == 'same';
     final color = isSame ? Colors.grey : (isUp ? Colors.green : Colors.orange);
-    final icon = isSame ? Icons.horizontal_rule : (isUp ? Icons.trending_up : Icons.trending_down);
+    final icon = isSame
+        ? Icons.horizontal_rule
+        : (isUp ? Icons.trending_up : Icons.trending_down);
     final text = isSame ? 'ثابت' : (isUp ? 'تحسن بمقدار' : 'تراجع بمقدار');
 
     return Container(
@@ -714,10 +881,23 @@ class _PeriodComparisonScreenState
         children: [
           Icon(icon, color: color, size: 16),
           const SizedBox(width: 6),
-          Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500)),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(width: 4),
-          Text('${change.abs().toStringAsFixed(1)}%',
-              style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+          Text(
+            '${change.abs().toStringAsFixed(1)}%',
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );
@@ -731,7 +911,11 @@ class _ModernTextButton extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _ModernTextButton({required this.onPressed, required this.icon, required this.label});
+  const _ModernTextButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -746,7 +930,10 @@ class _ModernTextButton extends StatelessWidget {
         children: [
           Icon(icon, size: 16),
           const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          ),
         ],
       ),
     );
@@ -759,7 +946,12 @@ class _ToggleOption extends StatelessWidget {
   final VoidCallback onTap;
   final ThemeData theme;
 
-  const _ToggleOption({required this.label, required this.isSelected, required this.onTap, required this.theme});
+  const _ToggleOption({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.theme,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -771,7 +963,9 @@ class _ToggleOption extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected ? theme.primaryColor : Colors.grey[100],
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isSelected ? theme.primaryColor : Colors.grey[300]!),
+          border: Border.all(
+            color: isSelected ? theme.primaryColor : Colors.grey[300]!,
+          ),
         ),
         child: Text(
           label,
@@ -792,7 +986,12 @@ class _DateSelector extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
 
-  const _DateSelector({required this.label, this.date, required this.color, required this.onTap});
+  const _DateSelector({
+    required this.label,
+    this.date,
+    required this.color,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -808,11 +1007,24 @@ class _DateSelector extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Text('$label: ', style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.bold)),
+            Text(
+              '$label: ',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey[700],
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             Expanded(
               child: Text(
-                date != null ? DateFormat('yyyy-MM-dd').format(date!) : 'اختر التاريخ',
-                style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.bold),
+                date != null
+                    ? DateFormat('yyyy-MM-dd').format(date!)
+                    : 'اختر التاريخ',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                ),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -844,8 +1056,13 @@ class _FilterSheet extends StatefulWidget {
   final String initialSearch;
   final AppDatabase db;
   final void Function(
-          Set<int> selectedIds, int? stageId, int? areaId, String? gender, String search)
-      onApply;
+    Set<int> selectedIds,
+    int? stageId,
+    int? areaId,
+    String? gender,
+    String search,
+  )
+  onApply;
 
   const _FilterSheet({
     required this.allPersons,
@@ -947,20 +1164,30 @@ class _FilterSheetState extends State<_FilterSheet> {
                 children: [
                   Icon(Icons.filter_alt, color: theme.primaryColor, size: 20),
                   const SizedBox(width: 8),
-                  Text('اختيار الأشخاص',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: theme.primaryColor)),
+                  Text(
+                    'اختيار الأشخاص',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: theme.primaryColor,
+                    ),
+                  ),
                   const Spacer(),
                   TextButton(
                     onPressed: () {
                       widget.onApply(
-                          _selected, _stageId, _areaId, _gender, _searchCtrl.text.trim());
+                        _selected,
+                        _stageId,
+                        _areaId,
+                        _gender,
+                        _searchCtrl.text.trim(),
+                      );
                       Navigator.pop(context);
                     },
-                    child: const Text('تطبيق',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'تطبيق',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ],
               ),
@@ -983,16 +1210,25 @@ class _FilterSheetState extends State<_FilterSheet> {
                       decoration: const InputDecoration(
                         labelText: 'المرحلة',
                         isDense: true,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                       ),
                       items: [
                         const DropdownMenuItem(
-                            value: null, child: Text('الكل')),
-                        ..._stages.map((s) => DropdownMenuItem(
+                          value: null,
+                          child: Text('الكل'),
+                        ),
+                        ..._stages.map(
+                          (s) => DropdownMenuItem(
                             value: s.stageId,
-                            child: Text(s.stageName ?? '',
-                                style: const TextStyle(fontSize: 12)))),
+                            child: Text(
+                              s.stageName ?? '',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
                       ],
                       onChanged: (v) {
                         _stageId = v;
@@ -1009,16 +1245,25 @@ class _FilterSheetState extends State<_FilterSheet> {
                       decoration: const InputDecoration(
                         labelText: 'المنطقة',
                         isDense: true,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                       ),
                       items: [
                         const DropdownMenuItem(
-                            value: null, child: Text('الكل')),
-                        ..._areas.map((a) => DropdownMenuItem(
+                          value: null,
+                          child: Text('الكل'),
+                        ),
+                        ..._areas.map(
+                          (a) => DropdownMenuItem(
                             value: a.areaId,
-                            child: Text(a.areaName ?? '',
-                                style: const TextStyle(fontSize: 12)))),
+                            child: Text(
+                              a.areaName ?? '',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
                       ],
                       onChanged: (v) {
                         _areaId = v;
@@ -1035,8 +1280,10 @@ class _FilterSheetState extends State<_FilterSheet> {
                       decoration: const InputDecoration(
                         labelText: 'النوع',
                         isDense: true,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                       ),
                       items: const [
                         DropdownMenuItem(value: null, child: Text('الكل')),
@@ -1063,8 +1310,10 @@ class _FilterSheetState extends State<_FilterSheet> {
                   hintText: 'بحث بالاسم أو الكود...',
                   prefixIcon: Icon(Icons.search, size: 20),
                   isDense: true,
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
               ),
             ),
@@ -1079,8 +1328,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                     onChanged: (v) {
                       setState(() {
                         if (v == true) {
-                          _selected
-                              .addAll(_filtered.map((p) => p.personId));
+                          _selected.addAll(_filtered.map((p) => p.personId));
                         } else {
                           for (final p in _filtered) {
                             _selected.remove(p.personId);
@@ -1089,14 +1337,19 @@ class _FilterSheetState extends State<_FilterSheet> {
                       });
                     },
                   ),
-                  Text('اختيار الكل (${_filtered.length})',
-                      style: const TextStyle(fontSize: 13)),
+                  Text(
+                    'اختيار الكل (${_filtered.length})',
+                    style: const TextStyle(fontSize: 13),
+                  ),
                   const Spacer(),
-                  Text('${_selected.length} محدد',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: theme.primaryColor,
-                          fontWeight: FontWeight.bold)),
+                  Text(
+                    '${_selected.length} محدد',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.primaryColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1124,11 +1377,14 @@ class _FilterSheetState extends State<_FilterSheet> {
                         });
                       },
                     ),
-                    title: Text(p.personName ?? 'مجهول',
-                        style: const TextStyle(fontSize: 13)),
-                    subtitle: Text('كود: ${p.personId}',
-                        style:
-                            TextStyle(fontSize: 11, color: Colors.grey[600])),
+                    title: Text(
+                      p.personName ?? 'مجهول',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    subtitle: Text(
+                      'كود: ${p.personId}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    ),
                     onTap: () {
                       setState(() {
                         if (isChecked) {

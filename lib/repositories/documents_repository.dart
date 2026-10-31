@@ -4,6 +4,8 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:drift/drift.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 
 part 'documents_repository.g.dart';
 
@@ -39,7 +41,7 @@ class PersonDocumentDTO {
 @riverpod
 class DocumentsRepository extends _$DocumentsRepository {
   @override
-  FutureOr<void> build() {}
+  FutureOr<void> build() { ref.watch(domainRevisionProvider(DataDomain.documents)); }
 
   Future<List<PersonDocumentDTO>> fetchDocuments(int personId, int fieldId) async {
     final db = ref.read(appDatabaseProvider);

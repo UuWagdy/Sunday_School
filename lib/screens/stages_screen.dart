@@ -214,6 +214,8 @@ class _StagesScreenState extends ConsumerState<StagesScreen> {
     final stagesList = async.value ?? [];
 
     return async.when(
+      skipLoadingOnReload: true,
+              skipError: true,
       data: (list) {
         if (list.isEmpty) {
           return const Card(
@@ -341,16 +343,24 @@ class _StagesScreenState extends ConsumerState<StagesScreen> {
         .where((item) => _selectedBulkStageIds.contains(item.id))
         .length;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final barBg = selectedCount == 0
+        ? (isDark ? const Color(0xFF1E293B) : Colors.grey.shade50)
+        : (isDark
+            ? Theme.of(context).primaryColor.withOpacity(0.2)
+            : Colors.blue.shade50);
+    final borderColor = selectedCount == 0
+        ? (isDark ? const Color(0xFF334155) : Colors.grey.shade200)
+        : (isDark
+            ? Theme.of(context).primaryColor.withOpacity(0.4)
+            : Colors.blue.shade100);
+
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: selectedCount == 0 ? Colors.grey.shade50 : Colors.blue.shade50,
+        color: barBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: selectedCount == 0
-              ? Colors.grey.shade200
-              : Colors.blue.shade100,
-        ),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -452,6 +462,8 @@ class _StagesScreenState extends ConsumerState<StagesScreen> {
               ),
               const SizedBox(height: 16),
               servicesAsync.when(
+                skipLoadingOnReload: true,
+              skipError: true,
                 data: (servicesList) {
                   return MultiSelectFilter(
                     label: 'الخدمات المرتبطة تلقائيا',
@@ -497,6 +509,8 @@ class _StagesScreenState extends ConsumerState<StagesScreen> {
               ),
               const SizedBox(height: 16),
               stagesAsync.when(
+                skipLoadingOnReload: true,
+              skipError: true,
                 data: (stagesList) {
                   final filteredStages = stagesList
                       .where(
@@ -587,6 +601,8 @@ class _StagesScreenState extends ConsumerState<StagesScreen> {
             const SizedBox(height: 12),
             Expanded(
               child: async.when(
+                skipLoadingOnReload: true,
+              skipError: true,
                 data: (list) {
                   if (list.isEmpty) {
                     return const Center(

@@ -23,6 +23,9 @@ import '../ui/dialogs/print_period_services_dialog.dart';
 import '../ui/dialogs/sorting_dialog.dart';
 import '../ui/widgets/multi_select_filter.dart';
 import '../utils/contact_links.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
+import '../utils/silent_refresh_controller.dart';
 import 'person_dialog.dart';
 
 class VisitationScreen extends ConsumerStatefulWidget {
@@ -69,13 +72,63 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
     return _dateTo ?? _dateFrom ?? _selectedDate;
   }
 
+  late final SilentRefreshController _refreshController;
+
   @override
   void initState() {
     super.initState();
+    _refreshController = SilentRefreshController(
+      onRefresh: () async {
+        if (!mounted) return;
+        await _silentRefresh();
+      },
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
 
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _silentRefresh() async {
+    final gen = _refreshController.currentGeneration;
+    try {
+      final records = await ref
+          .read(visitationRepositoryProvider)
+          .fetchVisitations(
+            dateFrom: _effectiveDateFrom,
+            dateTo: _effectiveDateTo,
+            serviceIds: _selectedServiceId == null
+                ? null
+                : [_selectedServiceId!],
+            search: _searchQuery,
+            stageIds: _filterStageIds,
+            khorosIds: _filterKhorosIds,
+            areaIds: _filterAreaIds,
+            fatherIds: _filterFatherIds,
+            genders: _filterGenders,
+            birthdayDay: _filterBirthdayDay,
+            birthdayMonth: _filterBirthdayMonth,
+            birthdayYear: _filterBirthdayYear,
+            visitedStatus: _visitedStatus,
+            visitType: _visitTypeFilter,
+            attendanceStatus: _attendanceFilter,
+            customFilters: _customFilters,
+            limit: 1000,
+          );
+      if (!mounted || _refreshController.currentGeneration != gen) return;
+      setState(() => _records = records);
+    } catch (e) {
+      debugPrint('Silent refresh error in visitation: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _loadData() async {
+    _refreshController.bumpGeneration();
+    final gen = _refreshController.currentGeneration;
     setState(() => _isLoading = true);
     try {
       final records = await ref
@@ -101,15 +154,16 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
             customFilters: _customFilters,
             limit: 1000,
           );
-      if (!mounted) return;
+      if (!mounted || gen != _refreshController.currentGeneration) return;
       setState(() => _records = records);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _refreshController.currentGeneration) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('حدث خطأ أثناء تحميل الافتقاد: $e')),
       );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && gen == _refreshController.currentGeneration)
+        setState(() => _isLoading = false);
     }
   }
 
@@ -129,7 +183,7 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
           visitType: visitType,
           notes: notes,
         );
-    await _loadData();
+    await _silentRefresh();
   }
 
   Future<void> _openEditDialog(VisitationPersonDTO record) async {
@@ -143,7 +197,7 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
       builder: (context) => PersonDialog(person: fullPerson),
     );
     if (result == true && mounted) {
-      await _loadData();
+      await _silentRefresh();
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -394,10 +448,32 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(sourceEpochProvider, (previous, next) {
+      _refreshController.updateEpoch(next);
+      setState(() {
+        _records = [];
+      });
+
+      _refreshController.requestRefresh(immediate: true);
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.visitation), (
+      prev,
+      next,
+    ) {
+      if (prev != null && next > prev) {
+        _refreshController.requestRefresh();
+      }
+    });
+    ref.listen<int>(domainRevisionProvider(DataDomain.people), (prev, next) {
+      if (prev != null && next > prev) {
+        _refreshController.requestRefresh();
+      }
+    });
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF5F7FB),
+        backgroundColor: Colors.transparent,
         body: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -448,29 +524,52 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
   }
 
   Widget _buildHeader(bool isWide) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: isDark ? 2 : 2,
+      color: isDark ? const Color(0xFF151E2E) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Column(
           children: [
             Row(
               children: [
-                const Icon(Icons.volunteer_activism, color: Color(0xFF1A237E)),
+                Icon(
+                  Icons.volunteer_activism,
+                  color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF90CAF9) : const Color(0xFF1A237E),
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'الافتقاد',
                     style: TextStyle(
-                      fontSize: isWide ? 20 : 18,
+                      fontSize: isWide ? 17 : 16,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
-                Text(
-                  '${_records.length} شخص',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${_records.length} شخص',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: Colors.blue,
+                    ),
+                  ),
                 ),
                 if (isWide) ...[
                   const SizedBox(width: 8),
@@ -479,13 +578,13 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
               ],
             ),
             if (!isWide) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Align(
                 alignment: AlignmentDirectional.centerEnd,
                 child: _buildHeaderActions(includeFilters: true),
               ),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
             _buildDateServiceControls(isWide),
           ],
         ),
@@ -634,36 +733,47 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
   }
 
   Widget _buildFiltersPanel({bool scrollable = true}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final content = Padding(
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'الفلاتر',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: isDark ? const Color(0xFFF8FAFC) : Colors.black87,
+            ),
           ),
           const SizedBox(height: 12),
           _buildVisitationFilters(),
-          const Divider(height: 28),
+          Divider(height: 28, color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
           _buildPersonFilters(),
         ],
       ),
     );
 
     return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: isDark ? 2 : 3,
+      color: isDark ? const Color(0xFF151E2E) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
       child: scrollable ? SingleChildScrollView(child: content) : content,
     );
   }
 
   Widget _buildVisitationFilters() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         DropdownButtonFormField<bool?>(
           value: _visitedStatus,
           isExpanded: true,
+          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
           decoration: const InputDecoration(
             labelText: 'حالة الافتقاد',
             isDense: true,
@@ -682,6 +792,7 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
         DropdownButtonFormField<String?>(
           value: _visitTypeFilter,
           isExpanded: true,
+          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
           decoration: const InputDecoration(
             labelText: 'نوع الافتقاد',
             isDense: true,
@@ -701,6 +812,7 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
         DropdownButtonFormField<String?>(
           value: _attendanceFilter,
           isExpanded: true,
+          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
           decoration: const InputDecoration(
             labelText: 'قائمة الحضور',
             isDense: true,
@@ -746,6 +858,8 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
         ref
             .watch(stagesRepositoryProvider)
             .when(
+              skipLoadingOnReload: true,
+              skipError: true,
               data: (stages) => MultiSelectFilter(
                 label: getLabel('stage', 'المرحلة'),
                 selectedIds: _filterStageIds,
@@ -977,10 +1091,20 @@ class _VisitationScreenState extends ConsumerState<VisitationScreen> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_records.isEmpty) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
       return Card(
         elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Center(child: Text('لا توجد بيانات مطابقة للفلاتر')),
+        color: isDark ? const Color(0xFF151E2E) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+        ),
+        child: Center(
+          child: Text(
+            'لا توجد بيانات مطابقة للفلاتر',
+            style: TextStyle(color: isDark ? const Color(0xFF94A3B8) : Colors.grey.shade700),
+          ),
+        ),
       );
     }
 
@@ -1118,9 +1242,15 @@ class _VisitationCardState extends State<_VisitationCard> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: isDark ? 2 : 3,
+      color: isDark ? const Color(0xFF151E2E) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(8),
         child: Column(
@@ -1157,9 +1287,13 @@ class _VisitationCardState extends State<_VisitationCard> {
                               widget.record.areaName,
                             ),
                           _InfoChip(
-                            widget.record.isAttended == true ? Icons.check_circle : Icons.cancel,
+                            widget.record.isAttended == true
+                                ? Icons.check_circle
+                                : Icons.cancel,
                             widget.record.isAttended == true ? 'حاضر' : 'غائب',
-                            color: widget.record.isAttended == true ? Colors.green : Colors.red,
+                            color: widget.record.isAttended == true
+                                ? Colors.green
+                                : Colors.red,
                           ),
                         ],
                       ),
@@ -1198,9 +1332,18 @@ class _VisitationCardState extends State<_VisitationCard> {
                   DropdownButtonFormField<String>(
                     value: _visitType,
                     isExpanded: true,
-                    decoration: const InputDecoration(
+                    dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                    decoration: InputDecoration(
                       labelText: 'نوع الافتقاد',
                       isDense: true,
+                      filled: true,
+                      fillColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
+                        ),
+                      ),
                     ),
                     items: visitationTypes
                         .map(
@@ -1215,10 +1358,18 @@ class _VisitationCardState extends State<_VisitationCard> {
                   TextField(
                     controller: _notesController,
                     minLines: 1,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
+                    maxLines: 2,
+                    decoration: InputDecoration(
                       labelText: 'ملاحظات الافتقاد',
                       isDense: true,
+                      filled: true,
+                      fillColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
+                        ),
+                      ),
                     ),
                   ),
                   FilledButton.icon(
@@ -1241,13 +1392,41 @@ class _VisitationCardState extends State<_VisitationCard> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(flex: 2, child: inputs[0]),
+                          Expanded(flex: 4, child: inputs[0]),
                           const SizedBox(width: 8),
-                          SizedBox(width: 88, child: inputs[2]),
+                          Expanded(flex: 5, child: inputs[1]),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      inputs[1],
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 42,
+                        child: FilledButton.icon(
+                          onPressed: _isSaving ? null : _save,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: theme.primaryColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          icon: _isSaving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.check, size: 18),
+                          label: const Text(
+                            'حفظ الافتقاد',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   );
                 }
@@ -1280,19 +1459,27 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeColor = color ?? const Color(0xFF1A237E);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final themeColor = color ?? (isDark ? const Color(0xFF90CAF9) : const Color(0xFF1A237E));
+    final textColor = isDark ? (color != null ? themeColor : const Color(0xFFCBD5E1)) : (color ?? Colors.black87);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: themeColor.withOpacity(0.06),
+        color: isDark ? themeColor.withValues(alpha: 0.15) : themeColor.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? themeColor.withValues(alpha: 0.3) : themeColor.withValues(alpha: 0.12),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: themeColor),
           const SizedBox(width: 4),
-          Text(label, style: const TextStyle(fontSize: 12, color: Colors.black87)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, color: textColor, fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );
@@ -1321,18 +1508,26 @@ class _PhoneActionsChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pillBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final pillBorder = isDark ? const Color(0xFF334155) : const Color(0xFFE0E3EE);
+    final textColor = isDark ? const Color(0xFF90CAF9) : const Color(0xFF1A237E);
+
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final displayLabel = isMobile ? label.replaceAll('رقم ', '') : label;
+
     return Container(
-      constraints: const BoxConstraints(maxWidth: 280),
-      padding: const EdgeInsetsDirectional.only(
-        start: 8,
+      constraints: BoxConstraints(maxWidth: isMobile ? 320 : 280),
+      padding: EdgeInsetsDirectional.only(
+        start: isMobile ? 6 : 8,
         end: 4,
-        top: 3,
-        bottom: 3,
+        top: 2,
+        bottom: 2,
       ),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: pillBg,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE0E3EE)),
+        border: Border.all(color: pillBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1342,14 +1537,14 @@ class _PhoneActionsChip extends StatelessWidget {
               onTap: onCall,
               borderRadius: BorderRadius.circular(8),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                 child: Text(
-                  '$label: $phone',
+                  '$displayLabel: $phone',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF1A237E),
+                  style: TextStyle(
+                    fontSize: isMobile ? 11.5 : 12,
+                    color: textColor,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1359,18 +1554,18 @@ class _PhoneActionsChip extends StatelessWidget {
           IconButton(
             tooltip: 'اتصال',
             onPressed: onCall,
-            icon: const Icon(Icons.call, size: 18),
+            icon: Icon(Icons.call, size: isMobile ? 16 : 18, color: isDark ? const Color(0xFF60A5FA) : Colors.blue.shade700),
             visualDensity: VisualDensity.compact,
-            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            constraints: BoxConstraints.tightFor(width: isMobile ? 28 : 32, height: isMobile ? 28 : 32),
             padding: EdgeInsets.zero,
           ),
           IconButton(
             tooltip: 'واتساب',
             onPressed: onWhatsApp,
-            icon: const Icon(Icons.chat, size: 18),
+            icon: Icon(Icons.chat, size: isMobile ? 16 : 18),
             color: Colors.green,
             visualDensity: VisualDensity.compact,
-            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            constraints: BoxConstraints.tightFor(width: isMobile ? 28 : 32, height: isMobile ? 28 : 32),
             padding: EdgeInsets.zero,
           ),
         ],

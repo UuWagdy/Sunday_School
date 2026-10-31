@@ -4,6 +4,8 @@ import 'package:drift/drift.dart' as drift;
 import '../services/auth_service.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
+import '../sync/data_change_coordinator.dart';
+import '../sync/data_change_domains.dart';
 
 part 'fathers_repository.g.dart';
 
@@ -18,6 +20,7 @@ class FatherModel {
 class FathersRepository extends _$FathersRepository {
   @override
   FutureOr<List<FatherModel>> build() async {
+    ref.watch(domainRevisionProvider(DataDomain.fathers));
     return _fetch();
   }
 
@@ -51,7 +54,7 @@ class FathersRepository extends _$FathersRepository {
       await db.into(db.fathers).insert(FathersCompanion.insert(
         fatherName: drift.Value(name),
       ));
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       return false;
@@ -64,7 +67,7 @@ class FathersRepository extends _$FathersRepository {
       await (db.update(db.fathers)..where((t) => t.fatherId.equals(id))).write(
         FathersCompanion(fatherName: drift.Value(name)),
       );
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       return false;
@@ -75,7 +78,7 @@ class FathersRepository extends _$FathersRepository {
     try {
       final db = ref.read(appDatabaseProvider);
       await (db.delete(db.fathers)..where((t) => t.fatherId.equals(id))).go();
-      ref.invalidateSelf();
+      if (ref.mounted) ref.invalidateSelf();
       return true;
     } catch (e) {
       return false;

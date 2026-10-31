@@ -75,6 +75,10 @@ class Coming extends Table {
   TextColumn get visitNotes => text().nullable().named('Visit_Notes')();
   IntColumn get behavior =>
       integer().nullable().withDefault(const Constant(5)).named('Behavior')();
+  TextColumn get attendanceNotes =>
+      text().nullable().named('Attendance_Notes')();
+  TextColumn get checkoutNotes => text().nullable().named('Checkout_Notes')();
+  TextColumn get checkoutType => text().nullable().named('Checkout_Type')();
 }
 
 @DataClassName('VisitationData')
@@ -410,4 +414,40 @@ class FamilyRelationships extends Table {
 
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime).named('Created_At')();
+}
+
+@DataClassName('BusDriver')
+class BusDrivers extends Table {
+  @override
+  String get tableName => 'Bus_Drivers';
+
+  IntColumn get id => integer().autoIncrement().named('ID')();
+  TextColumn get name => text().named('Name')();
+  TextColumn get phone => text().nullable().named('Phone')();
+  TextColumn get busNumber => text().nullable().named('Bus_Number')();
+  TextColumn get notes => text().nullable().named('Notes')();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime).named('Created_At')();
+}
+
+@DataClassName('BusAssignment')
+class BusAssignments extends Table {
+  @override
+  String get tableName => 'Bus_Assignments';
+
+  IntColumn get id => integer().autoIncrement().named('ID')();
+  IntColumn get driverId => integer()
+      .named('Driver_ID')
+      .references(BusDrivers, #id, onDelete: KeyAction.cascade)();
+  IntColumn get personId => integer()
+      .named('Person_ID')
+      .references(Persons, #personId, onDelete: KeyAction.cascade)();
+  TextColumn get notes => text().nullable().named('Notes')();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime).named('Created_At')();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+    {personId},
+  ];
 }

@@ -141,6 +141,8 @@ class _AreasScreenState extends ConsumerState<AreasScreen> {
 
   Widget _buildMobileList(AsyncValue<List<Area>> areasAsync) {
     return areasAsync.when(
+      skipLoadingOnReload: true,
+              skipError: true,
       data: (list) {
         if (list.isEmpty) {
           return const Card(child: Padding(padding: EdgeInsets.all(32), child: Center(child: Text('لا يوجد مناطق مسجلة حالياً'))));
@@ -237,6 +239,8 @@ class _AreasScreenState extends ConsumerState<AreasScreen> {
               builder: (context, ref, _) {
                 final areasAsync = ref.watch(areasRepositoryProvider);
                 return areasAsync.when(
+                  skipLoadingOnReload: true,
+              skipError: true,
                   data: (areas) {
                     final flattened = _buildFlattenedTree(areas);
                     // Filter out the currently selected area and its descendants if we are editing
@@ -318,6 +322,8 @@ class _AreasScreenState extends ConsumerState<AreasScreen> {
             const SizedBox(height: 16),
             Expanded(
               child: areasAsync.when(
+                skipLoadingOnReload: true,
+              skipError: true,
                 data: (areas) {
                   if (areas.isEmpty) {
                     return const Center(child: Text('لا يوجد مناطق مسجلة حالياً'));

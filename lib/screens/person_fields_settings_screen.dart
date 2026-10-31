@@ -44,6 +44,8 @@ class _PersonFieldsSettingsScreenState
                 _buildHeader(isMobile),
                 Expanded(
                   child: fieldsAsync.when(
+                    skipLoadingOnReload: true,
+              skipError: true,
                     data: (fields) => _buildFieldsList(fields, isMobile),
                     loading: () =>
                         const Center(child: CircularProgressIndicator()),

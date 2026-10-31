@@ -1,5 +1,6 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:petros_pols_flutter/database/database.dart';
 import 'package:petros_pols_flutter/database/database_provider.dart';
@@ -14,6 +15,8 @@ class _LoggedOutAuthService extends AuthService {
 
 class _ServicesUserAuthService extends AuthService {
   @override
+  Future<void> refreshUser() async {}
+  @override
   Future<User?> build() async => User(
         id: 1,
         username: 'admin',
@@ -23,9 +26,13 @@ class _ServicesUserAuthService extends AuthService {
 
 void main() {
   testWidgets('login renders default and configured Arabic program names', (tester) async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
     await tester.pumpWidget(
       ProviderScope(
+        key: const ValueKey('default-program-name'),
         overrides: [
+          appDatabaseProvider.overrideWithValue(db),
           authServiceProvider.overrideWith(_LoggedOutAuthService.new),
           allUsersProvider.overrideWith((ref) async => []),
           programNameProvider.overrideWith((ref) async => SettingsRepository.defaultProgramName),
@@ -39,7 +46,9 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        key: const ValueKey('configured-program-name'),
         overrides: [
+          appDatabaseProvider.overrideWithValue(db),
           authServiceProvider.overrideWith(_LoggedOutAuthService.new),
           allUsersProvider.overrideWith((ref) async => []),
           programNameProvider.overrideWith((ref) async => 'مدرسة الشمامسة'),

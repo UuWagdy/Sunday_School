@@ -24,6 +24,11 @@ class MultiSelectFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fieldSurface = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF334155) : Colors.grey.shade300;
+    final textMuted = isDark ? const Color(0xFF94A3B8) : Colors.grey.shade500;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -34,7 +39,7 @@ class MultiSelectFilter extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w900,
-              color: Theme.of(context).primaryColor.withOpacity(0.8),
+              color: isDark ? const Color(0xFFCBD5E1) : Theme.of(context).primaryColor.withOpacity(0.8),
             ),
           ),
         ),
@@ -53,12 +58,12 @@ class MultiSelectFilter extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: fieldSurface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
+              border: Border.all(color: borderColor),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),
@@ -70,7 +75,10 @@ class MultiSelectFilter extends StatelessWidget {
                   child: selectedIds.isEmpty
                       ? Text(
                           hintText,
-                          style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                          style: TextStyle(
+                            color: textMuted,
+                            fontSize: 13,
+                          ),
                         )
                       : Wrap(
                           spacing: 4,
@@ -78,31 +86,45 @@ class MultiSelectFilter extends StatelessWidget {
                           children: selectedIds.map((id) {
                             final item = allItems.firstWhere(
                               (it) => it.id == id,
-                              orElse: () => SelectableItem(id: id, name: id.toString()),
+                              orElse: () =>
+                                  SelectableItem(id: id, name: id.toString()),
                             );
                             return Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
-                                color: Theme.of(context).primaryColor.withOpacity(0.1),
+                                color: Theme.of(
+                                  context,
+                                ).primaryColor.withOpacity(isDark ? 0.25 : 0.1),
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.2)),
+                                border: Border.all(
+                                  color: Theme.of(
+                                    context,
+                                  ).primaryColor.withOpacity(isDark ? 0.4 : 0.2),
+                                ),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(
-                                    item.name,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: Theme.of(context).primaryColor,
+                                  Flexible(
+                                    child: Text(
+                                      item.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDark ? const Color(0xFFF8FAFC) : Theme.of(context).primaryColor,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 4),
                                   Icon(
                                     Icons.close,
                                     size: 12,
-                                    color: Theme.of(context).primaryColor,
+                                    color: isDark ? const Color(0xFFF8FAFC) : Theme.of(context).primaryColor,
                                   ),
                                 ],
                               ),
@@ -110,7 +132,11 @@ class MultiSelectFilter extends StatelessWidget {
                           }).toList(),
                         ),
                 ),
-                Icon(Icons.unfold_more_rounded, size: 18, color: Colors.grey.shade400),
+                Icon(
+                  Icons.unfold_more_rounded,
+                  size: 18,
+                  color: isDark ? const Color(0xFF94A3B8) : Colors.grey.shade400,
+                ),
               ],
             ),
           ),
@@ -147,8 +173,15 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textPrimary = isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A);
+    final textMuted = isDark ? const Color(0xFF94A3B8) : Colors.grey.shade400;
+    final searchBg = isDark ? const Color(0xFF1E293B) : Colors.grey.shade100;
+
     final filteredItems = widget.items
-        .where((item) => item.name.toLowerCase().contains(_search.toLowerCase()))
+        .where(
+          (item) => item.name.toLowerCase().contains(_search.toLowerCase()),
+        )
         .toList();
 
     return Directionality(
@@ -158,9 +191,15 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
         titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
         title: Row(
           children: [
-            Icon(Icons.checklist_rounded, color: Theme.of(context).primaryColor),
+            Icon(
+              Icons.checklist_rounded,
+              color: Theme.of(context).primaryColor,
+            ),
             const SizedBox(width: 8),
-            Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w900)),
+            Text(
+              widget.title,
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
           ],
         ),
         contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
@@ -174,7 +213,7 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
                   hintText: 'بحث سريع...',
                   prefixIcon: const Icon(Icons.search_rounded),
                   filled: true,
-                  fillColor: Colors.grey.shade100,
+                  fillColor: searchBg,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                     borderSide: BorderSide.none,
@@ -187,14 +226,23 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
               Row(
                 children: [
                   TextButton.icon(
-                    onPressed: () => setState(() => _selectedIds = widget.items.map((e) => e.id).toList()),
+                    onPressed: () => setState(
+                      () =>
+                          _selectedIds = widget.items.map((e) => e.id).toList(),
+                    ),
                     icon: const Icon(Icons.select_all_rounded, size: 18),
-                    label: const Text('تحديد الكل', style: TextStyle(fontSize: 12)),
+                    label: const Text(
+                      'تحديد الكل',
+                      style: TextStyle(fontSize: 12),
+                    ),
                   ),
                   TextButton.icon(
                     onPressed: () => setState(() => _selectedIds = []),
                     icon: const Icon(Icons.deselect_rounded, size: 18),
-                    label: const Text('إلغاء التحديد', style: TextStyle(fontSize: 12)),
+                    label: const Text(
+                      'إلغاء التحديد',
+                      style: TextStyle(fontSize: 12),
+                    ),
                   ),
                 ],
               ),
@@ -205,15 +253,23 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.search_off_rounded, size: 48, color: Colors.grey.shade300),
+                            Icon(
+                              Icons.search_off_rounded,
+                              size: 48,
+                              color: textMuted,
+                            ),
                             const SizedBox(height: 8),
-                            Text('لا يوجد نتائج', style: TextStyle(color: Colors.grey.shade400)),
+                            Text(
+                              'لا يوجد نتائج',
+                              style: TextStyle(color: textMuted),
+                            ),
                           ],
                         ),
                       )
                     : ListView.separated(
                         itemCount: filteredItems.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           final isSelected = _selectedIds.contains(item.id);
@@ -221,13 +277,19 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
                             title: Text(
                               item.name,
                               style: TextStyle(
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? Theme.of(context).primaryColor : Colors.black87,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isSelected
+                                    ? Theme.of(context).primaryColor
+                                    : textPrimary,
                               ),
                             ),
                             value: isSelected,
                             activeColor: Theme.of(context).primaryColor,
-                            checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                            checkboxShape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
                             onChanged: (val) {
                               setState(() {
                                 if (val == true) {
@@ -252,7 +314,9 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context, _selectedIds),
             style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               padding: const EdgeInsets.symmetric(horizontal: 24),
             ),
             child: const Text('تطبيق الفلاتر'),

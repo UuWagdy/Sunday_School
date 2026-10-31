@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' as drift;
 import '../../database/database_provider.dart';
 import '../../database/database.dart';
+import '../../models/bulk_person_edit.dart';
 import '../../repositories/fields_repository.dart';
 import '../../repositories/settings_repository.dart';
 import '../../widgets/hierarchical_area_picker.dart';
@@ -30,7 +31,7 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
   String? _gender;
   String? _rohot;
   String? _leader;
-  
+
   final TextEditingController _streetC = TextEditingController();
   final TextEditingController _phoneC = TextEditingController();
   final TextEditingController _mobileC = TextEditingController();
@@ -165,7 +166,10 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
                       _buildRow(
                         'father',
                         getLabel('father', 'أب الاعتراف'),
-                        _buildFatherDropdown(db, getLabel('father', 'أب الاعتراف')),
+                        _buildFatherDropdown(
+                          db,
+                          getLabel('father', 'أب الاعتراف'),
+                        ),
                       ),
                       // 5. Gender
                       _buildRow(
@@ -189,7 +193,10 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
                       _buildRow(
                         'services',
                         getLabel('services', 'الخدمات'),
-                        _buildServicesMultiSelect(db, getLabel('services', 'الخدمات')),
+                        _buildServicesMultiSelect(
+                          db,
+                          getLabel('services', 'الخدمات'),
+                        ),
                       ),
                       // 9. Street Address
                       _buildRow(
@@ -225,7 +232,9 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
                           keyboardType: TextInputType.phone,
                           decoration: InputDecoration(
                             labelText: getLabel('mobile', 'موبايل'),
-                            prefixIcon: const Icon(Icons.phone_android_outlined),
+                            prefixIcon: const Icon(
+                              Icons.phone_android_outlined,
+                            ),
                           ),
                         ),
                       ),
@@ -233,7 +242,9 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
                       _buildRow(
                         'birthday',
                         getLabel('birthday', 'تاريخ الميلاد'),
-                        _buildBirthDatePicker(getLabel('birthday', 'تاريخ الميلاد')),
+                        _buildBirthDatePicker(
+                          getLabel('birthday', 'تاريخ الميلاد'),
+                        ),
                       ),
                       const Divider(),
                       // Custom Fields
@@ -250,11 +261,13 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
                         ),
                         ...customFields
                             .where((f) => f.type != 'document')
-                            .map((f) => _buildRow(
-                                  'custom_${f.id}',
-                                  f.name,
-                                  _buildCustomFieldInput(f),
-                                )),
+                            .map(
+                              (f) => _buildRow(
+                                'custom_${f.id}',
+                                f.name,
+                                _buildCustomFieldInput(f),
+                              ),
+                            ),
                       ],
                     ],
                   ),
@@ -297,10 +310,7 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
           Expanded(
             child: Opacity(
               opacity: isEnabled ? 1.0 : 0.5,
-              child: IgnorePointer(
-                ignoring: !isEnabled,
-                child: childWidget,
-              ),
+              child: IgnorePointer(ignoring: !isEnabled, child: childWidget),
             ),
           ),
         ],
@@ -315,10 +325,18 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
         final data = snap.data ?? [];
         return DropdownButtonFormField<int?>(
           value: _stageId,
-          decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.school_outlined)),
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: const Icon(Icons.school_outlined),
+          ),
           items: [
             DropdownMenuItem(value: null, child: Text('اختر $label')),
-            ...data.map((s) => DropdownMenuItem(value: s.stageId, child: Text(s.stageName ?? ''))),
+            ...data.map(
+              (s) => DropdownMenuItem(
+                value: s.stageId,
+                child: Text(s.stageName ?? ''),
+              ),
+            ),
           ],
           onChanged: (v) => setState(() => _stageId = v),
         );
@@ -333,10 +351,18 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
         final data = snap.data ?? [];
         return DropdownButtonFormField<int?>(
           value: _khorosId,
-          decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.library_music_outlined)),
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: const Icon(Icons.library_music_outlined),
+          ),
           items: [
             DropdownMenuItem(value: null, child: Text('اختر $label')),
-            ...data.map((k) => DropdownMenuItem(value: k.khorosId, child: Text(k.khorosName ?? ''))),
+            ...data.map(
+              (k) => DropdownMenuItem(
+                value: k.khorosId,
+                child: Text(k.khorosName ?? ''),
+              ),
+            ),
           ],
           onChanged: (v) => setState(() => _khorosId = v),
         );
@@ -350,7 +376,11 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
       builder: (_, snap) {
         final data = snap.data ?? [];
         if (snap.connectionState == ConnectionState.waiting) {
-          return const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2));
+          return const SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          );
         }
         return HierarchicalAreaPicker(
           allAreas: data,
@@ -369,10 +399,18 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
         final data = snap.data ?? [];
         return DropdownButtonFormField<int?>(
           value: _fatherId,
-          decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.person_pin_outlined)),
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: const Icon(Icons.person_pin_outlined),
+          ),
           items: [
             DropdownMenuItem(value: null, child: Text('اختر $label')),
-            ...data.map((f) => DropdownMenuItem(value: f.fatherId, child: Text(f.fatherName ?? ''))),
+            ...data.map(
+              (f) => DropdownMenuItem(
+                value: f.fatherId,
+                child: Text(f.fatherName ?? ''),
+              ),
+            ),
           ],
           onChanged: (v) => setState(() => _fatherId = v),
         );
@@ -384,7 +422,10 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
     const genders = ['ذكر', 'أنثى'];
     return DropdownButtonFormField<String?>(
       value: _gender,
-      decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.people_outline)),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.people_outline),
+      ),
       items: [
         DropdownMenuItem(value: null, child: Text('اختر $label')),
         ...genders.map((g) => DropdownMenuItem(value: g, child: Text(g))),
@@ -397,10 +438,15 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
     final rohotNames = _rohotLeaderMap.keys.toList();
     return DropdownButtonFormField<String?>(
       value: _rohot,
-      decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.group_outlined)),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.group_outlined),
+      ),
       items: [
         DropdownMenuItem(value: null, child: Text('اختر $label')),
-        ...rohotNames.map((name) => DropdownMenuItem(value: name, child: Text(name))),
+        ...rohotNames.map(
+          (name) => DropdownMenuItem(value: name, child: Text(name)),
+        ),
       ],
       onChanged: (v) {
         setState(() {
@@ -417,10 +463,15 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
   Widget _buildLeaderDropdown(AppDatabase db, String label) {
     return DropdownButtonFormField<String?>(
       value: _leader,
-      decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.person_outline)),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.person_outline),
+      ),
       items: [
         DropdownMenuItem(value: null, child: Text('اختر $label')),
-        ..._leadersList.map((name) => DropdownMenuItem(value: name, child: Text(name))),
+        ..._leadersList.map(
+          (name) => DropdownMenuItem(value: name, child: Text(name)),
+        ),
       ],
       onChanged: (v) => setState(() => _leader = v),
     );
@@ -430,58 +481,116 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
     return FutureBuilder<List<ServiceData>>(
       future: db.select(db.services).get(),
       builder: (_, snap) {
-        final allServices = snap.data ?? [];
-        if (allServices.isEmpty) return const SizedBox.shrink();
-
-        final selectedServices = allServices.where((s) => _selectedServiceIds.contains(s.serviceId)).toList();
-
-        return Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '$label: ${selectedServices.length}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                  TextButton(
-                    onPressed: () async {
-                      final result = await showDialog<List<int>>(
-                        context: context,
-                        builder: (context) => _ServicesSelectionDialog(
-                          allServices: allServices,
-                          initialSelectedIds: _selectedServiceIds,
-                        ),
-                      );
-                      if (result != null) {
-                        setState(() {
-                          _selectedServiceIds = result;
-                        });
-                      }
-                    },
-                    child: const Text('تعديل الخدمات', style: TextStyle(fontSize: 12)),
-                  ),
-                ],
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            height: 48,
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
-              if (selectedServices.isNotEmpty)
-                Wrap(
-                  spacing: 4,
-                  children: selectedServices
-                      .map((s) => Chip(
-                            label: Text(s.serviceName ?? '', style: const TextStyle(fontSize: 11)),
-                            visualDensity: VisualDensity.compact,
-                          ))
-                      .toList(),
+            ),
+          );
+        }
+        final allServices = snap.data ?? [];
+        if (allServices.isEmpty) {
+          return const Text('لا توجد خدمات مسجلة في النظام');
+        }
+
+        final selectedServices = allServices
+            .where((s) => _selectedServiceIds.contains(s.serviceId))
+            .toList();
+
+        return InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () async {
+            setState(() => _enabled['services'] = true);
+            final result = await showDialog<List<int>>(
+              context: context,
+              builder: (context) => _ServicesSelectionDialog(
+                allServices: allServices,
+                initialSelectedIds: _selectedServiceIds,
+              ),
+            );
+            if (result != null) {
+              setState(() {
+                _selectedServiceIds = result;
+                _enabled['services'] = true;
+              });
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '$label: ${selectedServices.length}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                    TextButton.icon(
+                      icon: const Icon(Icons.edit, size: 14),
+                      label: const Text(
+                        'تعديل الخدمات',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      onPressed: () async {
+                        setState(() => _enabled['services'] = true);
+                        final result = await showDialog<List<int>>(
+                          context: context,
+                          builder: (context) => _ServicesSelectionDialog(
+                            allServices: allServices,
+                            initialSelectedIds: _selectedServiceIds,
+                          ),
+                        );
+                        if (result != null) {
+                          setState(() {
+                            _selectedServiceIds = result;
+                            _enabled['services'] = true;
+                          });
+                        }
+                      },
+                    ),
+                  ],
                 ),
-            ],
+                if (selectedServices.isNotEmpty)
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: selectedServices
+                        .map(
+                          (s) => Chip(
+                            label: Text(
+                              s.serviceName ?? '',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        )
+                        .toList(),
+                  )
+                else
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 4.0),
+                    child: Text(
+                      'اضغط هنا لاختيار الخدمات المراد ربط الأشخاص بها',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ),
+              ],
+            ),
           ),
         );
       },
@@ -495,7 +604,10 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
           child: TextFormField(
             controller: _dayC_birth,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'اليوم', hintText: 'DD'),
+            decoration: const InputDecoration(
+              labelText: 'اليوم',
+              hintText: 'DD',
+            ),
           ),
         ),
         const SizedBox(width: 8),
@@ -503,7 +615,10 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
           child: TextFormField(
             controller: _monthC_birth,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'الشهر', hintText: 'MM'),
+            decoration: const InputDecoration(
+              labelText: 'الشهر',
+              hintText: 'MM',
+            ),
           ),
         ),
         const SizedBox(width: 8),
@@ -511,7 +626,10 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
           child: TextFormField(
             controller: _yearC_birth,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'السنة', hintText: 'YYYY'),
+            decoration: const InputDecoration(
+              labelText: 'السنة',
+              hintText: 'YYYY',
+            ),
           ),
         ),
       ],
@@ -523,25 +641,43 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
       case 'text':
         return TextFormField(
           initialValue: _customValues[f.id],
-          decoration: InputDecoration(labelText: f.name, prefixIcon: const Icon(Icons.edit_note)),
+          decoration: InputDecoration(
+            labelText: f.name,
+            prefixIcon: const Icon(Icons.edit_note),
+          ),
           onChanged: (v) => _customValues[f.id] = v,
         );
       case 'dropdown':
         return DropdownButtonFormField<String>(
-          value: _customValues[f.id]?.isNotEmpty == true ? _customValues[f.id] : null,
-          decoration: InputDecoration(labelText: f.name, prefixIcon: const Icon(Icons.list)),
+          value: _customValues[f.id]?.isNotEmpty == true
+              ? _customValues[f.id]
+              : null,
+          decoration: InputDecoration(
+            labelText: f.name,
+            prefixIcon: const Icon(Icons.list),
+          ),
           items: [
             DropdownMenuItem(value: null, child: Text('اختر ${f.name}')),
-            ...f.options.map((opt) => DropdownMenuItem(value: opt, child: Text(opt))),
+            ...f.options.map(
+              (opt) => DropdownMenuItem(value: opt, child: Text(opt)),
+            ),
           ],
           onChanged: (v) => setState(() => _customValues[f.id] = v ?? ''),
         );
       case 'multi_select':
-        final currentVals = _customValues[f.id]?.split(',').where((e) => e.isNotEmpty).toList() ?? [];
+        final currentVals =
+            _customValues[f.id]
+                ?.split(',')
+                .where((e) => e.isNotEmpty)
+                .toList() ??
+            [];
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(f.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            Text(
+              f.name,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            ),
             const SizedBox(height: 4),
             Wrap(
               spacing: 4,
@@ -575,7 +711,8 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
           subtitle: Text(isChecked ? trueLabel : falseLabel),
           value: isChecked,
           contentPadding: EdgeInsets.zero,
-          onChanged: (v) => setState(() => _customValues[f.id] = (v ?? false).toString()),
+          onChanged: (v) =>
+              setState(() => _customValues[f.id] = (v ?? false).toString()),
         );
       default:
         return const SizedBox.shrink();
@@ -594,7 +731,9 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
 
       if (dayStr.isEmpty || monthStr.isEmpty || yearStr.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('الرجاء إدخال تاريخ ميلاد كامل (يوم، شهر، سنة)')),
+          const SnackBar(
+            content: Text('الرجاء إدخال تاريخ ميلاد كامل (يوم، شهر، سنة)'),
+          ),
         );
         return;
       }
@@ -615,7 +754,11 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
 
     // Construct custom values payload
     Map<int, String>? customValuesPayload;
-    final enabledCustomFields = fields.where((f) => f.type != 'document' && _enabled['custom_${f.id}'] == true).toList();
+    final enabledCustomFields = fields
+        .where(
+          (f) => f.type != 'document' && _enabled['custom_${f.id}'] == true,
+        )
+        .toList();
     if (enabledCustomFields.isNotEmpty) {
       customValuesPayload = {};
       for (final f in enabledCustomFields) {
@@ -623,23 +766,54 @@ class _BulkEditDialogState extends ConsumerState<BulkEditDialog> {
       }
     }
 
-    Navigator.pop(context, {
-      'stageId': _enabled['stage'] == true ? drift.Value(_stageId) : const drift.Value.absent(),
-      'khorosId': _enabled['khoros'] == true ? drift.Value(_khorosId) : const drift.Value.absent(),
-      'areaId': _enabled['area'] == true ? drift.Value(_areaId) : const drift.Value.absent(),
-      'fatherId': _enabled['father'] == true ? drift.Value(_fatherId) : const drift.Value.absent(),
-      'streetName': _enabled['street'] == true ? drift.Value(_streetC.text.trim()) : const drift.Value.absent(),
-      'phone': _enabled['phone'] == true ? drift.Value(_phoneC.text.trim()) : const drift.Value.absent(),
-      'mobile': _enabled['mobile'] == true ? drift.Value(_mobileC.text.trim()) : const drift.Value.absent(),
-      'day': _enabled['birthday'] == true ? drift.Value(day) : const drift.Value.absent(),
-      'month': _enabled['birthday'] == true ? drift.Value(month) : const drift.Value.absent(),
-      'year': _enabled['birthday'] == true ? drift.Value(year) : const drift.Value.absent(),
-      'jenderName': _enabled['gender'] == true ? drift.Value(_gender) : const drift.Value.absent(),
-      'rohot': _enabled['rohot'] == true ? drift.Value(_rohot) : const drift.Value.absent(),
-      'leader': _enabled['leader'] == true ? drift.Value(_leader) : const drift.Value.absent(),
-      'serviceIds': _enabled['services'] == true ? _selectedServiceIds : null,
-      'customValues': customValuesPayload,
-    });
+    Navigator.pop(
+      context,
+      BulkPersonEdit(
+        stageId: _enabled['stage'] == true
+            ? drift.Value(_stageId)
+            : const drift.Value.absent(),
+        khorosId: _enabled['khoros'] == true
+            ? drift.Value(_khorosId)
+            : const drift.Value.absent(),
+        areaId: _enabled['area'] == true
+            ? drift.Value(_areaId)
+            : const drift.Value.absent(),
+        fatherId: _enabled['father'] == true
+            ? drift.Value(_fatherId)
+            : const drift.Value.absent(),
+        streetName: _enabled['street'] == true
+            ? drift.Value(_streetC.text.trim())
+            : const drift.Value.absent(),
+        phone: _enabled['phone'] == true
+            ? drift.Value(_phoneC.text.trim())
+            : const drift.Value.absent(),
+        mobile: _enabled['mobile'] == true
+            ? drift.Value(_mobileC.text.trim())
+            : const drift.Value.absent(),
+        day: _enabled['birthday'] == true
+            ? drift.Value(day)
+            : const drift.Value.absent(),
+        month: _enabled['birthday'] == true
+            ? drift.Value(month)
+            : const drift.Value.absent(),
+        year: _enabled['birthday'] == true
+            ? drift.Value(year)
+            : const drift.Value.absent(),
+        jenderName: _enabled['gender'] == true
+            ? drift.Value(_gender)
+            : const drift.Value.absent(),
+        rohot: _enabled['rohot'] == true
+            ? drift.Value(_rohot)
+            : const drift.Value.absent(),
+        leader: _enabled['leader'] == true
+            ? drift.Value(_leader)
+            : const drift.Value.absent(),
+        serviceIds: _enabled['services'] == true
+            ? List<int>.unmodifiable(_selectedServiceIds)
+            : null,
+        customValues: customValuesPayload,
+      ),
+    );
   }
 }
 
@@ -653,7 +827,8 @@ class _ServicesSelectionDialog extends StatefulWidget {
   });
 
   @override
-  State<_ServicesSelectionDialog> createState() => _ServicesSelectionDialogState();
+  State<_ServicesSelectionDialog> createState() =>
+      _ServicesSelectionDialogState();
 }
 
 class _ServicesSelectionDialogState extends State<_ServicesSelectionDialog> {
@@ -686,7 +861,10 @@ class _ServicesSelectionDialogState extends State<_ServicesSelectionDialog> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(Icons.group_work_outlined, color: Theme.of(context).primaryColor),
+            Icon(
+              Icons.group_work_outlined,
+              color: Theme.of(context).primaryColor,
+            ),
             const SizedBox(width: 8),
             const Text(
               'اختيار الخدمات',

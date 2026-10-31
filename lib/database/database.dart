@@ -8,6 +8,8 @@ import 'package:path/path.dart' as p;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:file_picker/file_picker.dart';
 import 'tables.dart';
+import 'visibility_interceptor.dart';
+import '../models/data_visibility_scope.dart';
 
 part 'database.g.dart';
 
@@ -39,14 +41,20 @@ part 'database.g.dart';
     PersonCustomFieldValues,
     PersonDocuments,
     FamilyRelationships,
+    BusDrivers,
+    BusAssignments,
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
-  AppDatabase.forTesting(QueryExecutor executor) : super(executor);
+  AppDatabase() : this._scoped(_openConnection(), VisibilityContext());
+  AppDatabase.forTesting(QueryExecutor executor) : this._scoped(executor, VisibilityContext());
+  AppDatabase._scoped(QueryExecutor executor, this.visibilityContext)
+      : super(executor.interceptWith(VisibilityInterceptor(visibilityContext)));
+  final VisibilityContext visibilityContext;
+  void setVisibilityScope(DataVisibilityScope scope) => visibilityContext.scope = scope;
 
   @override
-  int get schemaVersion => 39;
+  int get schemaVersion => 40;
 
   Future<void> _createTableSafely(Migrator m, TableInfo table) async {
     try {
@@ -181,6 +189,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 39) {
         await _addColumnSafely(m, services, services.checkColor as GeneratedColumn);
       }
+      if (from < 40) {
+        await _ensureBusTablesExist();
+        await _ensureComingNotesColumns();
+      }
       // Repair phase: Fix any null IDs that might cause crashes during mapping
       await _repairBrokenIds();
     },
@@ -196,6 +208,8 @@ class AppDatabase extends _$AppDatabase {
       await consolidateImportedGuardianPhoneFields();
       await _ensureAttendancePointColumns();
       await _ensureVisitationTablesExist();
+      await _ensureBusTablesExist();
+      await _ensureComingNotesColumns();
       await _ensureAdminExtendedPermissions();
       await _ensureColumnExists(
         tableName: 'Services',
@@ -207,6 +221,7 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> _ensureAttendancePointColumns() async {
     final columns = await customSelect('PRAGMA table_info("Coming")').get();
+    if (columns.isEmpty) return;
     final names = columns
         .map((row) => (row.data['name'] as String).toLowerCase())
         .toSet();
@@ -392,6 +407,48 @@ class AppDatabase extends _$AppDatabase {
     ''');
   }
 
+  Future<void> _ensureBusTablesExist() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS "Bus_Drivers" (
+        "ID" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "Name" TEXT NOT NULL,
+        "Phone" TEXT NULL,
+        "Bus_Number" TEXT NULL,
+        "Notes" TEXT NULL,
+        "Created_At" INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+      );
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS "Bus_Assignments" (
+        "ID" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "Driver_ID" INTEGER NOT NULL,
+        "Person_ID" INTEGER NOT NULL UNIQUE,
+        "Notes" TEXT NULL,
+        "Created_At" INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        FOREIGN KEY ("Driver_ID") REFERENCES "Bus_Drivers" ("ID") ON DELETE CASCADE,
+        FOREIGN KEY ("Person_ID") REFERENCES "Persons" ("Person_ID") ON DELETE CASCADE
+      );
+    ''');
+  }
+
+  Future<void> _ensureComingNotesColumns() async {
+    await _ensureColumnExists(
+      tableName: 'Coming',
+      columnName: 'Attendance_Notes',
+      definition: 'TEXT NULL',
+    );
+    await _ensureColumnExists(
+      tableName: 'Coming',
+      columnName: 'Checkout_Notes',
+      definition: 'TEXT NULL',
+    );
+    await _ensureColumnExists(
+      tableName: 'Coming',
+      columnName: 'Checkout_Type',
+      definition: 'TEXT NULL',
+    );
+  }
+
   Future<void> _ensureCustomFieldDefinitionTableExists() async {
     await customStatement('''
       CREATE TABLE IF NOT EXISTS "custom_field_definitions" (
@@ -419,6 +476,7 @@ class AppDatabase extends _$AppDatabase {
     required String definition,
   }) async {
     final columns = await customSelect('PRAGMA table_info("$tableName")').get();
+    if (columns.isEmpty) return;
     final exists = columns.any(
       (row) =>
           (row.data['name'] as String?)?.toLowerCase() ==
@@ -827,13 +885,72 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
+/// Returns the directory where the SQLite database is stored.
+/// On Desktop (Windows/Linux/macOS), stores the database inside a `database/` folder
+/// within the application executable folder (portable / self-contained) so that formatting
+/// or reinstalling Windows does not wipe the database.
+///
+/// If running on Windows and `<exeDir>/database/` has no database yet, but a legacy
+/// database exists in `C:\Users\<user>\Documents`, it automatically migrates the database
+/// and pointer file so existing users lose zero data!
+Future<Directory> getAppDatabaseDirectory() async {
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    try {
+      final exeDir = File(Platform.resolvedExecutable).parent;
+      final appDbDir = Directory(p.join(exeDir.path, 'database'));
+      if (!appDbDir.existsSync()) {
+        appDbDir.createSync(recursive: true);
+      }
+
+      // Verify write permission
+      final testFile = File(p.join(appDbDir.path, '.write_test'));
+      testFile.writeAsStringSync('test');
+      testFile.deleteSync();
+
+      // Check for legacy migration from Documents
+      try {
+        final legacyDir = await getApplicationDocumentsDirectory();
+        final legacyPointer = File(p.join(legacyDir.path, 'current_db.txt'));
+        String legacyDbName = 'Betros_Bols.db';
+        if (legacyPointer.existsSync()) {
+          legacyDbName = legacyPointer.readAsStringSync().trim();
+        }
+
+        final legacyDbFile = File(p.join(legacyDir.path, legacyDbName));
+        final targetDbFile = File(p.join(appDbDir.path, legacyDbName));
+
+        // If app directory doesn't have the database yet, but legacy Documents does:
+        if (!targetDbFile.existsSync() && legacyDbFile.existsSync()) {
+          print('FLUTTER DB MIGRATION: Copying legacy database from ${legacyDbFile.path} to ${targetDbFile.path}');
+          legacyDbFile.copySync(targetDbFile.path);
+
+          if (legacyPointer.existsSync()) {
+            final targetPointer = File(p.join(appDbDir.path, 'current_db.txt'));
+            legacyPointer.copySync(targetPointer.path);
+          }
+          print('FLUTTER DB MIGRATION: Legacy database migrated successfully.');
+        }
+      } catch (migErr) {
+        print('FLUTTER DB MIGRATION WARNING: $migErr');
+      }
+
+      return appDbDir;
+    } catch (e) {
+      print('FLUTTER DB WARNING: Cannot use executable directory for DB ($e). Falling back to Documents.');
+    }
+  }
+
+  // Fallback for mobile / permission restricted environments
+  return await getApplicationDocumentsDirectory();
+}
+
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
-    final dbFolder = await getApplicationDocumentsDirectory();
+    final dbFolder = await getAppDatabaseDirectory();
     final pointerFile = File(p.join(dbFolder.path, 'current_db.txt'));
     String dbName = 'Betros_Bols.db';
     if (pointerFile.existsSync()) {
-      dbName = pointerFile.readAsStringSync();
+      dbName = pointerFile.readAsStringSync().trim();
     }
 
     final file = File(p.join(dbFolder.path, dbName));

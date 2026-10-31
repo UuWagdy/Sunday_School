@@ -6,6 +6,8 @@ import '../../utils/storyteller.dart';
 import '../../database/database_provider.dart';
 import '../../models/person_option.dart';
 import '../../repositories/services_repository.dart';
+import '../../sync/data_change_domains.dart';
+import '../../sync/data_change_coordinator.dart';
 
 class _PersonData {
   final int? id;
@@ -13,17 +15,25 @@ class _PersonData {
   final int? stageId;
   final int? areaId;
   final String? gender;
-  _PersonData({this.id, required this.name, this.stageId, this.areaId, this.gender});
+  _PersonData({
+    this.id,
+    required this.name,
+    this.stageId,
+    this.areaId,
+    this.gender,
+  });
 }
 
 class IndividualAttendanceWidget extends ConsumerStatefulWidget {
   const IndividualAttendanceWidget({super.key});
 
   @override
-  ConsumerState<IndividualAttendanceWidget> createState() => _IndividualAttendanceWidgetState();
+  ConsumerState<IndividualAttendanceWidget> createState() =>
+      _IndividualAttendanceWidgetState();
 }
 
-class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanceWidget> {
+class _IndividualAttendanceWidgetState
+    extends ConsumerState<IndividualAttendanceWidget> {
   final Set<PersonOption> _selectedPersons = {};
   String _groupBy = 'month';
   int? _selectedYear;
@@ -45,19 +55,39 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
     _loadPersons();
   }
 
-  Future<void> _loadPersons() async {
+  Future<void> _loadPersons({bool isSilent = false}) async {
     try {
+      if (!isSilent && mounted) setState(() => _isLoadingPersons = true);
       final db = ref.read(appDatabaseProvider);
-      final persons = await db.select(db.persons).get();
+      final persons =
+          (await (db.selectOnly(db.persons)..addColumns([
+                    db.persons.personId,
+                    db.persons.personName,
+                    db.persons.stageId,
+                    db.persons.areaId,
+                    db.persons.jenderName,
+                  ]))
+                  .get())
+              .map(
+                (row) => db.persons.map(
+                  row.rawData.data,
+                  tablePrefix: db.persons.aliasedName,
+                ),
+              )
+              .toList();
       if (mounted) {
         setState(() {
-          _allPersons = persons.map((p) => _PersonData(
-            id: p.personId,
-            name: p.personName ?? '',
-            stageId: p.stageId,
-            areaId: p.areaId,
-            gender: p.jenderName,
-          )).toList();
+          _allPersons = persons
+              .map(
+                (p) => _PersonData(
+                  id: p.personId,
+                  name: p.personName ?? '',
+                  stageId: p.stageId,
+                  areaId: p.areaId,
+                  gender: p.jenderName,
+                ),
+              )
+              .toList();
           _isLoadingPersons = false;
         });
       }
@@ -73,6 +103,13 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(domainRevisionProvider(DataDomain.people), (prev, next) {
+      if (prev != null && prev != next) {
+        _loadPersons(isSilent: true);
+      }
+    });
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
       elevation: 8,
       shadowColor: Colors.black12,
@@ -80,79 +117,270 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Colors.white, Colors.grey.shade50],
+          color: isDark ? const Color(0xFF151E2E) : null,
+          gradient: isDark
+              ? null
+              : LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Colors.white, Colors.grey.shade50],
+                ),
+          border: Border.all(
+            color: isDark ? const Color(0xFF334155) : Colors.transparent,
           ),
         ),
-        padding: EdgeInsets.all(MediaQuery.of(context).size.width < 600 ? 14 : 24.0),
+        padding: EdgeInsets.all(
+          MediaQuery.of(context).size.width < 600 ? 14 : 24.0,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header section
-            Builder(builder: (context) {
-              final isMobile = MediaQuery.of(context).size.width < 600;
-              if (isMobile) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            Builder(
+              builder: (context) {
+                final isMobile = MediaQuery.of(context).size.width < 600;
+                if (isMobile) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).primaryColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.person_pin,
+                              color: Theme.of(context).primaryColor,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'الحضور الخاص (فردي)',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (_groupBy == 'month' || _groupBy == 'day')
+                            _buildBetterDropdown<int?>(
+                              value: _selectedYear,
+                              hint: 'السنة',
+                              items: [
+                                const DropdownMenuItem(
+                                  value: null,
+                                  child: Text('كل السنوات'),
+                                ),
+                                ...List.generate(10, (i) {
+                                  int y = DateTime.now().year - i;
+                                  return DropdownMenuItem(
+                                    value: y,
+                                    child: Text(y.toString()),
+                                  );
+                                }),
+                              ],
+                              onChanged: (val) =>
+                                  setState(() => _selectedYear = val),
+                            ),
+                          if (_groupBy == 'day')
+                            _buildBetterDropdown<int?>(
+                              value: _selectedMonth,
+                              hint: 'الشهر',
+                              items: [
+                                const DropdownMenuItem(
+                                  value: null,
+                                  child: Text('كل الشهور'),
+                                ),
+                                ...List.generate(
+                                  12,
+                                  (i) => DropdownMenuItem(
+                                    value: i + 1,
+                                    child: Text('شهر ${i + 1}'),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (val) =>
+                                  setState(() => _selectedMonth = val),
+                            ),
+                          _buildBetterDropdown<String>(
+                            value: _groupBy,
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'day',
+                                child: Text('باليوم'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'month',
+                                child: Text('بالشهر'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'year',
+                                child: Text('بالسنة'),
+                              ),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) setState(() => _groupBy = val);
+                            },
+                          ),
+                          _buildBetterDropdown<int?>(
+                            value: _selectedServiceId,
+                            hint: 'الخدمة',
+                            items: [
+                              const DropdownMenuItem(
+                                value: null,
+                                child: Text('كل الخدمات'),
+                              ),
+                              ...ref
+                                  .watch(servicesRepositoryProvider)
+                                  .maybeWhen(
+                                    data: (services) => services
+                                        .map(
+                                          (s) => DropdownMenuItem(
+                                            value: s.id,
+                                            child: Text(s.name),
+                                          ),
+                                        )
+                                        .toList(),
+                                    orElse: () => [],
+                                  ),
+                            ],
+                            onChanged: (val) =>
+                                setState(() => _selectedServiceId = val),
+                          ),
+                          _buildBetterDropdown<String?>(
+                            value: _selectedStatus,
+                            hint: 'الحالة',
+                            items: const [
+                              DropdownMenuItem(
+                                value: null,
+                                child: Text('الكل'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'present',
+                                child: Text('الحاضرين'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'checked_out',
+                                child: Text('المنصرفين'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'complete',
+                                child: Text('حضور كامل'),
+                              ),
+                            ],
+                            onChanged: (val) =>
+                                setState(() => _selectedStatus = val),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                }
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).primaryColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
+                            color: Theme.of(
+                              context,
+                            ).primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                          child: Icon(Icons.person_pin, color: Theme.of(context).primaryColor, size: 22),
+                          child: Icon(
+                            Icons.person_pin,
+                            color: Theme.of(context).primaryColor,
+                            size: 28,
+                          ),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'الحضور الخاص (فردي)',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
-                            ),
-                          ),
+                        const SizedBox(width: 16),
+                        Text(
+                          'الحضور الخاص (فردي)',
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -1,
+                                fontSize: 22,
+                              ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                      spacing: 12,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         if (_groupBy == 'month' || _groupBy == 'day')
                           _buildBetterDropdown<int?>(
                             value: _selectedYear,
                             hint: 'السنة',
                             items: [
-                              const DropdownMenuItem(value: null, child: Text('كل السنوات')),
+                              const DropdownMenuItem(
+                                value: null,
+                                child: Text('كل السنوات'),
+                              ),
                               ...List.generate(10, (i) {
                                 int y = DateTime.now().year - i;
-                                return DropdownMenuItem(value: y, child: Text(y.toString()));
+                                return DropdownMenuItem(
+                                  value: y,
+                                  child: Text(y.toString()),
+                                );
                               }),
                             ],
-                            onChanged: (val) => setState(() => _selectedYear = val),
+                            onChanged: (val) =>
+                                setState(() => _selectedYear = val),
                           ),
                         if (_groupBy == 'day')
                           _buildBetterDropdown<int?>(
                             value: _selectedMonth,
                             hint: 'الشهر',
                             items: [
-                              const DropdownMenuItem(value: null, child: Text('كل الشهور')),
-                              ...List.generate(12, (i) => DropdownMenuItem(value: i + 1, child: Text('شهر ${i + 1}'))),
+                              const DropdownMenuItem(
+                                value: null,
+                                child: Text('كل الشهور'),
+                              ),
+                              ...List.generate(
+                                12,
+                                (i) => DropdownMenuItem(
+                                  value: i + 1,
+                                  child: Text('شهر ${i + 1}'),
+                                ),
+                              ),
                             ],
-                            onChanged: (val) => setState(() => _selectedMonth = val),
+                            onChanged: (val) =>
+                                setState(() => _selectedMonth = val),
                           ),
                         _buildBetterDropdown<String>(
                           value: _groupBy,
                           items: const [
-                            DropdownMenuItem(value: 'day', child: Text('باليوم')),
-                            DropdownMenuItem(value: 'month', child: Text('بالشهر')),
-                            DropdownMenuItem(value: 'year', child: Text('بالسنة')),
+                            DropdownMenuItem(
+                              value: 'day',
+                              child: Text('باليوم'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'month',
+                              child: Text('بالشهر'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'year',
+                              child: Text('بالسنة'),
+                            ),
                           ],
                           onChanged: (val) {
                             if (val != null) setState(() => _groupBy = val);
@@ -162,241 +390,224 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
                           value: _selectedServiceId,
                           hint: 'الخدمة',
                           items: [
-                            const DropdownMenuItem(value: null, child: Text('كل الخدمات')),
-                            ...ref.watch(servicesRepositoryProvider).maybeWhen(
-                              data: (services) => services.map((s) => DropdownMenuItem(
-                                value: s.id,
-                                child: Text(s.name),
-                              )).toList(),
-                              orElse: () => [],
+                            const DropdownMenuItem(
+                              value: null,
+                              child: Text('كل الخدمات'),
                             ),
+                            ...ref
+                                .watch(servicesRepositoryProvider)
+                                .maybeWhen(
+                                  data: (services) => services
+                                      .map(
+                                        (s) => DropdownMenuItem(
+                                          value: s.id,
+                                          child: Text(s.name),
+                                        ),
+                                      )
+                                      .toList(),
+                                  orElse: () => [],
+                                ),
                           ],
-                          onChanged: (val) => setState(() => _selectedServiceId = val),
+                          onChanged: (val) =>
+                              setState(() => _selectedServiceId = val),
                         ),
                         _buildBetterDropdown<String?>(
                           value: _selectedStatus,
                           hint: 'الحالة',
                           items: const [
                             DropdownMenuItem(value: null, child: Text('الكل')),
-                            DropdownMenuItem(value: 'present', child: Text('الحاضرين')),
-                            DropdownMenuItem(value: 'checked_out', child: Text('المنصرفين')),
-                            DropdownMenuItem(value: 'complete', child: Text('حضور كامل')),
+                            DropdownMenuItem(
+                              value: 'present',
+                              child: Text('الحاضرين'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'checked_out',
+                              child: Text('المنصرفين'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'complete',
+                              child: Text('حضور كامل'),
+                            ),
                           ],
-                          onChanged: (val) => setState(() => _selectedStatus = val),
+                          onChanged: (val) =>
+                              setState(() => _selectedStatus = val),
                         ),
                       ],
                     ),
                   ],
                 );
-              }
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).primaryColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Icon(Icons.person_pin, color: Theme.of(context).primaryColor, size: 28),
-                      ),
-                      const SizedBox(width: 16),
-                      Text(
-                        'الحضور الخاص (فردي)', 
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w900, 
-                          letterSpacing: -1,
-                          fontSize: 22,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Wrap(
-                    spacing: 12,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (_groupBy == 'month' || _groupBy == 'day')
-                        _buildBetterDropdown<int?>(
-                          value: _selectedYear,
-                          hint: 'السنة',
-                          items: [
-                            const DropdownMenuItem(value: null, child: Text('كل السنوات')),
-                            ...List.generate(10, (i) {
-                              int y = DateTime.now().year - i;
-                              return DropdownMenuItem(value: y, child: Text(y.toString()));
-                            }),
-                          ],
-                          onChanged: (val) => setState(() => _selectedYear = val),
-                        ),
-                      if (_groupBy == 'day')
-                        _buildBetterDropdown<int?>(
-                          value: _selectedMonth,
-                          hint: 'الشهر',
-                          items: [
-                            const DropdownMenuItem(value: null, child: Text('كل الشهور')),
-                            ...List.generate(12, (i) => DropdownMenuItem(value: i + 1, child: Text('شهر ${i + 1}'))),
-                          ],
-                          onChanged: (val) => setState(() => _selectedMonth = val),
-                        ),
-                      _buildBetterDropdown<String>(
-                        value: _groupBy,
-                        items: const [
-                          DropdownMenuItem(value: 'day', child: Text('باليوم')),
-                          DropdownMenuItem(value: 'month', child: Text('بالشهر')),
-                          DropdownMenuItem(value: 'year', child: Text('بالسنة')),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) setState(() => _groupBy = val);
-                        },
-                      ),
-                      _buildBetterDropdown<int?>(
-                        value: _selectedServiceId,
-                        hint: 'الخدمة',
-                        items: [
-                          const DropdownMenuItem(value: null, child: Text('كل الخدمات')),
-                          ...ref.watch(servicesRepositoryProvider).maybeWhen(
-                            data: (services) => services.map((s) => DropdownMenuItem(
-                              value: s.id,
-                              child: Text(s.name),
-                            )).toList(),
-                            orElse: () => [],
-                          ),
-                        ],
-                        onChanged: (val) => setState(() => _selectedServiceId = val),
-                      ),
-                      _buildBetterDropdown<String?>(
-                        value: _selectedStatus,
-                        hint: 'الحالة',
-                        items: const [
-                          DropdownMenuItem(value: null, child: Text('الكل')),
-                          DropdownMenuItem(value: 'present', child: Text('الحاضرين')),
-                          DropdownMenuItem(value: 'checked_out', child: Text('المنصرفين')),
-                          DropdownMenuItem(value: 'complete', child: Text('حضور كامل')),
-                        ],
-                        onChanged: (val) => setState(() => _selectedStatus = val),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            }),
+              },
+            ),
             const SizedBox(height: 24),
-            Builder(builder: (context) {
-              final isMobile = MediaQuery.of(context).size.width < 600;
-              if (isMobile) {
-                return Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+            Builder(
+              builder: (context) {
+                final isMobile = MediaQuery.of(context).size.width < 600;
+                if (isMobile) {
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: FutureBuilder(
+                          future: ref
+                              .read(appDatabaseProvider)
+                              .select(ref.read(appDatabaseProvider).stages)
+                              .get(),
+                          builder: (context, snapshot) {
+                            final stages = snapshot.data ?? [];
+                            return _buildBetterDropdown<int?>(
+                              value: _selectedStageId,
+                              hint: 'المرحلة',
+                              items: [
+                                const DropdownMenuItem(
+                                  value: null,
+                                  child: Text('كل المراحل'),
+                                ),
+                                ...stages.map(
+                                  (s) => DropdownMenuItem(
+                                    value: s.stageId,
+                                    child: Text(s.stageName ?? ''),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (val) =>
+                                  setState(() => _selectedStageId = val),
+                            );
+                          },
+                        ),
+                      ),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FutureBuilder(
+                          future: ref
+                              .read(appDatabaseProvider)
+                              .select(ref.read(appDatabaseProvider).areas)
+                              .get(),
+                          builder: (context, snapshot) {
+                            final areas = snapshot.data ?? [];
+                            return _buildBetterDropdown<int?>(
+                              value: _selectedAreaId,
+                              hint: 'المنطقة',
+                              items: [
+                                const DropdownMenuItem(
+                                  value: null,
+                                  child: Text('كل المناطق'),
+                                ),
+                                ...areas.map(
+                                  (a) => DropdownMenuItem(
+                                    value: a.areaId,
+                                    child: Text(a.areaName ?? ''),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (val) =>
+                                  setState(() => _selectedAreaId = val),
+                            );
+                          },
+                        ),
+                      ),
+                      SizedBox(
+                        width: double.infinity,
+                        child: _buildBetterDropdown<String?>(
+                          value: _selectedGender,
+                          hint: 'النوع',
+                          items: const [
+                            DropdownMenuItem(value: null, child: Text('الكل')),
+                            DropdownMenuItem(value: 'ذكر', child: Text('ذكر')),
+                            DropdownMenuItem(
+                              value: 'أنثى',
+                              child: Text('أنثى'),
+                            ),
+                          ],
+                          onChanged: (val) =>
+                              setState(() => _selectedGender = val),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return Row(
                   children: [
-                    SizedBox(
-                      width: double.infinity,
+                    Expanded(
                       child: FutureBuilder(
-                        future: ref.read(appDatabaseProvider).select(ref.read(appDatabaseProvider).stages).get(),
+                        future: ref
+                            .read(appDatabaseProvider)
+                            .select(ref.read(appDatabaseProvider).stages)
+                            .get(),
                         builder: (context, snapshot) {
                           final stages = snapshot.data ?? [];
                           return _buildBetterDropdown<int?>(
                             value: _selectedStageId,
-                            hint: 'المرحلة',
+                            hint: 'تصفية بالمرحلة',
+                            width: 130,
                             items: [
-                              const DropdownMenuItem(value: null, child: Text('كل المراحل')),
-                              ...stages.map((s) => DropdownMenuItem(value: s.stageId, child: Text(s.stageName ?? ''))),
+                              const DropdownMenuItem(
+                                value: null,
+                                child: Text('كل المراحل'),
+                              ),
+                              ...stages.map(
+                                (s) => DropdownMenuItem(
+                                  value: s.stageId,
+                                  child: Text(s.stageName ?? ''),
+                                ),
+                              ),
                             ],
-                            onChanged: (val) => setState(() => _selectedStageId = val),
+                            onChanged: (val) =>
+                                setState(() => _selectedStageId = val),
                           );
                         },
                       ),
                     ),
-                    SizedBox(
-                      width: double.infinity,
+                    const SizedBox(width: 12),
+                    Expanded(
                       child: FutureBuilder(
-                        future: ref.read(appDatabaseProvider).select(ref.read(appDatabaseProvider).areas).get(),
+                        future: ref
+                            .read(appDatabaseProvider)
+                            .select(ref.read(appDatabaseProvider).areas)
+                            .get(),
                         builder: (context, snapshot) {
                           final areas = snapshot.data ?? [];
                           return _buildBetterDropdown<int?>(
                             value: _selectedAreaId,
-                            hint: 'المنطقة',
+                            hint: 'تصفية بالمنطقة',
+                            width: 130,
                             items: [
-                              const DropdownMenuItem(value: null, child: Text('كل المناطق')),
-                              ...areas.map((a) => DropdownMenuItem(value: a.areaId, child: Text(a.areaName ?? ''))),
+                              const DropdownMenuItem(
+                                value: null,
+                                child: Text('كل المناطق'),
+                              ),
+                              ...areas.map(
+                                (a) => DropdownMenuItem(
+                                  value: a.areaId,
+                                  child: Text(a.areaName ?? ''),
+                                ),
+                              ),
                             ],
-                            onChanged: (val) => setState(() => _selectedAreaId = val),
+                            onChanged: (val) =>
+                                setState(() => _selectedAreaId = val),
                           );
                         },
                       ),
                     ),
-                    SizedBox(
-                      width: double.infinity,
+                    const SizedBox(width: 12),
+                    Expanded(
                       child: _buildBetterDropdown<String?>(
                         value: _selectedGender,
-                        hint: 'النوع',
+                        hint: 'تصفية بالنوع',
                         items: const [
                           DropdownMenuItem(value: null, child: Text('الكل')),
                           DropdownMenuItem(value: 'ذكر', child: Text('ذكر')),
                           DropdownMenuItem(value: 'أنثى', child: Text('أنثى')),
                         ],
-                        onChanged: (val) => setState(() => _selectedGender = val),
+                        onChanged: (val) =>
+                            setState(() => _selectedGender = val),
                       ),
                     ),
                   ],
                 );
-              }
-              return Row(
-                children: [
-                  Expanded(
-                    child: FutureBuilder(
-                      future: ref.read(appDatabaseProvider).select(ref.read(appDatabaseProvider).stages).get(),
-                      builder: (context, snapshot) {
-                        final stages = snapshot.data ?? [];
-                        return _buildBetterDropdown<int?>(
-                          value: _selectedStageId,
-                          hint: 'تصفية بالمرحلة',
-                          width: 130,
-                          items: [
-                            const DropdownMenuItem(value: null, child: Text('كل المراحل')),
-                            ...stages.map((s) => DropdownMenuItem(value: s.stageId, child: Text(s.stageName ?? ''))),
-                          ],
-                          onChanged: (val) => setState(() => _selectedStageId = val),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FutureBuilder(
-                      future: ref.read(appDatabaseProvider).select(ref.read(appDatabaseProvider).areas).get(),
-                      builder: (context, snapshot) {
-                        final areas = snapshot.data ?? [];
-                        return _buildBetterDropdown<int?>(
-                          value: _selectedAreaId,
-                          hint: 'تصفية بالمنطقة',
-                          width: 130,
-                          items: [
-                            const DropdownMenuItem(value: null, child: Text('كل المناطق')),
-                            ...areas.map((a) => DropdownMenuItem(value: a.areaId, child: Text(a.areaName ?? ''))),
-                          ],
-                          onChanged: (val) => setState(() => _selectedAreaId = val),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildBetterDropdown<String?>(
-                      value: _selectedGender,
-                      hint: 'تصفية بالنوع',
-                      items: const [
-                        DropdownMenuItem(value: null, child: Text('الكل')),
-                        DropdownMenuItem(value: 'ذكر', child: Text('ذكر')),
-                        DropdownMenuItem(value: 'أنثى', child: Text('أنثى')),
-                      ],
-                      onChanged: (val) => setState(() => _selectedGender = val),
-                    ),
-                  ),
-                ],
-              );
-            }),
+              },
+            ),
             const SizedBox(height: 12),
             _buildSelectAllAction(context, ref),
             const SizedBox(height: 8),
@@ -406,75 +617,113 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _selectedPersons.map((p) => Chip(
-                  label: Text(p.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  deleteIcon: const Icon(Icons.close, size: 16),
-                  onDeleted: () => setState(() => _selectedPersons.remove(p)),
-                  backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
-                  side: BorderSide.none,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                )).toList(),
+                children: _selectedPersons
+                    .map(
+                      (p) => Chip(
+                        label: Text(
+                          p.name,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () =>
+                            setState(() => _selectedPersons.remove(p)),
+                        backgroundColor: Theme.of(
+                          context,
+                        ).primaryColor.withOpacity(0.1),
+                        side: BorderSide.none,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    )
+                    .toList(),
               ),
             ],
             const SizedBox(height: 32),
             if (_selectedPersons.isNotEmpty)
-               Column(
-                 children: _selectedPersons.map((p) => Padding(
-                   padding: const EdgeInsets.only(bottom: 40),
-                   child: Column(
-                     crossAxisAlignment: CrossAxisAlignment.start,
-                     children: [
-                       Row(
-                         children: [
-                           Container(
-                             width: 4,
-                             height: 24,
-                             decoration: BoxDecoration(
-                               color: Theme.of(context).primaryColor,
-                               borderRadius: BorderRadius.circular(2),
-                             ),
-                           ),
-                           const SizedBox(width: 12),
-                           Text(
-                             p.name,
-                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                           ),
-                         ],
-                       ),
-                       const SizedBox(height: 16),
-                       _buildChartSection(context, p.id, p.name),
-                     ],
-                   ),
-                 )).toList(),
-               ),
+              Column(
+                children: _selectedPersons
+                    .map(
+                      (p) => Padding(
+                        padding: const EdgeInsets.only(bottom: 40),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 4,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).primaryColor,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  p.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            _buildChartSection(context, p.id, p.name),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
             if (_selectedPersons.isEmpty)
               Container(
-                 height: 220,
-                 alignment: Alignment.center,
-                 decoration: BoxDecoration(
-                   color: Colors.grey.withOpacity(0.05),
-                   borderRadius: BorderRadius.circular(20),
-                   border: Border.all(color: Colors.grey.withOpacity(0.1), style: BorderStyle.solid),
-                 ),
-                 child: Column(
-                   mainAxisAlignment: MainAxisAlignment.center,
-                   children: [
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-                        ),
-                        child: Icon(Icons.person_search, size: 48, color: Theme.of(context).primaryColor.withOpacity(0.6)),
+                height: 220,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.grey.withOpacity(0.1),
+                    style: BorderStyle.solid,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E293B) : Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 20),
-                      Text(
-                        'ابحث عن شخص لعرض تقرير حضوره', 
-                        style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.bold, fontSize: 15)
+                      child: Icon(
+                        Icons.person_search,
+                        size: 48,
+                        color: Theme.of(context).primaryColor.withOpacity(0.6),
                       ),
-                   ],
-                 ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'ابحث عن شخص لعرض تقرير حضوره',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
               ),
           ],
         ),
@@ -482,51 +731,88 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
     );
   }
 
-  Widget _buildBetterDropdown<T>({required T value, required List<DropdownMenuItem<T>> items, required ValueChanged<T?> onChanged, String? hint, double? width}) {
+  Widget _buildBetterDropdown<T>({
+    required T value,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
+    String? hint,
+    double? width,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: width,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : Colors.grey.shade200,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
           value: value,
-          hint: hint != null ? Text(hint, style: const TextStyle(fontSize: 13)) : null,
+          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          hint: hint != null
+              ? Text(hint, style: TextStyle(fontSize: 13, color: isDark ? const Color(0xFF94A3B8) : Colors.grey))
+              : null,
           items: items,
           onChanged: onChanged,
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 13),
-          icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDark ? const Color(0xFFF8FAFC) : Colors.black87,
+            fontSize: 13,
+          ),
+          icon: Icon(Icons.keyboard_arrow_down, size: 18, color: isDark ? const Color(0xFF94A3B8) : Colors.grey),
         ),
       ),
     );
   }
 
   Widget _buildPersonAutocomplete(BuildContext context, WidgetRef ref) {
-    if (_isLoadingPersons) return const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(strokeWidth: 2)));
-    
+    if (_isLoadingPersons)
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(8.0),
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+
     return Container(
       decoration: BoxDecoration(
-        boxShadow: [BoxShadow(color: Theme.of(context).primaryColor.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))],
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).primaryColor.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: Autocomplete<PersonOption>(
         displayStringForOption: (option) => option.name,
         optionsBuilder: (textEditingValue) {
           final query = textEditingValue.text.toLowerCase();
-          
+
           final matches = _allPersons.where((p) {
             // Apply strict filters first
-            final stageMatch = _selectedStageId == null || p.stageId == _selectedStageId;
-            final areaMatch = _selectedAreaId == null || p.areaId == _selectedAreaId;
-            final genderMatch = _selectedGender == null || p.gender == _selectedGender;
+            final stageMatch =
+                _selectedStageId == null || p.stageId == _selectedStageId;
+            final areaMatch =
+                _selectedAreaId == null || p.areaId == _selectedAreaId;
+            final genderMatch =
+                _selectedGender == null || p.gender == _selectedGender;
             if (!(stageMatch && areaMatch && genderMatch)) return false;
 
             // Then apply search query if not empty
             if (query.isEmpty) return true;
-            
+
             final name = p.name.toLowerCase();
             final id = p.id.toString();
             return name.contains(query) || id.contains(query);
@@ -535,15 +821,22 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
           // Sort by relevance: startsWith comes first
           if (query.isNotEmpty) {
             matches.sort((a, b) {
-              final aStarts = a.name.toLowerCase().startsWith(query) || a.id.toString().startsWith(query);
-              final bStarts = b.name.toLowerCase().startsWith(query) || b.id.toString().startsWith(query);
+              final aStarts =
+                  a.name.toLowerCase().startsWith(query) ||
+                  a.id.toString().startsWith(query);
+              final bStarts =
+                  b.name.toLowerCase().startsWith(query) ||
+                  b.id.toString().startsWith(query);
               if (aStarts && !bStarts) return -1;
               if (!aStarts && bStarts) return 1;
               return 0;
             });
           }
 
-          return matches.map((p) => PersonOption(id: p.id, name: '${p.id} - ${p.name}')).take(50).toList();
+          return matches
+              .map((p) => PersonOption(id: p.id, name: '${p.id} - ${p.name}'))
+              .take(50)
+              .toList();
         },
         onSelected: (selection) {
           setState(() {
@@ -556,7 +849,7 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
         },
         fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
           _internalAutocompleteController = controller;
-          
+
           if (!focusNode.hasListeners) {
             focusNode.addListener(() {
               if (focusNode.hasFocus && controller.text.isEmpty) {
@@ -578,13 +871,25 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
             },
             decoration: InputDecoration(
               labelText: 'بحث بالاسم أو الكود',
-              labelStyle: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.bold),
-              prefixIcon: Icon(Icons.search, color: Theme.of(context).primaryColor),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+              labelStyle: TextStyle(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.bold,
+              ),
+              prefixIcon: Icon(
+                Icons.search,
+                color: Theme.of(context).primaryColor,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
               filled: true,
-              fillColor: Colors.grey.shade100,
+              fillColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E293B) : Colors.grey.shade100,
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+              contentPadding: const EdgeInsets.symmetric(
+                vertical: 16,
+                horizontal: 20,
+              ),
             ),
           );
         },
@@ -594,36 +899,66 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
 
   Widget _buildSelectAllAction(BuildContext context, WidgetRef ref) {
     return FutureBuilder(
-      future: ref.read(appDatabaseProvider).select(ref.read(appDatabaseProvider).persons).get(),
+      future: ref
+          .read(appDatabaseProvider)
+          .select(ref.read(appDatabaseProvider).persons)
+          .get(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SizedBox.shrink();
         final persons = snapshot.data!;
-        
+
         final filteredCount = persons.where((p) {
-          final stageMatch = _selectedStageId == null || p.stageId == _selectedStageId;
-          final areaMatch = _selectedAreaId == null || p.areaId == _selectedAreaId;
-          final genderMatch = _selectedGender == null || p.jenderName == _selectedGender;
+          final stageMatch =
+              _selectedStageId == null || p.stageId == _selectedStageId;
+          final areaMatch =
+              _selectedAreaId == null || p.areaId == _selectedAreaId;
+          final genderMatch =
+              _selectedGender == null || p.jenderName == _selectedGender;
           return stageMatch && areaMatch && genderMatch;
         }).length;
 
-        final allFilteredSelected = filteredCount > 0 && persons.where((p) {
-          final stageMatch = _selectedStageId == null || p.stageId == _selectedStageId;
-          final areaMatch = _selectedAreaId == null || p.areaId == _selectedAreaId;
-          final genderMatch = _selectedGender == null || p.jenderName == _selectedGender;
-          return stageMatch && areaMatch && genderMatch;
-        }).every((p) => _selectedPersons.any((sp) => sp.id == p.personId));
+        final allFilteredSelected =
+            filteredCount > 0 &&
+            persons
+                .where((p) {
+                  final stageMatch =
+                      _selectedStageId == null || p.stageId == _selectedStageId;
+                  final areaMatch =
+                      _selectedAreaId == null || p.areaId == _selectedAreaId;
+                  final genderMatch =
+                      _selectedGender == null ||
+                      p.jenderName == _selectedGender;
+                  return stageMatch && areaMatch && genderMatch;
+                })
+                .every(
+                  (p) => _selectedPersons.any((sp) => sp.id == p.personId),
+                );
 
         return Row(
           children: [
             Checkbox(
               value: allFilteredSelected,
               onChanged: (val) {
-                final filtered = persons.where((p) {
-                  final stageMatch = _selectedStageId == null || p.stageId == _selectedStageId;
-                  final areaMatch = _selectedAreaId == null || p.areaId == _selectedAreaId;
-                  final genderMatch = _selectedGender == null || p.jenderName == _selectedGender;
-                  return stageMatch && areaMatch && genderMatch;
-                }).map((p) => PersonOption(id: p.personId, name: '${p.personId} - ${p.personName ?? ''}')).toList();
+                final filtered = persons
+                    .where((p) {
+                      final stageMatch =
+                          _selectedStageId == null ||
+                          p.stageId == _selectedStageId;
+                      final areaMatch =
+                          _selectedAreaId == null ||
+                          p.areaId == _selectedAreaId;
+                      final genderMatch =
+                          _selectedGender == null ||
+                          p.jenderName == _selectedGender;
+                      return stageMatch && areaMatch && genderMatch;
+                    })
+                    .map(
+                      (p) => PersonOption(
+                        id: p.personId,
+                        name: '${p.personId} - ${p.personName ?? ''}',
+                      ),
+                    )
+                    .toList();
 
                 setState(() {
                   if (val == true) {
@@ -636,13 +971,21 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
                 });
               },
               activeColor: Theme.of(context).primaryColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
             ),
-            const Text('اختيار الكل بناءً على الفلاتر', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const Text(
+              'اختيار الكل بناءً على الفلاتر',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
             if (filteredCount > 0)
               Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: Text('($filteredCount مخدوم)', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                child: Text(
+                  '($filteredCount مخدوم)',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                ),
               ),
           ],
         );
@@ -650,25 +993,36 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
     );
   }
 
-  Widget _buildChartSection(BuildContext context, int? personId, String personName) {
+  Widget _buildChartSection(
+    BuildContext context,
+    int? personId,
+    String personName,
+  ) {
     if (personId == null) return const SizedBox.shrink();
-    final trendAsync = ref.watch(individualAttendanceTrendProvider(
+    final trendAsync = ref.watch(
+      individualAttendanceTrendProvider(
         personId: personId,
         groupBy: _groupBy,
-        filterYear: _groupBy == 'month' || _groupBy == 'day' ? _selectedYear : null,
+        filterYear: _groupBy == 'month' || _groupBy == 'day'
+            ? _selectedYear
+            : null,
         filterMonth: _groupBy == 'day' ? _selectedMonth : null,
         serviceId: _selectedServiceId,
         status: _selectedStatus,
-      ));
+      ),
+    );
     return trendAsync.when(
+      skipLoadingOnReload: true,
+      skipError: true,
       data: (data) {
-        if (data.isEmpty) return const SizedBox(height: 200, child: Center(child: Text('لا توجد بيانات حضور لهذا الشخص')));
+        if (data.isEmpty)
+          return const SizedBox(
+            height: 200,
+            child: Center(child: Text('لا توجد بيانات حضور لهذا الشخص')),
+          );
         return Column(
           children: [
-            SizedBox(
-              height: 320,
-              child: _buildChart(data),
-            ),
+            SizedBox(height: 320, child: _buildChart(data)),
             const SizedBox(height: 32),
             Container(
               padding: const EdgeInsets.all(20),
@@ -677,7 +1031,11 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: Colors.amber.withOpacity(0.2)),
                 boxShadow: [
-                  BoxShadow(color: Colors.amber.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
+                  BoxShadow(
+                    color: Colors.amber.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
                 ],
               ),
               child: Row(
@@ -685,16 +1043,27 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
                 children: [
                   Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(color: Colors.amber, shape: BoxShape.circle),
-                    child: const Icon(Icons.insights, color: Colors.white, size: 16),
+                    decoration: const BoxDecoration(
+                      color: Colors.amber,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.insights,
+                      color: Colors.white,
+                      size: 16,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Text(
-                      Storyteller.analyzeIndividualTrend(data, personName, _groupBy),
+                      Storyteller.analyzeIndividualTrend(
+                        data,
+                        personName,
+                        _groupBy,
+                      ),
                       style: TextStyle(
-                        fontWeight: FontWeight.w700, 
-                        height: 1.6, 
+                        fontWeight: FontWeight.w700,
+                        height: 1.6,
                         fontSize: 15,
                         color: Colors.blueGrey.shade900,
                       ),
@@ -706,16 +1075,21 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
           ],
         );
       },
-      loading: () => const SizedBox(height: 300, child: Center(child: CircularProgressIndicator())),
+      loading: () => const SizedBox(
+        height: 300,
+        child: Center(child: CircularProgressIndicator()),
+      ),
       error: (e, st) => Center(child: Text('خطأ: $e')),
     );
   }
 
   Widget _buildChart(List<AttendanceTrendData> data) {
-    final displayData = data.length > 30 ? data.sublist(data.length - 30) : data;
-    
+    final displayData = data.length > 30
+        ? data.sublist(data.length - 30)
+        : data;
+
     double maxY = 0;
-    for(var d in data) {
+    for (var d in data) {
       if (d.count > maxY) maxY = d.count.toDouble();
     }
     if (maxY < 5) maxY = 5;
@@ -727,7 +1101,10 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
         lineBarsData: [
           LineChartBarData(
             spots: List.generate(displayData.length, (index) {
-              return FlSpot(index.toDouble(), displayData[index].count.toDouble());
+              return FlSpot(
+                index.toDouble(),
+                displayData[index].count.toDouble(),
+              );
             }),
             isCurved: true,
             color: Theme.of(context).primaryColor,
@@ -761,7 +1138,13 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
                   return SideTitleWidget(
                     meta: meta,
                     space: 12,
-                    child: Text(text, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   );
                 }
                 return const SizedBox.shrink();
@@ -783,13 +1166,20 @@ class _IndividualAttendanceWidgetState extends ConsumerState<IndividualAttendanc
         borderData: FlBorderData(show: false),
         lineTouchData: LineTouchData(
           touchTooltipData: LineTouchTooltipData(
-             getTooltipColor: (_) => Theme.of(context).primaryColor,
-             getTooltipItems: (touchedSpots) {
-               return touchedSpots.map((spot) => LineTooltipItem(
-                 '${spot.y.toInt()} مرات',
-                 const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
-               )).toList();
-             }
+            getTooltipColor: (_) => Theme.of(context).primaryColor,
+            getTooltipItems: (touchedSpots) {
+              return touchedSpots
+                  .map(
+                    (spot) => LineTooltipItem(
+                      '${spot.y.toInt()} مرات',
+                      const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  )
+                  .toList();
+            },
           ),
         ),
       ),

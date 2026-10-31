@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:drift/drift.dart' show StringExpressionOperators;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -17,9 +18,14 @@ import '../repositories/stages_repository.dart';
 import '../repositories/areas_repository.dart';
 import '../repositories/fields_repository.dart';
 import '../services/id_card_pdf_generator.dart';
+import '../services/designer_card_print_service.dart';
 import '../services/pdf_generation_task.dart';
 import '../widgets/card_designer_preview.dart';
 import '../widgets/print_progress_dialog.dart';
+import '../sync/data_change_domains.dart';
+import '../sync/data_change_coordinator.dart';
+import '../database/database_provider.dart';
+import '../utils/silent_refresh_controller.dart';
 
 class IdCardScreen extends ConsumerStatefulWidget {
   const IdCardScreen({super.key});
@@ -71,6 +77,9 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
   double _backgroundOpacity = 0.15;
   bool _isGenerating = false;
   bool _isDesignerMode = false;
+  bool _designerDirty = false;
+  bool _hasRemoteTemplate = false;
+  late final SilentRefreshController _settingsRefreshController;
   CardTemplate _cardTemplate = CardTemplate.defaults();
   CardTemplate _frontCardTemplate = CardTemplate.defaults();
   CardTemplate _backCardTemplate = _defaultBackCardTemplate();
@@ -134,10 +143,15 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
   int _offset = 0;
   static const int _limit = 50;
   int _totalCount = 0;
+  late final SilentRefreshController _refreshController;
 
   @override
   void initState() {
     super.initState();
+    _refreshController = SilentRefreshController(onRefresh: _revalidatePersons);
+    _settingsRefreshController = SilentRefreshController(
+      onRefresh: () => _loadSettings(preserveDraft: true),
+    );
     _loadSettings();
     _fetchPersons();
     _scrollController.addListener(_onScroll);
@@ -145,6 +159,8 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
 
   @override
   void dispose() {
+    _refreshController.dispose();
+    _settingsRefreshController.dispose();
     _scrollController.dispose();
     _colsController.dispose();
     _rowsController.dispose();
@@ -152,6 +168,59 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
     _backBottomTextController.dispose();
     _designerFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _revalidatePersons() async {
+    if (_isLoading) {
+      return;
+    }
+    final gen = _refreshController.currentGeneration;
+    if (!mounted) return;
+    final currentSearch = _searchQuery;
+    final currentStage = _filterStageId;
+    final currentArea = _filterAreaId;
+    final windowSize = _allFetchedPersons.isNotEmpty
+        ? _allFetchedPersons.length
+        : _limit;
+
+    final repo = ref.read(personsRepositoryProvider.notifier);
+    try {
+      final results = await Future.wait([
+        repo.fetchTotalCount(
+          search: currentSearch,
+          stageIds: currentStage != null ? [currentStage] : [],
+          areaIds: currentArea != null ? [currentArea] : [],
+        ),
+        repo.fetchPersons(
+          search: currentSearch,
+          limit: windowSize,
+          offset: 0,
+          stageIds: currentStage != null ? [currentStage] : [],
+          areaIds: currentArea != null ? [currentArea] : [],
+          includeServices: false,
+        ),
+      ]);
+
+      if (!mounted || gen != _refreshController.currentGeneration) return;
+      if (_searchQuery != currentSearch ||
+          _filterStageId != currentStage ||
+          _filterAreaId != currentArea)
+        return;
+
+      final total = results[0] as int;
+      final persons = results[1] as List<PersonListDTO>;
+
+      setState(() {
+        _totalCount = total;
+        _allFetchedPersons
+          ..clear()
+          ..addAll(persons);
+        _offset = persons.length;
+        _hasMore = persons.length < total;
+      });
+    } catch (_) {
+      rethrow;
+    }
   }
 
   void _onScroll() {
@@ -163,32 +232,41 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
     }
   }
 
-  Future<void> _loadSettings() async {
-    final repo = ref.read(settingsRepositoryProvider);
-    final activeTemplateJson = await repo.getSetting(
-      SettingsRepository.idCardActiveTemplateKey,
-    );
+  Future<void> _loadSettings({bool preserveDraft = false}) async {
+    final db = ref.read(appDatabaseProvider);
+    final settingRows = await (db.select(
+      db.settings,
+    )..where((t) => t.settingKey.like('id_card_%'))).get();
+    if (!mounted) return;
+    if (preserveDraft && _designerDirty) {
+      setState(() => _hasRemoteTemplate = true);
+      return;
+    }
+    final snapshot = {
+      for (final row in settingRows) row.settingKey: row.settingValue,
+    };
+    String? read(String key) => snapshot[key];
+    final activeTemplateJson = read(SettingsRepository.idCardActiveTemplateKey);
     final activeTemplate =
         activeTemplateJson == null || activeTemplateJson.trim().isEmpty
         ? null
         : CardTemplate.fromJsonString(activeTemplateJson);
-    final backTemplateJson = await repo.getSetting('id_card_back_template');
+    final backTemplateJson = read('id_card_back_template');
     final backTemplate =
         backTemplateJson == null || backTemplateJson.trim().isEmpty
         ? _defaultBackCardTemplate()
         : CardTemplate.fromJsonString(backTemplateJson);
 
-    final logoBase64 = await repo.getSetting('id_card_logo');
-    if (logoBase64 != null && logoBase64.isNotEmpty) {
-      if (mounted) setState(() => _logoBytes = base64Decode(logoBase64));
-    }
-
-    final backgroundBase64 = await repo.getSetting('id_card_background');
-    if (backgroundBase64 != null && backgroundBase64.isNotEmpty && mounted) {
-      setState(() => _backgroundBytes = base64Decode(backgroundBase64));
-    }
+    final logoBase64 = read('id_card_logo');
+    _logoBytes = logoBase64 == null || logoBase64.isEmpty
+        ? null
+        : base64Decode(logoBase64);
+    final backgroundBase64 = read('id_card_background');
+    _backgroundBytes = backgroundBase64 == null || backgroundBase64.isEmpty
+        ? null
+        : base64Decode(backgroundBase64);
     final backgroundOpacity = double.tryParse(
-      await repo.getSetting('id_card_background_opacity') ?? '',
+      read('id_card_background_opacity') ?? '',
     );
     if (backgroundOpacity != null && mounted) {
       setState(
@@ -196,30 +274,27 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       );
     }
 
-    final cols = await repo.getSetting('id_card_cols');
+    final cols = read('id_card_cols');
     if (cols != null) _colsController.text = cols;
 
-    final rows = await repo.getSetting('id_card_rows');
+    final rows = read('id_card_rows');
     if (rows != null) _rowsController.text = rows;
 
-    final printBack = await repo.getSetting('id_card_print_back');
+    final printBack = read('id_card_print_back');
     if (printBack != null && mounted)
       setState(() => _printBackSide = printBack == 'true');
 
-    final backLogoBase64 = await repo.getSetting('id_card_back_logo');
-    if (backLogoBase64 != null && backLogoBase64.isNotEmpty && mounted) {
-      setState(() => _backLogoBytes = base64Decode(backLogoBase64));
-    }
-    final backBackgroundBase64 = await repo.getSetting(
-      'id_card_back_background',
-    );
-    if (backBackgroundBase64 != null &&
-        backBackgroundBase64.isNotEmpty &&
-        mounted) {
-      setState(() => _backBackgroundBytes = base64Decode(backBackgroundBase64));
-    }
+    final backLogoBase64 = read('id_card_back_logo');
+    _backLogoBytes = backLogoBase64 == null || backLogoBase64.isEmpty
+        ? null
+        : base64Decode(backLogoBase64);
+    final backBackgroundBase64 = read('id_card_back_background');
+    _backBackgroundBytes =
+        backBackgroundBase64 == null || backBackgroundBase64.isEmpty
+        ? null
+        : base64Decode(backBackgroundBase64);
     final backBackgroundOpacity = double.tryParse(
-      await repo.getSetting('id_card_back_background_opacity') ?? '',
+      read('id_card_back_background_opacity') ?? '',
     );
     if (backBackgroundOpacity != null && mounted) {
       setState(
@@ -229,32 +304,30 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       );
     }
 
-    final backTopText = await repo.getSetting('id_card_back_top_text');
+    final backTopText = read('id_card_back_top_text');
     if (backTopText != null) _backTopTextController.text = backTopText;
 
-    final backBottomText = await repo.getSetting('id_card_back_bottom_text');
+    final backBottomText = read('id_card_back_bottom_text');
     if (backBottomText != null) _backBottomTextController.text = backBottomText;
 
     for (final key in _visibleFields.keys) {
-      final val = await repo.getSetting('id_card_show_$key');
+      final val = read('id_card_show_$key');
       if (val != null) {
         if (mounted) setState(() => _visibleFields[key] = val == 'true');
       }
     }
 
-    final savedCodeType = await repo.getSetting('id_card_code_type');
+    final savedCodeType = read('id_card_code_type');
     if (savedCodeType != null && mounted) {
       setState(() => _codeType = savedCodeType);
     }
 
-    final savedShowLabels = await repo.getSetting('id_card_simple_show_labels');
+    final savedShowLabels = read('id_card_simple_show_labels');
     if (savedShowLabels != null && mounted) {
       setState(() => _simpleShowFieldLabels = savedShowLabels == 'true');
     }
 
-    final savedCodeBackground = await repo.getSetting(
-      'id_card_simple_code_background',
-    );
+    final savedCodeBackground = read('id_card_simple_code_background');
     if (savedCodeBackground != null && mounted) {
       setState(
         () => _simpleCodeBackgroundMode = CardBarcodeBackgroundMode.fromValue(
@@ -281,6 +354,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
           ? _backCardTemplate
           : _frontCardTemplate;
       _isTemplateLoading = false;
+      _hasRemoteTemplate = false;
     });
   }
 
@@ -344,7 +418,9 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
   }
 
   Future<void> _fetchPersons() async {
-    if (mounted)
+    _refreshController.bumpGeneration();
+    final gen = _refreshController.currentGeneration;
+    if (mounted && gen == _refreshController.currentGeneration)
       setState(() {
         _isLoading = true;
         _allFetchedPersons.clear();
@@ -374,7 +450,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       final total = results[0] as int;
       final persons = results[1] as List<PersonListDTO>;
 
-      if (mounted) {
+      if (mounted && gen == _refreshController.currentGeneration) {
         setState(() {
           _totalCount = total;
           _allFetchedPersons.addAll(persons);
@@ -384,36 +460,52 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && gen == _refreshController.currentGeneration)
+        setState(() => _isLoading = false);
     }
+    if (mounted && gen == _refreshController.currentGeneration)
+      _refreshController.requestRefresh();
   }
 
   Future<void> _loadMore() async {
     if (_isLoading || !_hasMore) return;
-    if (mounted) setState(() => _isLoading = true);
+    _refreshController.bumpGeneration();
+    final gen = _refreshController.currentGeneration;
+    if (mounted && gen == _refreshController.currentGeneration)
+      setState(() => _isLoading = true);
 
     final repo = ref.read(personsRepositoryProvider.notifier);
-    final persons = await repo.fetchPersons(
-      search: _searchQuery,
-      limit: _limit,
-      offset: _offset,
-      stageIds: _filterStageId != null ? [_filterStageId!] : [],
-      areaIds: _filterAreaId != null ? [_filterAreaId!] : [],
-      includeServices: false,
-    );
+    try {
+      final persons = await repo.fetchPersons(
+        search: _searchQuery,
+        limit: _limit,
+        offset: _offset,
+        stageIds: _filterStageId != null ? [_filterStageId!] : [],
+        areaIds: _filterAreaId != null ? [_filterAreaId!] : [],
+        includeServices: false,
+      );
 
-    if (mounted) {
-      setState(() {
-        _allFetchedPersons.addAll(persons);
-        _isLoading = false;
-        _offset += persons.length;
-        if (persons.length < _limit) _hasMore = false;
-      });
+      if (mounted && gen == _refreshController.currentGeneration) {
+        setState(() {
+          _allFetchedPersons.addAll(persons);
+          _isLoading = false;
+          _offset += persons.length;
+          if (persons.length < _limit) _hasMore = false;
+        });
+      }
+    } catch (error) {
+      if (mounted && gen == _refreshController.currentGeneration)
+        setState(() => _isLoading = false);
+    } finally {
+      if (mounted && gen == _refreshController.currentGeneration)
+        _refreshController.requestRefresh();
     }
   }
 
   Future<void> _fetchAllMatching() async {
     if (_isLoading) return;
+    _refreshController.bumpGeneration();
+    final gen = _refreshController.currentGeneration;
     setState(() => _isLoading = true);
 
     final repo = ref.read(personsRepositoryProvider.notifier);
@@ -427,7 +519,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         includeServices: false,
       );
 
-      if (mounted) {
+      if (mounted && gen == _refreshController.currentGeneration) {
         setState(() {
           _allFetchedPersons.clear();
           _allFetchedPersons.addAll(persons);
@@ -438,8 +530,11 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && gen == _refreshController.currentGeneration)
+        setState(() => _isLoading = false);
     }
+    if (mounted && gen == _refreshController.currentGeneration)
+      _refreshController.requestRefresh();
   }
 
   void _showSelectAllOptions() {
@@ -721,6 +816,8 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         .read(settingsRepositoryProvider)
         .saveSetting('id_card_back_template', _backCardTemplate.toJsonString());
     await _saveSetting('id_card_print_back', _printBackSide.toString());
+    _designerDirty = false;
+    _hasRemoteTemplate = false;
     if (!mounted) return;
     setState(() => _isGenerating = true);
     final progress = await showPrintProgressDialog(
@@ -729,18 +826,27 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
     );
 
     try {
-      final task = await IdCardPdfGenerator.startCardGeneration(
+      final renderContext = _designerPreviewKey.currentContext ?? context;
+      if (!renderContext.mounted) {
+        throw const PdfGenerationCancelledException();
+      }
+      final previewBox = renderContext.findRenderObject();
+      final task = await DesignerCardPrintService.startGeneration(
+        context: renderContext,
         persons: selectedPersons,
-        logoBytes: _logoBytes,
-        visibleFields: _visibleFields,
-        codeType: _codeType,
-        cardsPerRow: int.tryParse(_colsController.text) ?? 2,
-        cardsPerCol: int.tryParse(_rowsController.text) ?? 5,
-        printBackSide: _printBackSide,
-        backTopText: _backTopTextController.text,
-        backBottomText: _backBottomTextController.text,
         template: _frontCardTemplate,
         backTemplate: _printBackSide ? _backCardTemplate : null,
+        cardsPerRow: int.tryParse(_colsController.text) ?? 2,
+        cardsPerCol: int.tryParse(_rowsController.text) ?? 5,
+        logicalWidth: previewBox is RenderBox && previewBox.hasSize
+            ? previewBox.size.width
+            : CardTemplate.fontReferenceWidth,
+        isCancelled: () => progress.isCancelled,
+        onRendered: (current, total) => progress.update(
+          'جاري تجهيز نسخة مطابقة للتصميم...',
+          current: current,
+          total: total,
+        ),
       );
       progress.setCancelAction(task.cancel);
       final subscription = task.progress.listen(
@@ -761,6 +867,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       await Printing.layoutPdf(
         onLayout: (format) async => pdfBytes,
         name: 'Designed_ID_Cards.pdf',
+        dynamicLayout: false,
       );
     } on PdfGenerationCancelledException {
       progress.close();
@@ -800,11 +907,29 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Listen to repository changes to trigger data refresh
-    ref.listen(personsRepositoryProvider, (previous, next) {
-      if (previous?.hasValue == true && next.isLoading) {
-        _fetchPersons();
-      }
+    ref.listen<int>(sourceEpochProvider, (previous, next) {
+      _refreshController.updateEpoch(next);
+      setState(() {
+        _allFetchedPersons.clear();
+        _selectedPersonIds.clear();
+      });
+
+      _refreshController.requestRefresh(immediate: true);
+    });
+    ref.listen(domainRevisionProvider(DataDomain.settings), (previous, next) {
+      _settingsRefreshController.requestRefresh();
+    });
+    ref.listen(domainRevisionProvider(DataDomain.people), (previous, next) {
+      _refreshController.requestRefresh();
+    });
+    ref.listen(domainRevisionProvider(DataDomain.stages), (previous, next) {
+      _refreshController.requestRefresh();
+    });
+    ref.listen(domainRevisionProvider(DataDomain.areas), (previous, next) {
+      _refreshController.requestRefresh();
+    });
+    ref.listen(domainRevisionProvider(DataDomain.fields), (previous, next) {
+      _refreshController.requestRefresh();
     });
 
     final isWide = MediaQuery.of(context).size.width >= 800;
@@ -845,7 +970,28 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: Padding(padding: const EdgeInsets.all(16.0), child: body),
+        body: Column(
+          children: [
+            if (_hasRemoteTemplate)
+              MaterialBanner(
+                content: const Text(
+                  'توجد إعدادات كارنيه أحدث؛ مسودتك محفوظة أمامك.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () async {
+                      _designerDirty = false;
+                      await _loadSettings();
+                    },
+                    child: const Text('تحميل الإعدادات الأحدث'),
+                  ),
+                ],
+              ),
+            Expanded(
+              child: Padding(padding: const EdgeInsets.all(16), child: body),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -912,6 +1058,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
   }
 
   void _pushDesignerUndo() {
+    _designerDirty = true;
     if (_designerUndoStack.isNotEmpty &&
         _designerUndoStack.last.toJsonString() ==
             _cardTemplate.toJsonString()) {
@@ -1100,11 +1247,11 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
     if (_isTemplateLoading) {
       return const Center(child: CircularProgressIndicator());
     }
- 
+
     final canvas = _buildDesignerCanvas(validationErrors);
     final tools = _buildDesignerToolsPanel(validationErrors);
     final inspector = _buildDesignerInspector();
- 
+
     if (!isWide) {
       return ListView(
         children: [
@@ -1119,7 +1266,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         ],
       );
     }
- 
+
     return Column(
       children: [
         _buildDesignerHeader(validationErrors),
@@ -1143,7 +1290,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       ],
     );
   }
- 
+
   Widget _buildDesignerHeader(List<String> validationErrors) {
     final screenW = MediaQuery.of(context).size.width;
     final isMobile = screenW < 800;
@@ -1227,7 +1374,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       ),
     );
   }
- 
+
   Widget _buildDesignerQuickToolbar() {
     final screenW = MediaQuery.of(context).size.width;
     final isMobile = screenW < 800;
@@ -1258,9 +1405,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       const SizedBox(width: 6),
       IconButton.filledTonal(
         tooltip: 'تراجع',
-        onPressed: _designerUndoStack.isEmpty
-            ? null
-            : _undoDesignerChange,
+        onPressed: _designerUndoStack.isEmpty ? null : _undoDesignerChange,
         icon: const Icon(Icons.undo),
       ),
       const SizedBox(width: 10),
@@ -1324,9 +1469,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
                 alignment: WrapAlignment.center,
                 children: children,
               )
-            : Row(
-                children: children,
-              ),
+            : Row(children: children),
       ),
     );
   }
@@ -1629,6 +1772,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
   Widget _buildLayerTile(
     ({String id, String title, IconData icon, bool visible}) layer,
   ) {
+    final colors = Theme.of(context).colorScheme;
     final selected = _selectedDesignerElementIds.contains(layer.id);
     final locked = _isDesignerElementLocked(layer.id);
     final canToggle =
@@ -1640,15 +1784,18 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       decoration: BoxDecoration(
-        color: selected ? const Color(0xFFE8EAF6) : Colors.white,
+        color: selected ? colors.secondaryContainer : colors.surfaceContainer,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: selected ? const Color(0xFF1A237E) : Colors.grey.shade300,
+          color: selected ? colors.primary : colors.outlineVariant,
         ),
       ),
       child: IconButtonTheme(
         data: IconButtonThemeData(
           style: IconButton.styleFrom(
+            foregroundColor: selected
+                ? colors.onSecondaryContainer
+                : colors.onSurfaceVariant,
             iconSize: 15,
             minimumSize: const Size(22, 22),
             fixedSize: const Size(22, 22),
@@ -1658,6 +1805,9 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
           ),
         ),
         child: ListTile(
+          textColor: colors.onSurface,
+          iconColor: colors.onSurfaceVariant,
+          selectedColor: colors.onSecondaryContainer,
           dense: true,
           minLeadingWidth: 24,
           horizontalTitleGap: 4,
@@ -1699,7 +1849,9 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
               Icon(
                 layer.icon,
                 size: 15,
-                color: selected ? const Color(0xFF1A237E) : null,
+                color: selected
+                    ? colors.onSecondaryContainer
+                    : colors.onSurfaceVariant,
               ),
               if (layer.id != 'background')
                 IconButton(
@@ -3936,6 +4088,9 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
 
   Future<void> _saveDesignerTemplate() async {
     _syncActiveDesignerSide();
+    final front = _frontCardTemplate;
+    final back = _backCardTemplate;
+    final printBack = _printBackSide;
     final errors = [
       ..._frontCardTemplate.validate(),
       if (_printBackSide) ..._backCardTemplate.validate(),
@@ -3946,13 +4101,18 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       );
       return;
     }
+    await ref.read(settingsRepositoryProvider).saveActiveCardTemplate(front);
     await ref
         .read(settingsRepositoryProvider)
-        .saveActiveCardTemplate(_frontCardTemplate);
-    await ref
-        .read(settingsRepositoryProvider)
-        .saveSetting('id_card_back_template', _backCardTemplate.toJsonString());
-    await _saveSetting('id_card_print_back', _printBackSide.toString());
+        .saveSetting('id_card_back_template', back.toJsonString());
+    await _saveSetting('id_card_print_back', printBack.toString());
+    _syncActiveDesignerSide();
+    if (_frontCardTemplate.toJsonString() == front.toJsonString() &&
+        _backCardTemplate.toJsonString() == back.toJsonString() &&
+        _printBackSide == printBack) {
+      _designerDirty = false;
+      _hasRemoteTemplate = false;
+    }
     if (mounted)
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -4580,6 +4740,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
                   isDense: true,
                 ),
                 onChanged: (v) {
+                  _refreshController.bumpGeneration();
                   _searchQuery = v;
                   _fetchPersons();
                 },
@@ -4604,6 +4765,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
                         isDense: true,
                       ),
                       onChanged: (v) {
+                        _refreshController.bumpGeneration();
                         _searchQuery = v;
                         _fetchPersons();
                       },
@@ -4737,6 +4899,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         ),
       ],
       onChanged: (val) {
+        _refreshController.bumpGeneration();
         _filterStageId = val;
         _fetchPersons();
       },
@@ -4757,6 +4920,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         ...areas.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name))),
       ],
       onChanged: (val) {
+        _refreshController.bumpGeneration();
         _filterAreaId = val;
         _fetchPersons();
       },

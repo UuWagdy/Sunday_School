@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../repositories/users_repository.dart';
 import '../services/auth_service.dart';
+import '../models/data_visibility_scope.dart';
+import '../database/database_provider.dart';
+import '../ui/widgets/multi_select_filter.dart';
 
 class UsersScreen extends ConsumerStatefulWidget {
   const UsersScreen({super.key});
@@ -15,6 +18,57 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   UserModel? _selectedUser;
+  Map<String, List<String>> _scopeSelections = {};
+  late final Future<Map<String, List<SelectableItem>>> _scopeOptions;
+  static const _scopeLabels = {
+    'service': 'الخدمة',
+    'gender': 'النوع',
+    'stage': 'المرحلة',
+    'khoros': 'الخورس',
+    'area': 'المنطقة',
+    'rohot': 'الرهط',
+    'leader': 'القائد',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _scopeOptions = _loadScopeOptions();
+  }
+
+  Future<Map<String, List<SelectableItem>>> _loadScopeOptions() async {
+    final db = ref.read(appDatabaseProvider);
+    // These are small lookup lists. One union avoids six sequential network
+    // round trips while keeping the same server/local row scope on every table.
+    final rows = await db.customSelect("""
+      SELECT 'service' AS scope_type, CAST("Service_ID" AS TEXT) AS scope_id,
+        "Service_Name" AS scope_name FROM "Services"
+      UNION ALL SELECT 'stage', CAST("Stage_ID" AS TEXT), "Stage_Name" FROM "Stages"
+      UNION ALL SELECT 'khoros', CAST("Khoros_ID" AS TEXT), "Khoros_Name" FROM "Khoroses"
+      UNION ALL SELECT 'area', CAST("Area_ID" AS TEXT), "Area_Name" FROM "Areas"
+      UNION ALL SELECT DISTINCT 'rohot', "Rohot", "Rohot" FROM "Persons"
+        WHERE "Rohot" IS NOT NULL AND "Rohot" <> ''
+      UNION ALL SELECT DISTINCT 'leader', "Leader", "Leader" FROM "Persons"
+        WHERE "Leader" IS NOT NULL AND "Leader" <> ''
+      ORDER BY scope_name
+    """).get();
+    final result = {
+      for (final key in _scopeLabels.keys) key: <SelectableItem>[],
+    };
+    for (final row in rows) {
+      result[row.read<String>('scope_type')]!.add(
+        SelectableItem(
+          id: row.read<String>('scope_id'),
+          name: row.readNullable<String>('scope_name') ?? '',
+        ),
+      );
+    }
+    result['gender'] = [
+      for (final gender in ['ذكر', 'أنثى'])
+        SelectableItem(id: gender, name: gender),
+    ];
+    return result;
+  }
 
   bool _canPersons = false;
   bool _canStages = false;
@@ -34,6 +88,8 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
   bool _canRohot = false;
   bool _canMonthlyFund = false;
   bool _canVisitation = false;
+  bool _canBuses = false;
+  bool _isSaving = false;
 
   bool _obscurePassword = true;
 
@@ -43,6 +99,11 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
       'attendance',
       'تسجيل الحضور',
       Icons.calendar_month_outlined,
+    ),
+    _FeatureDefinition(
+      'buses',
+      'الاتوبيسات',
+      Icons.directions_bus_filled_rounded,
     ),
     _FeatureDefinition(
       'visitation',
@@ -92,6 +153,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
   void _clearForm() {
     setState(() {
       _selectedUser = null;
+      _scopeSelections = {};
       _usernameController.clear();
       _passwordController.clear();
       _obscurePassword = true;
@@ -114,12 +176,15 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
       _canRohot = false;
       _canMonthlyFund = false;
       _canVisitation = false;
+      _canBuses = false;
     });
   }
 
   void _loadUserIntoForm(UserModel user) {
+    if (_isSaving) return;
     setState(() {
       _selectedUser = user;
+      _scopeSelections = user.dataVisibilityScope.toJson();
       _usernameController.text = user.username;
       _passwordController.text = user.password;
       _obscurePassword = true;
@@ -142,6 +207,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
       _canRohot = _granularFeatureEnabled(user, 'rohot');
       _canMonthlyFund = _granularFeatureEnabled(user, 'monthlyFund');
       _canVisitation = _granularFeatureEnabled(user, 'visitation');
+      _canBuses = _granularFeatureEnabled(user, 'buses');
     });
   }
 
@@ -152,6 +218,8 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
 
   bool _featureEnabled(String featureKey) {
     switch (featureKey) {
+      case 'buses':
+        return _canBuses;
       case 'persons':
         return _canPersons;
       case 'stages':
@@ -194,6 +262,9 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
 
   void _setFeatureEnabled(String featureKey, bool value) {
     switch (featureKey) {
+      case 'buses':
+        _canBuses = value;
+        break;
       case 'persons':
         _canPersons = value;
         break;
@@ -262,12 +333,14 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
   }
 
   void _toggleBasicPermission(String featureKey, bool enabled) {
+    if (_isSaving) return;
     setState(() {
       _setFeatureEnabled(featureKey, enabled);
     });
   }
 
   Future<void> _save() async {
+    if (_isSaving) return;
     final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
     final isCreating = _selectedUser == null;
@@ -280,82 +353,106 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
       return;
     }
 
-    final repo = ref.read(usersRepositoryProvider.notifier);
-    final granularPermissions = _basicPermissionsSnapshot();
-    final visibilityFilters = <String, List<int>>{};
+    setState(() => _isSaving = true);
+    try {
+      final repo = ref.read(usersRepositoryProvider.notifier);
+      final granularPermissions = _basicPermissionsSnapshot();
+      final visibilityFilters = Map<String, List<int>>.from(
+        _selectedUser?.visibilityFilters ?? {},
+      )..removeWhere((key, _) => DataVisibilityScope.dimensions.contains(key));
+      final dataScope = DataVisibilityScope({
+        for (final entry in _scopeSelections.entries)
+          entry.key: [...entry.value],
+      });
 
-    bool success;
-    if (_selectedUser == null) {
-      success = await repo.addUser(
-        username,
-        password,
-        canPersons: _canPersons,
-        canStages: _canStages,
-        canAreas: _canAreas,
-        canFathers: _canFathers,
-        canReports: _canReports,
-        canUsers: _canUsers,
-        canAbsence: _canAbsence,
-        canMaintenance: _canMaintenance,
-        canIdCard: _canIdCard,
-        canTayo: _canTayo,
-        canTransfer: _canTransfer,
-        canServices: _canServices,
-        canKhoros: _canKhoros,
-        canBehavior: _canBehavior,
-        isAdvanced: false,
-        granularPermissions: granularPermissions,
-        visibilityFilters: visibilityFilters,
-      );
-    } else {
-      success = await repo.updateUser(
-        _selectedUser!.id,
-        username,
-        password,
-        canPersons: _canPersons,
-        canStages: _canStages,
-        canAreas: _canAreas,
-        canFathers: _canFathers,
-        canReports: _canReports,
-        canUsers: _canUsers,
-        canAbsence: _canAbsence,
-        canMaintenance: _canMaintenance,
-        canIdCard: _canIdCard,
-        canTayo: _canTayo,
-        canTransfer: _canTransfer,
-        canServices: _canServices,
-        canKhoros: _canKhoros,
-        canBehavior: _canBehavior,
-        isAdvanced: false,
-        granularPermissions: granularPermissions,
-        visibilityFilters: visibilityFilters,
-      );
-    }
+      bool success;
+      if (_selectedUser == null) {
+        success = await repo.addUser(
+          username,
+          password,
+          canPersons: _canPersons,
+          canStages: _canStages,
+          canAreas: _canAreas,
+          canFathers: _canFathers,
+          canReports: _canReports,
+          canUsers: _canUsers,
+          canAbsence: _canAbsence,
+          canMaintenance: _canMaintenance,
+          canIdCard: _canIdCard,
+          canTayo: _canTayo,
+          canTransfer: _canTransfer,
+          canServices: _canServices,
+          canKhoros: _canKhoros,
+          canBehavior: _canBehavior,
+          isAdvanced: false,
+          granularPermissions: granularPermissions,
+          visibilityFilters: visibilityFilters,
+          dataVisibilityScope: dataScope,
+        );
+      } else {
+        success = await repo.updateUser(
+          _selectedUser!.id,
+          username,
+          password,
+          canPersons: _canPersons,
+          canStages: _canStages,
+          canAreas: _canAreas,
+          canFathers: _canFathers,
+          canReports: _canReports,
+          canUsers: _canUsers,
+          canAbsence: _canAbsence,
+          canMaintenance: _canMaintenance,
+          canIdCard: _canIdCard,
+          canTayo: _canTayo,
+          canTransfer: _canTransfer,
+          canServices: _canServices,
+          canKhoros: _canKhoros,
+          canBehavior: _canBehavior,
+          isAdvanced: false,
+          granularPermissions: granularPermissions,
+          visibilityFilters: visibilityFilters,
+          dataVisibilityScope: dataScope,
+        );
+      }
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    if (success) {
-      await ref.read(authServiceProvider.notifier).refreshUser();
-      _clearForm();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isCreating ? 'تم إنشاء المستخدم بنجاح' : 'تم تحديث المستخدم بنجاح',
+      if (success) {
+        if (_selectedUser?.id == ref.read(authServiceProvider).value?.id) {
+          await ref.read(authServiceProvider.notifier).refreshUser();
+          if (!mounted) return;
+        }
+        _clearForm();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isCreating
+                  ? 'تم إنشاء المستخدم بنجاح'
+                  : 'تم تحديث المستخدم بنجاح',
+            ),
           ),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isCreating ? 'اسم المستخدم موجود بالفعل' : 'فشل تحديث المستخدم',
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isCreating ? 'اسم المستخدم موجود بالفعل' : 'فشل تحديث المستخدم',
+            ),
           ),
-        ),
-      );
+        );
+      }
+    } catch (error) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('تعذر حفظ المستخدم: $error')));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   Future<void> _delete(UserModel user) async {
+    if (_isSaving) return;
     final currentUser = ref.read(authServiceProvider).value;
     if (currentUser != null && currentUser.id == user.id) {
       if (!mounted) return;
@@ -404,7 +501,6 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
     if (!mounted) return;
 
     if (success) {
-      await ref.read(authServiceProvider.notifier).refreshUser();
       if (_selectedUser?.id == user.id) {
         _clearForm();
       }
@@ -436,6 +532,8 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
     if (_granularFeatureEnabled(user, 'meetings')) count++;
     if (_granularFeatureEnabled(user, 'rohot')) count++;
     if (_granularFeatureEnabled(user, 'monthlyFund')) count++;
+    if (_granularFeatureEnabled(user, 'buses')) count++;
+    if (_granularFeatureEnabled(user, 'visitation')) count++;
     return count;
   }
 
@@ -538,7 +636,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
                 ),
                 if (_selectedUser != null)
                   TextButton.icon(
-                    onPressed: _clearForm,
+                    onPressed: _isSaving ? null : _clearForm,
                     icon: const Icon(Icons.refresh, size: 18),
                     label: const Text('جديد'),
                   ),
@@ -573,8 +671,10 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
             const SizedBox(height: 16),
             _buildBasicPermissionsSection(),
             const SizedBox(height: 20),
+            _buildVisibilitySection(),
+            const SizedBox(height: 20),
             ElevatedButton.icon(
-              onPressed: _save,
+              onPressed: _isSaving ? null : _save,
               icon: Icon(
                 _selectedUser == null ? Icons.person_add : Icons.save_outlined,
               ),
@@ -638,6 +738,50 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
     );
   }
 
+  Widget
+  _buildVisibilitySection() => FutureBuilder<Map<String, List<SelectableItem>>>(
+    future: _scopeOptions,
+    builder: (context, snapshot) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'رؤية البيانات',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        const Text(
+          'الكل هو الافتراضي. الاختيارات داخل كل بند بدائل، وبين البنود شروط مجتمعة. ينطبق النطاق على القوائم والتقارير والطباعة.',
+        ),
+        if (snapshot.hasError) const Text('تعذر تحميل اختيارات نطاق الرؤية'),
+        for (final entry in _scopeLabels.entries) ...[
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('${entry.value}: الكل'),
+            value: !_scopeSelections.containsKey(entry.key),
+            onChanged: (all) => setState(() {
+              if (all) {
+                _scopeSelections.remove(entry.key);
+              } else {
+                _scopeSelections[entry.key] = [];
+              }
+            }),
+          ),
+          if (_scopeSelections.containsKey(entry.key))
+            MultiSelectFilter(
+              label: entry.value,
+              hintText: 'لا توجد بيانات مسموحة حتى تختار',
+              selectedIds: _scopeSelections[entry.key]!,
+              allItems: snapshot.data?[entry.key] ?? [],
+              onChanged: (values) => setState(
+                () => _scopeSelections[entry.key] = values
+                    .map((v) => v.toString())
+                    .toList(),
+              ),
+            ),
+        ],
+      ],
+    ),
+  );
+
   Widget _buildUsersListCard({
     required AsyncValue<List<UserModel>> usersAsync,
     required User? currentUser,
@@ -672,6 +816,8 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
             const SizedBox(height: 12),
             if (shrinkWrap)
               usersAsync.when(
+                skipLoadingOnReload: true,
+                skipError: true,
                 data: (users) {
                   if (users.isEmpty) {
                     return const Padding(
@@ -698,6 +844,8 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
             else
               Expanded(
                 child: usersAsync.when(
+                  skipLoadingOnReload: true,
+                  skipError: true,
                   data: (users) {
                     if (users.isEmpty) {
                       return const Center(

@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:barcode/barcode.dart';
 
 import '../models/card_template.dart';
 import '../repositories/persons_repository.dart';
@@ -9,6 +12,8 @@ class CardDesignerPreview extends StatelessWidget {
     required this.template,
     required this.person,
     this.editable = false,
+    this.showTransparencyGrid = true,
+    this.decodedImages = const {},
     this.selectedElementId,
     this.selectedElementIds = const <String>{},
     this.onElementSelected,
@@ -21,6 +26,8 @@ class CardDesignerPreview extends StatelessWidget {
   final CardTemplate template;
   final PersonListDTO? person;
   final bool editable;
+  final bool showTransparencyGrid;
+  final Map<String, Uint8List> decodedImages;
   final String? selectedElementId;
   final Set<String> selectedElementIds;
   final ValueChanged<String>? onElementSelected;
@@ -59,7 +66,8 @@ class CardDesignerPreview extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (template.transparentBackground) _buildTransparencyGrid(),
+                  if (template.transparentBackground && showTransparencyGrid)
+                    _buildTransparencyGrid(),
                   _buildBackground(),
                   if (person == null)
                     Center(
@@ -140,7 +148,7 @@ class CardDesignerPreview extends StatelessWidget {
   }
 
   Widget _buildBackground() {
-    final bytes = template.backgroundImageBytes;
+    final bytes = decodedImages['background'] ?? template.backgroundImageBytes;
     if (bytes == null) return const SizedBox.shrink();
     final fit = switch (template.backgroundFit) {
       CardBackgroundFit.shrinkToFit => BoxFit.contain,
@@ -185,7 +193,7 @@ class CardDesignerPreview extends StatelessWidget {
       cardWidth,
       cardHeight,
     );
-    final bytes = image.imageBytes;
+    final bytes = decodedImages[elementId] ?? image.imageBytes;
     final fit = switch (image.fit) {
       CardBackgroundFit.shrinkToFit => BoxFit.contain,
       CardBackgroundFit.zoomToFit => BoxFit.cover,
@@ -330,32 +338,17 @@ class CardDesignerPreview extends StatelessWidget {
                 : Colors.grey.shade500,
           ),
         ),
-        child: Center(
-          child: barcode.type == CardCodeType.qr
-              ? Icon(
-                  Icons.qr_code_2,
-                  size: rect.shortestSide * 0.75,
-                  color: Colors.black87,
-                )
-              : FittedBox(
-                  fit: BoxFit.contain,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.view_week_outlined,
-                        color: Colors.black87,
-                      ),
-                      Text(
-                        person.id.toString(),
-                        style: const TextStyle(
-                          fontSize: 8,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ],
-                  ),
+        child: Padding(
+          padding: barcode.type == CardCodeType.qr
+              ? EdgeInsets.all(rect.shortestSide * 0.18)
+              : EdgeInsets.symmetric(
+                  horizontal: rect.width * 0.10,
+                  vertical: rect.height * 0.10,
                 ),
+          child: CustomPaint(
+            painter: _CardBarcodePainter(person.id.toString(), barcode.type),
+            child: const SizedBox.expand(),
+          ),
         ),
       ),
     );
@@ -530,6 +523,45 @@ class CardDesignerPreview extends StatelessWidget {
   double _scaledFontSize(double fontSize, double cardWidth) {
     return fontSize * cardWidth / CardTemplate.fontReferenceWidth;
   }
+}
+
+class _CardBarcodePainter extends CustomPainter {
+  const _CardBarcodePainter(this.data, this.type);
+
+  final String data;
+  final CardCodeType type;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final isQr = type == CardCodeType.qr;
+    final width = isQr ? size.shortestSide : size.width;
+    final height = isQr ? size.shortestSide : size.height;
+    final barcode = isQr ? Barcode.qrCode() : Barcode.code128();
+    final paint = Paint()
+      ..color = Colors.black
+      ..isAntiAlias = false;
+    canvas.save();
+    canvas.translate((size.width - width) / 2, (size.height - height) / 2);
+    for (final element in barcode.make(data, width: width, height: height)) {
+      if (element is BarcodeBar && element.black) {
+        canvas.drawRect(
+          Rect.fromLTWH(
+            element.left,
+            element.top,
+            element.width,
+            element.height,
+          ),
+          paint,
+        );
+      }
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_CardBarcodePainter oldDelegate) =>
+      oldDelegate.data != data || oldDelegate.type != type;
 }
 
 class _TransparencyGridPainter extends CustomPainter {

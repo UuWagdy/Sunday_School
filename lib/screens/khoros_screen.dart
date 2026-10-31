@@ -190,7 +190,12 @@ class _KhorosScreenState extends ConsumerState<KhorosScreen> {
                   ),
                   Text(
                     'إضافة، تعديل وحذف خوارس الكنيسة',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    style: TextStyle(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF94A3B8)
+                          : Colors.grey[600],
+                      fontSize: 13,
+                    ),
                   ),
                 ],
               ),
@@ -259,6 +264,8 @@ class _KhorosScreenState extends ConsumerState<KhorosScreen> {
             ),
             const SizedBox(height: 16),
             servicesAsync.when(
+              skipLoadingOnReload: true,
+              skipError: true,
               data: (servicesList) {
                 return MultiSelectFilter(
                   label: 'الخدمات المرتبطة تلقائيا',
@@ -308,7 +315,14 @@ class _KhorosScreenState extends ConsumerState<KhorosScreen> {
               child: Container(
                 height: 80,
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade300),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF1E293B)
+                      : Colors.grey.shade50,
+                  border: Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF334155)
+                        : Colors.grey.shade300,
+                  ),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 padding: const EdgeInsets.all(8),
@@ -401,6 +415,8 @@ class _KhorosScreenState extends ConsumerState<KhorosScreen> {
             const SizedBox(height: 12),
             mobile
                 ? async.when(
+                    skipLoadingOnReload: true,
+              skipError: true,
                     data: (list) => ListView.separated(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -414,6 +430,8 @@ class _KhorosScreenState extends ConsumerState<KhorosScreen> {
                   )
                 : Expanded(
                     child: async.when(
+                      skipLoadingOnReload: true,
+              skipError: true,
                       data: (list) => ListView.separated(
                         itemCount: list.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),
@@ -442,16 +460,24 @@ class _KhorosScreenState extends ConsumerState<KhorosScreen> {
         .where((item) => _selectedBulkIds.contains(item.id))
         .length;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final barBg = selectedCount == 0
+        ? (isDark ? const Color(0xFF1E293B) : Colors.grey.shade50)
+        : (isDark
+            ? Theme.of(context).primaryColor.withOpacity(0.2)
+            : Colors.blue.shade50);
+    final borderColor = selectedCount == 0
+        ? (isDark ? const Color(0xFF334155) : Colors.grey.shade200)
+        : (isDark
+            ? Theme.of(context).primaryColor.withOpacity(0.4)
+            : Colors.blue.shade100);
+
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: selectedCount == 0 ? Colors.grey.shade50 : Colors.blue.shade50,
+        color: barBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: selectedCount == 0
-              ? Colors.grey.shade200
-              : Colors.blue.shade100,
-        ),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -98,3 +98,23 @@ node_modules/
 *.pfx
 *.key
 serviceAccountKey.json
+
+# Unified build center output and temporary build logs
+/Build-Center/Output/*
+!/Build-Center/Output/README.txt
+/Build-Center/Logs/
+
+# .NET compilation artifacts
+**/bin/
+**/obj/
+**/publish/
+
+# Distribution & Compiled Installers / Binaries
+dist/
+
+
+# Installer generated binaries and downloaded prerequisites
+installer/output/
+installer/downloads/
+installer/payload/
+
