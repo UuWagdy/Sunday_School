@@ -1,7 +1,8 @@
-const CACHE_NAME = 'sunday-school-promo-v1';
+const CACHE_NAME = 'sunday-school-promo-v2';
 const ASSETS = [
   './',
   './index.html',
+  './updates.html',
   './manifest.json',
   './detailed_features.md',
   './public/logo.png',
