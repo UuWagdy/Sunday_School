@@ -59,6 +59,7 @@ dependencies:
   google_fonts: ^6.2.1
   liquidify:
     path: packages/liquidify
+  universal_io: ^2.3.1
 
 dev_dependencies:
   flutter_test:

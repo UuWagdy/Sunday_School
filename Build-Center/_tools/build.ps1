@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('sunday-installer', 'sunday-android', 'membership-installer', 'membership-android', 'sunday-all', 'membership-all', 'everything')]
+    [ValidateSet('sunday-installer', 'sunday-web-installer', 'sunday-android', 'membership-installer', 'membership-android', 'sunday-all', 'membership-all', 'everything')]
     [string]$Target,
     [string]$ConfigPath,
     [switch]$PlanOnly,
@@ -122,9 +122,16 @@ try {
             Invoke-BuildCommand $dotnet @('publish', $buildProfile.BackendProject, '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=false', '-o', $backend) $buildProfile.Root
             Invoke-BuildCommand $dotnet @('publish', $buildProfile.ManagerProject, '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=false', '-o', $manager) $buildProfile.Root
             & (Join-Path $buildProfile.Root 'installer\validate-server-payload.ps1') -BackendRoot $backend -ManagerRoot $manager -PostgresRoot $buildProfile.Postgres
-            Invoke-BuildCommand $flutter @('build', 'windows', '--release', '--no-pub', '--build-name', $version.Name, '--build-number', $version.Build) $buildProfile.Root
-            $compilerArguments = @('/Qp', "/O$staging", "/F$([IO.Path]::GetFileNameWithoutExtension($buildProfile.InstallerName))",
-                "/DMyAppVersion=$($version.Name)", "/DSyncServerSource=$backend", "/DServerManagerSource=$manager", "/DPostgresSource=$($buildProfile.Postgres)")
+            if ($buildProfile.IsWeb) {
+                Invoke-BuildCommand $flutter @('build', 'web', '--release', '--no-pub', '--no-wasm-dry-run') $buildProfile.Root
+                $webOut = Join-Path $buildProfile.Root 'build\web'
+                $compilerArguments = @('/Qp', "/O$staging", "/F$([IO.Path]::GetFileNameWithoutExtension($buildProfile.InstallerName))",
+                    "/DMyAppVersion=$($version.Name)", "/DSyncServerSource=$backend", "/DServerManagerSource=$manager", "/DPostgresSource=$($buildProfile.Postgres)", "/DWebSource=$webOut")
+            } else {
+                Invoke-BuildCommand $flutter @('build', 'windows', '--release', '--no-pub', '--build-name', $version.Name, '--build-number', $version.Build) $buildProfile.Root
+                $compilerArguments = @('/Qp', "/O$staging", "/F$([IO.Path]::GetFileNameWithoutExtension($buildProfile.InstallerName))",
+                    "/DMyAppVersion=$($version.Name)", "/DSyncServerSource=$backend", "/DServerManagerSource=$manager", "/DPostgresSource=$($buildProfile.Postgres)")
+            }
             if ($buildProfile.Tools) { $compilerArguments += "/DToolsSource=$($buildProfile.Tools)" }
             $compilerArguments += (Join-Path $buildProfile.Root $buildProfile.InstallerScript)
             Invoke-BuildCommand $iscc $compilerArguments $buildProfile.Root
@@ -161,7 +168,7 @@ try {
     $temporaryInfo = Join-Path $staging 'BUILD_INFO.json'
     $info | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $temporaryInfo -Encoding UTF8
     Publish-BuildArtifact $temporaryInfo $infoPath | Out-Null
-    $sums = foreach ($name in @('SundaySchool_Setup.exe', 'SundaySchool_Android.apk', 'ChurchMembership_Setup.exe', 'ChurchMembership_Android.apk')) {
+    $sums = foreach ($name in @('SundaySchool_Setup.exe', 'SundaySchool_WebServer_Setup.exe', 'SundaySchool_Android.apk', 'ChurchMembership_Setup.exe', 'ChurchMembership_Android.apk')) {
         $path = Join-Path $output $name
         if (Test-Path -LiteralPath $path -PathType Leaf) { '{0}  {1}' -f (Get-BuildFileHash $path), $name }
     }

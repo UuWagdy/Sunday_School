@@ -1,12 +1,13 @@
 function Get-TargetJobs([string]$Target) {
     switch ($Target) {
         'sunday-installer'     { return @('sunday-installer') }
+        'sunday-web-installer' { return @('sunday-web-installer') }
         'sunday-android'       { return @('sunday-android') }
         'membership-installer' { return @('membership-installer') }
         'membership-android'   { return @('membership-android') }
-        'sunday-all'           { return @('sunday-installer', 'sunday-android') }
+        'sunday-all'           { return @('sunday-installer', 'sunday-web-installer', 'sunday-android') }
         'membership-all'       { return @('membership-installer', 'membership-android') }
-        'everything'           { return @('sunday-installer', 'sunday-android', 'membership-installer', 'membership-android') }
+        'everything'           { return @('sunday-installer', 'sunday-web-installer', 'sunday-android', 'membership-installer', 'membership-android') }
         default { throw "Unknown build target: $Target" }
     }
 }
@@ -22,6 +23,18 @@ function Get-ProjectVersion([string]$Root) {
 }
 
 function Get-BuildProfile($Config, [string]$Job) {
+    if ($Job -eq 'sunday-web-installer') {
+        $root = [IO.Path]::GetFullPath($Config.SundaySchoolRoot)
+        return [pscustomobject]@{
+            Root = $root; Key = 'sunday-web'; DisplayName = 'Sunday School Web Server'
+            InstallerScript = 'installer\SundaySchoolWebServerSetup.iss'
+            BackendProject = 'SundaySchool.SyncServer\SundaySchool.SyncServer.csproj'
+            ManagerProject = 'SundaySchoolServerManager\SundaySchoolServerManager.csproj'
+            Postgres = (Join-Path $root 'installer\payload\server\postgresql')
+            Tools = $null; InstallerName = 'SundaySchool_WebServer_Setup.exe'; AndroidName = $null
+            IsWeb = $true
+        }
+    }
     $sunday = $Job.StartsWith('sunday-')
     if ($sunday) {
         $root = [IO.Path]::GetFullPath($Config.SundaySchoolRoot)
@@ -32,6 +45,7 @@ function Get-BuildProfile($Config, [string]$Job) {
             ManagerProject = 'SundaySchoolServerManager\SundaySchoolServerManager.csproj'
             Postgres = (Join-Path $root 'installer\payload\server\postgresql')
             Tools = $null; InstallerName = 'SundaySchool_Setup.exe'; AndroidName = 'SundaySchool_Android.apk'
+            IsWeb = $false
         }
     }
     $root = [IO.Path]::GetFullPath($Config.ChurchMembershipRoot)

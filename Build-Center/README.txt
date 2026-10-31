@@ -8,10 +8,12 @@
 04_ChurchMembership_Android.bat    العضوية الكنسية: تطبيق Android
 05_SundaySchool_All.bat            مدارس الأحد: المثبت وتطبيق Android
 06_ChurchMembership_All.bat        العضوية الكنسية: المثبت وتطبيق Android
-07_Build_Everything.bat            بناء كل شيء للبرنامجين
+07_Build_Everything.bat            بناء كل شيء للبرنامجين (يشمل مثبت الويب)
+08_SundaySchool_WebServer_Installer.bat مدارس الأحد: مثبت خادم الويب (للأجهزة الضعيفة وويندوز 7)
 
 كل النتائج في مجلد Output بجوار هذه الملفات، بأسماء ثابتة:
 SundaySchool_Setup.exe
+SundaySchool_WebServer_Setup.exe
 SundaySchool_Android.apk
 ChurchMembership_Setup.exe
 ChurchMembership_Android.apk

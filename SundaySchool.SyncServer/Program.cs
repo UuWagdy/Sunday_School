@@ -98,6 +98,31 @@ using (var scope = app.Services.CreateScope())
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+
+var webRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+if (Directory.Exists(webRoot))
+{
+    var fileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(webRoot);
+    app.UseDefaultFiles(new DefaultFilesOptions
+    {
+        FileProvider = fileProvider
+    });
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = fileProvider,
+        OnPrepareResponse = ctx =>
+        {
+            if (ctx.File.Name.Equals("index.html", StringComparison.OrdinalIgnoreCase))
+            {
+                ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+            }
+            else
+            {
+                ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000";
+            }
+        }
+    });
+}
 app.Use(async (context, next) =>
 {
     var started = System.Diagnostics.Stopwatch.StartNew();
@@ -140,5 +165,14 @@ app.MapGet("/health", async (StorageService storage, PostgresSchemaInitializer s
         timestampUtc = DateTime.UtcNow,
     });
 });
+
+if (Directory.Exists(webRoot))
+{
+    var fileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(webRoot);
+    app.MapFallbackToFile("index.html", new StaticFileOptions
+    {
+        FileProvider = fileProvider
+    });
+}
 
 app.Run();

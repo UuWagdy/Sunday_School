@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'package:universal_io/io.dart';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -48,6 +48,14 @@ class ServerBootstrap {
       var isServerMode =
           prefs.getBool(_prefIsServerMode) ?? defaultServerUrl.isNotEmpty;
       var jwtToken = prefs.getString(_prefJwtToken);
+
+      if (kIsWeb) {
+        isServerMode = true;
+        final origin = Uri.base.origin;
+        if (origin.isNotEmpty && origin != 'null') {
+          serverUrl = origin;
+        }
+      }
 
       // Installing the server on a former client promotes it once. Later manual
       // connection choices still take precedence, and no database is replaced.

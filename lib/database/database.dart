@@ -1,15 +1,13 @@
 import 'dart:developer' as developer;
-import 'dart:io';
-import 'dart:typed_data';
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:universal_io/io.dart';
 import 'package:file_picker/file_picker.dart';
+import 'connection/connection.dart';
 import 'tables.dart';
 import 'visibility_interceptor.dart';
 import '../models/data_visibility_scope.dart';
+
+export 'connection/connection.dart' show getAppDatabaseDirectory;
 
 part 'database.g.dart';
 
@@ -46,7 +44,7 @@ part 'database.g.dart';
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : this._scoped(_openConnection(), VisibilityContext());
+  AppDatabase() : this._scoped(openAppConnection(), VisibilityContext());
   AppDatabase.forTesting(QueryExecutor executor) : this._scoped(executor, VisibilityContext());
   AppDatabase._scoped(QueryExecutor executor, this.visibilityContext)
       : super(executor.interceptWith(VisibilityInterceptor(visibilityContext)));
@@ -885,108 +883,4 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
-/// Returns the directory where the SQLite database is stored.
-/// On Desktop (Windows/Linux/macOS), stores the database inside a `database/` folder
-/// within the application executable folder (portable / self-contained) so that formatting
-/// or reinstalling Windows does not wipe the database.
-///
-/// If running on Windows and `<exeDir>/database/` has no database yet, but a legacy
-/// database exists in `C:\Users\<user>\Documents`, it automatically migrates the database
-/// and pointer file so existing users lose zero data!
-Future<Directory> getAppDatabaseDirectory() async {
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    try {
-      final exeDir = File(Platform.resolvedExecutable).parent;
-      final appDbDir = Directory(p.join(exeDir.path, 'database'));
-      if (!appDbDir.existsSync()) {
-        appDbDir.createSync(recursive: true);
-      }
-
-      // Verify write permission
-      final testFile = File(p.join(appDbDir.path, '.write_test'));
-      testFile.writeAsStringSync('test');
-      testFile.deleteSync();
-
-      // Check for legacy migration from Documents
-      try {
-        final legacyDir = await getApplicationDocumentsDirectory();
-        final legacyPointer = File(p.join(legacyDir.path, 'current_db.txt'));
-        String legacyDbName = 'Betros_Bols.db';
-        if (legacyPointer.existsSync()) {
-          legacyDbName = legacyPointer.readAsStringSync().trim();
-        }
-
-        final legacyDbFile = File(p.join(legacyDir.path, legacyDbName));
-        final targetDbFile = File(p.join(appDbDir.path, legacyDbName));
-
-        // If app directory doesn't have the database yet, but legacy Documents does:
-        if (!targetDbFile.existsSync() && legacyDbFile.existsSync()) {
-          print('FLUTTER DB MIGRATION: Copying legacy database from ${legacyDbFile.path} to ${targetDbFile.path}');
-          legacyDbFile.copySync(targetDbFile.path);
-
-          if (legacyPointer.existsSync()) {
-            final targetPointer = File(p.join(appDbDir.path, 'current_db.txt'));
-            legacyPointer.copySync(targetPointer.path);
-          }
-          print('FLUTTER DB MIGRATION: Legacy database migrated successfully.');
-        }
-      } catch (migErr) {
-        print('FLUTTER DB MIGRATION WARNING: $migErr');
-      }
-
-      return appDbDir;
-    } catch (e) {
-      print('FLUTTER DB WARNING: Cannot use executable directory for DB ($e). Falling back to Documents.');
-    }
-  }
-
-  // Fallback for mobile / permission restricted environments
-  return await getApplicationDocumentsDirectory();
-}
-
-LazyDatabase _openConnection() {
-  return LazyDatabase(() async {
-    final dbFolder = await getAppDatabaseDirectory();
-    final pointerFile = File(p.join(dbFolder.path, 'current_db.txt'));
-    String dbName = 'Betros_Bols.db';
-    if (pointerFile.existsSync()) {
-      dbName = pointerFile.readAsStringSync().trim();
-    }
-
-    final file = File(p.join(dbFolder.path, dbName));
-
-    // Copy from assets if it doesn't exist
-    if (!file.existsSync()) {
-      try {
-        final data = await rootBundle.load('assets/database/Betros_Bols.db');
-        final bytes = data.buffer.asUint8List(
-          data.offsetInBytes,
-          data.lengthInBytes,
-        );
-        file.writeAsBytesSync(bytes);
-        print('FLUTTER DB: Copied from assets to ${file.path}');
-      } catch (e) {
-        print('FLUTTER DB ERROR: Could not copy asset database: $e');
-      }
-    }
-
-    // Clean up old database files from previous restores
-    try {
-      final files = dbFolder.listSync();
-      for (var f in files) {
-        if (f is File &&
-            f.path.endsWith('.db') &&
-            p.basename(f.path).startsWith('Betros_Bols') &&
-            p.basename(f.path) != dbName) {
-          try {
-            f.deleteSync();
-          } catch (_) {} // Ignore locked files
-        }
-      }
-    } catch (_) {}
-
-    print('FLUTTER DB PATH: ${file.path}');
-
-    return NativeDatabase.createInBackground(file);
-  });
-}
+// Connection and database directory management is in connection/connection.dart
