@@ -4,8 +4,6 @@ namespace SundaySchoolServerManager;
 
 internal static class Program
 {
-    private const string MutexName = "SundaySchool_ServerManager_5050_v1";
-
     [STAThread]
     private static void Main(string[] args)
     {
@@ -24,26 +22,44 @@ internal static class Program
 
         var background = args.Any(value =>
             value.Equals("--background", StringComparison.OrdinalIgnoreCase));
+        var apiPort = ReadPort(args, "--api-port", ServerSupervisor.ApiPort);
+        var databasePort = ReadPort(args, "--database-port", ServerSupervisor.DatabasePort);
 
-        using var mutex = new Mutex(true, MutexName, out var isFirstInstance);
+        using var activation = new EventWaitHandle(false, EventResetMode.AutoReset, $"SundaySchool_ServerManager_Activate_{apiPort}_v1");
+        using var mutex = new Mutex(true, $"SundaySchool_ServerManager_{apiPort}_v1", out var isFirstInstance);
         if (!isFirstInstance)
         {
             if (!background)
             {
-                MessageBox.Show(
-                    "مدير سيرفر مدارس الأحد يعمل بالفعل بجانب الساعة.",
-                    "مدير السيرفر",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                activation.Set();
             }
             return;
         }
 
         ApplicationConfiguration.Initialize();
         var installRoot = ResolveInstallRoot(args);
-        using var supervisor = new ServerSupervisor(installRoot);
+        using var supervisor = new ServerSupervisor(installRoot, apiPort, databasePort);
         using var window = new MainForm(supervisor, background);
-        Application.Run(window);
+        var registration = ThreadPool.RegisterWaitForSingleObject(activation, (_, _) =>
+        {
+            try
+            {
+                if (!window.IsDisposed)
+                    window.BeginInvoke(new Action(window.ShowWindow));
+            }
+            catch (InvalidOperationException) { /* Window is closing. */ }
+        }, null, Timeout.Infinite, false);
+        try { Application.Run(window); }
+        finally { registration.Unregister(null); }
+    }
+
+    private static int ReadPort(string[] args, string option, int fallback)
+    {
+        var index = Array.FindIndex(args, value => value.Equals(option, StringComparison.OrdinalIgnoreCase));
+        if (index < 0) return fallback;
+        if (index + 1 < args.Length && int.TryParse(args[index + 1], out var port) && port is > 0 and <= 65535)
+            return port;
+        throw new ArgumentException($"Invalid port for {option}.");
     }
 
     private static string ResolveInstallRoot(string[] args)

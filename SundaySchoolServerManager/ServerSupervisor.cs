@@ -103,8 +103,8 @@ internal sealed class ServerSupervisor : IDisposable
                     : "جاري تشغيل قاعدة البيانات PostgreSQL...");
 
             var (postgresBinDir, backendExePath) = ResolveBinaries();
-            await StopOwnedProcessesAsync(postgresBinDir);
             RemoveStalePostmasterPid();
+            await StopOwnedProcessesAsync(postgresBinDir);
 
             var postgresData = Path.Combine(ServerData, "postgres-data");
             await EnsurePostgresClusterInitializedAsync(postgresBinDir, postgresData);
@@ -379,7 +379,7 @@ internal sealed class ServerSupervisor : IDisposable
         {
             var pgCtl = Path.Combine(postgresBinDir, "pg_ctl.exe");
             var postgresData = Path.Combine(ServerData, "postgres-data");
-            if (File.Exists(pgCtl) && Directory.Exists(postgresData))
+            if (File.Exists(pgCtl) && File.Exists(Path.Combine(postgresData, "postmaster.pid")))
             {
                 var start = new ProcessStartInfo
                 {
@@ -508,13 +508,20 @@ internal sealed class ServerSupervisor : IDisposable
         if (!File.Exists(pidFile)) return;
         try
         {
-            var firstLine = File.ReadLines(pidFile).FirstOrDefault();
-            if (int.TryParse(firstLine, out var pid))
+            var lines = File.ReadAllLines(pidFile);
+            if (int.TryParse(lines.FirstOrDefault(), out var pid))
             {
                 try
                 {
                     using var process = Process.GetProcessById(pid);
-                    if (!process.HasExited) return;
+                    // Windows may reuse the recorded PID after a reboot. An
+                    // unrelated process must not block recovery (or be stopped).
+                    if (!process.HasExited && process.ProcessName.Equals("postgres", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (lines.Length < 3 || !long.TryParse(lines[2], out var startedAt)) return;
+                        var actualStart = new DateTimeOffset(process.StartTime.ToUniversalTime()).ToUnixTimeSeconds();
+                        if (Math.Abs(actualStart - startedAt) <= 2) return;
+                    }
                 }
                 catch (ArgumentException) { }
             }

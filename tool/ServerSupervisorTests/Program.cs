@@ -90,6 +90,14 @@ try
     await supervisor.StopAsync();
     Assert(lastState == ServerState.Stopped && !File.Exists(pidFile), "stop waits for PostgreSQL lock removal");
 
+    // A power loss can leave the lock file behind, including a PID reused by
+    // an unrelated process after Windows restarts.
+    await File.WriteAllTextAsync(pidFile, $"{Environment.ProcessId}\n{data}\n0\n{databasePort}\n");
+    await supervisor.StartAsync();
+    Assert(lastState == ServerState.Running && await supervisor.IsHealthyAsync(),
+        "startup recovers a stale postmaster PID reused by a different executable");
+    await supervisor.StopAsync();
+
     // Reproduce a database that dies after readiness but before API readiness.
     EventHandler<ServerStatusEventArgs> stopDuringStartup = (_, status) =>
     {

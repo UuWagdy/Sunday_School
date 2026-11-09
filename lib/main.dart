@@ -8,6 +8,7 @@ import 'sync/server_connection_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 import 'sync/data_change_coordinator.dart';
+import 'sync/signalr_sync_service.dart';
 import 'widgets/data_scope_boundary.dart';
 import 'services/database_backup_service.dart';
 
@@ -24,6 +25,9 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(dataChangeCoordinatorProvider.select((_) => true));
+    // Keep the socket at the app boundary. The change coordinator reads the
+    // database, so the database must not depend on this socket in return.
+    ref.watch(signalRSyncProvider.select((_) => true));
     final programName =
         ref.watch(programNameProvider).value ??
         SettingsRepository.defaultProgramName;

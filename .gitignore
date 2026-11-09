@@ -117,3 +117,7 @@ installer/output/
 installer/downloads/
 installer/payload/
 
+# Firebase cache
+.firebase/
+
+

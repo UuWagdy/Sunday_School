@@ -99,7 +99,7 @@ echo.
 echo ======================================================================
 echo   [SUCCESS] Full Setup installer built successfully!
 echo   Installer file:
-echo   %~dp0installer\output\Sunday_School_Setup_v1.0.5.exe
+echo   %~dp0installer\output\Sunday_School_Setup_v1.0.6.exe
 echo ======================================================================
 echo.
 pause

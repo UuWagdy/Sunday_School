@@ -1,7 +1,7 @@
 #define MyAppName "Sunday School Client"
 #define MyAppArabicName "عميل مدارس الأحد (الشبكة المحلية)"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.5"
+  #define MyAppVersion "1.0.6"
 #endif
 #define MyAppPublisher "Sunday School"
 

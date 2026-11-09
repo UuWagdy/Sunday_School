@@ -160,8 +160,10 @@ class CardDesignerPreview extends StatelessWidget {
         opacity: template.backgroundOpacity.clamp(0, 1).toDouble(),
         child: Image.memory(
           bytes,
+          key: ValueKey('designer_bg_${bytes.length}_${bytes.hashCode}'),
           fit: fit,
           alignment: Alignment.center,
+          gaplessPlayback: false,
           errorBuilder: (context, error, stackTrace) => Container(
             alignment: Alignment.center,
             color: Colors.red.shade50,

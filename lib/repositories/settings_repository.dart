@@ -41,13 +41,13 @@ class SettingsRepository {
   Future<void> saveSetting(String key, String value) async {
     await _db.transaction(() async {
       await _db
-        .into(_db.settings)
-        .insertOnConflictUpdate(
-          SettingsCompanion(
-            settingKey: drift.Value(key),
-            settingValue: drift.Value(value),
-          ),
-        );
+          .into(_db.settings)
+          .insertOnConflictUpdate(
+            SettingsCompanion(
+              settingKey: drift.Value(key),
+              settingValue: drift.Value(value),
+            ),
+          );
     });
   }
 
@@ -96,6 +96,38 @@ class SettingsRepository {
       throw ArgumentError.value(template, 'template', errors.join('\n'));
     }
     await saveSetting(idCardActiveTemplateKey, template.toJsonString());
+  }
+
+  /// Commit both faces together, including the background keys read by legacy
+  /// printing. A failed save must never leave half of a design on disk/server.
+  Future<void> saveCardDesign({
+    required CardTemplate front,
+    required CardTemplate back,
+    required bool printBack,
+  }) async {
+    final errors = [...front.validate(), ...back.validate()];
+    if (errors.isNotEmpty) {
+      throw ArgumentError(errors.join('\n'));
+    }
+    final values = {
+      idCardActiveTemplateKey: front.toJsonString(),
+      'id_card_back_template': back.toJsonString(),
+      'id_card_print_back': printBack.toString(),
+      'id_card_designer_mode': 'true',
+      'id_card_background': front.backgroundImageBase64 ?? '',
+      'id_card_back_background': back.backgroundImageBase64 ?? '',
+    };
+    await _db.transaction(() async {
+      await _db.batch((batch) {
+        batch.insertAllOnConflictUpdate(_db.settings, [
+          for (final entry in values.entries)
+            SettingsCompanion(
+              settingKey: drift.Value(entry.key),
+              settingValue: drift.Value(entry.value),
+            ),
+        ]);
+      });
+    });
   }
 
   Future<void> deleteActiveCardTemplate() async {

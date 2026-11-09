@@ -54,6 +54,17 @@ class _PeriodComparisonScreenState
     Color(0xFF8D6E63), // Brown
   ];
 
+  static Color _getAdaptivePeriodColor(Color c, bool isDark) {
+    if (!isDark) return c;
+    if (c == const Color(0xFF1A237E)) return const Color(0xFF60A5FA); // Sky Blue
+    if (c == const Color(0xFFC5A059)) return const Color(0xFFFBBF24); // Brass Gold
+    if (c == const Color(0xFF26A69A)) return const Color(0xFF2DD4BF); // Teal
+    if (c == const Color(0xFF5C6BC0)) return const Color(0xFF818CF8); // Indigo
+    if (c == const Color(0xFF78909C)) return const Color(0xFF94A3B8); // Blue Grey
+    if (c == const Color(0xFF8D6E63)) return const Color(0xFFA8A29E); // Brown
+    return c;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -252,7 +263,9 @@ class _PeriodComparisonScreenState
             // ── Results ──
             Expanded(
               child: Container(
-                color: theme.colorScheme.background.withOpacity(0.5),
+                color: theme.brightness == Brightness.dark
+                    ? const Color(0xFF090D16)
+                    : theme.colorScheme.surface.withOpacity(0.5),
                 child: _buildResultsSection(isMobile, theme),
               ),
             ),
@@ -264,23 +277,32 @@ class _PeriodComparisonScreenState
 
   // ════════════════════════════════  PERIODS  ══════════════════════════
   Widget _buildControlHeader(bool isMobile, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF151E2E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: isDark ? Border.all(color: const Color(0xFF334155)) : null,
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Column(
         children: [
           _buildPeriodsSection(isMobile, theme),
-          const Divider(height: 1, indent: 20, endIndent: 20),
+          Divider(
+            height: 1,
+            indent: 20,
+            endIndent: 20,
+            color: isDark ? const Color(0xFF334155) : null,
+          ),
           _buildAggregateToggle(theme),
         ],
       ),
@@ -288,6 +310,9 @@ class _PeriodComparisonScreenState
   }
 
   Widget _buildPeriodsSection(bool isMobile, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final accentColor = isDark ? const Color(0xFF60A5FA) : theme.primaryColor;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -298,12 +323,12 @@ class _PeriodComparisonScreenState
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: theme.primaryColor.withOpacity(0.1),
+                  color: accentColor.withOpacity(isDark ? 0.2 : 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.date_range,
-                  color: theme.primaryColor,
+                  color: accentColor,
                   size: 20,
                 ),
               ),
@@ -313,7 +338,7 @@ class _PeriodComparisonScreenState
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
-                  color: theme.primaryColor,
+                  color: accentColor,
                 ),
               ),
               const Spacer(),
@@ -340,15 +365,25 @@ class _PeriodComparisonScreenState
   }
 
   Widget _buildAggregateToggle(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          const Icon(Icons.hub_outlined, size: 18, color: Colors.grey),
+          Icon(
+            Icons.hub_outlined,
+            size: 18,
+            color: isDark ? const Color(0xFF94A3B8) : Colors.grey,
+          ),
           const SizedBox(width: 10),
-          const Text(
+          Text(
             'نظام المقارنة:',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+            ),
           ),
           const Spacer(),
           _ToggleOption(
@@ -370,16 +405,21 @@ class _PeriodComparisonScreenState
   }
 
   Widget _buildPeriodCard(int index, bool isMobile, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     final p = _periods[index];
-    final color = _periodColors[index % _periodColors.length];
+    final color = _periods.isNotEmpty ? _periodColors[index % _periodColors.length] : const Color(0xFF1A237E);
+    final adaptiveColor = _getAdaptivePeriodColor(color, isDark);
 
     return Container(
       width: isMobile ? 280 : 320,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.04),
+        color: adaptiveColor.withOpacity(isDark ? 0.12 : 0.04),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: color.withOpacity(0.15), width: 1.5),
+        border: Border.all(
+          color: adaptiveColor.withOpacity(isDark ? 0.35 : 0.15),
+          width: 1.5,
+        ),
       ),
       child: Row(
         children: [
@@ -391,14 +431,14 @@ class _PeriodComparisonScreenState
                 'فترة',
                 style: TextStyle(
                   fontSize: 12,
-                  color: color,
+                  color: adaptiveColor,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 2),
               Container(
                 padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                decoration: BoxDecoration(color: adaptiveColor, shape: BoxShape.circle),
                 child: Text(
                   '${index + 1}',
                   style: const TextStyle(
@@ -419,7 +459,7 @@ class _PeriodComparisonScreenState
                 _DateSelector(
                   label: 'من',
                   date: p.from,
-                  color: color,
+                  color: adaptiveColor,
                   onTap: () async {
                     final picked = await showDatePicker(
                       context: context,
@@ -434,7 +474,7 @@ class _PeriodComparisonScreenState
                 _DateSelector(
                   label: 'إلى',
                   date: p.to,
-                  color: color,
+                  color: adaptiveColor,
                   onTap: () async {
                     final picked = await showDatePicker(
                       context: context,
@@ -450,10 +490,10 @@ class _PeriodComparisonScreenState
           ),
           if (_periods.length > 2)
             IconButton(
-              icon: const Icon(
+              icon: Icon(
                 Icons.remove_circle_outline,
                 size: 20,
-                color: Colors.grey,
+                color: isDark ? const Color(0xFF94A3B8) : Colors.grey,
               ),
               onPressed: () => _removePeriod(index),
               padding: EdgeInsets.zero,
@@ -464,24 +504,12 @@ class _PeriodComparisonScreenState
     );
   }
 
-  Widget _miniDateBox(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.25)),
-      ),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 11, color: color),
-      ),
-    );
-  }
-
   // ════════════════════════  ACTION BAR  ═══════════════════════════════
   Widget _buildActionBar(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryBtnColor = isDark ? const Color(0xFF1E293B) : theme.primaryColor;
+    final textAccent = isDark ? const Color(0xFF60A5FA) : Colors.white;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
       child: Row(
@@ -492,34 +520,37 @@ class _PeriodComparisonScreenState
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: theme.primaryColor,
+                color: primaryBtnColor,
                 borderRadius: BorderRadius.circular(15),
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.primaryColor.withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                border: isDark ? Border.all(color: const Color(0xFF334155)) : null,
+                boxShadow: isDark
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: theme.primaryColor.withOpacity(0.3),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.people_alt, size: 18, color: Colors.white),
+                  Icon(Icons.people_alt, size: 18, color: textAccent),
                   const SizedBox(width: 8),
                   Text(
                     '${_selectedPersonIds.length} شخص مختار',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: isDark ? const Color(0xFFF8FAFC) : Colors.white,
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(
+                  Icon(
                     Icons.keyboard_arrow_down,
                     size: 16,
-                    color: Colors.white70,
+                    color: isDark ? const Color(0xFF94A3B8) : Colors.white70,
                   ),
                 ],
               ),
@@ -532,14 +563,18 @@ class _PeriodComparisonScreenState
             child: FilledButton(
               onPressed: _isComparing ? null : _runComparison,
               style: FilledButton.styleFrom(
-                backgroundColor: theme.colorScheme.secondary,
+                backgroundColor: isDark
+                    ? const Color(0xFF0284C7)
+                    : theme.colorScheme.secondary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15),
                 ),
                 elevation: 4,
-                shadowColor: theme.colorScheme.secondary.withOpacity(0.4),
+                shadowColor: isDark
+                    ? Colors.transparent
+                    : theme.colorScheme.secondary.withOpacity(0.4),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -574,6 +609,7 @@ class _PeriodComparisonScreenState
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -606,6 +642,7 @@ class _PeriodComparisonScreenState
 
   // ════════════════════════  RESULTS  ══════════════════════════════════
   Widget _buildResultsSection(bool isMobile, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     if (_isComparing) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -617,19 +654,31 @@ class _PeriodComparisonScreenState
             Icon(
               Icons.compare_arrows,
               size: 64,
-              color: Colors.grey.withOpacity(0.3),
+              color: isDark
+                  ? const Color(0xFF64748B).withOpacity(0.4)
+                  : Colors.grey.withOpacity(0.3),
             ),
             const SizedBox(height: 12),
             Text(
               'اختر الفترات والأشخاص ثم اضغط "مقارنة"',
-              style: TextStyle(color: Colors.grey[500], fontSize: 14),
+              style: TextStyle(
+                color: isDark ? const Color(0xFF94A3B8) : Colors.grey[500],
+                fontSize: 14,
+              ),
             ),
           ],
         ),
       );
     }
     if (_results.isEmpty) {
-      return const Center(child: Text('لا توجد نتائج'));
+      return Center(
+        child: Text(
+          'لا توجد نتائج',
+          style: TextStyle(
+            color: isDark ? const Color(0xFF94A3B8) : null,
+          ),
+        ),
+      );
     }
 
     return ListView.builder(
@@ -645,18 +694,23 @@ class _PeriodComparisonScreenState
     bool isMobile,
     ThemeData theme,
   ) {
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF151E2E) : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        border: isDark ? Border.all(color: const Color(0xFF334155)) : null,
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -665,7 +719,9 @@ class _PeriodComparisonScreenState
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.06),
+              color: isDark
+                  ? const Color(0xFF1E293B)
+                  : theme.primaryColor.withOpacity(0.06),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(16),
               ),
@@ -674,13 +730,17 @@ class _PeriodComparisonScreenState
               children: [
                 CircleAvatar(
                   radius: 16,
-                  backgroundColor: theme.primaryColor.withOpacity(0.12),
+                  backgroundColor: isDark
+                      ? const Color(0xFF2563EB).withOpacity(0.3)
+                      : theme.primaryColor.withOpacity(0.12),
                   child: Text(
                     '${person.personId}',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: theme.primaryColor,
+                      color: isDark
+                          ? const Color(0xFF93C5FD)
+                          : theme.primaryColor,
                     ),
                   ),
                 ),
@@ -688,9 +748,12 @@ class _PeriodComparisonScreenState
                 Expanded(
                   child: Text(
                     person.personName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
+                      color: isDark
+                          ? const Color(0xFFF8FAFC)
+                          : const Color(0xFF0F172A),
                     ),
                   ),
                 ),
@@ -717,6 +780,8 @@ class _PeriodComparisonScreenState
     required List<PeriodAttendanceResult> periodResults,
     required bool isMobile,
   }) {
+    final isDark = theme.brightness == Brightness.dark;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -725,18 +790,24 @@ class _PeriodComparisonScreenState
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
+                color: isDark
+                    ? const Color(0xFF059669).withOpacity(0.25)
+                    : Colors.green.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.verified, color: Colors.green, size: 18),
+              child: Icon(
+                Icons.verified,
+                color: isDark ? const Color(0xFF34D399) : Colors.green,
+                size: 18,
+              ),
             ),
             const SizedBox(width: 10),
-            const Text(
+            Text(
               'تحليل الحضور الاستراتيجي',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 13,
-                color: Colors.green,
+                color: isDark ? const Color(0xFF34D399) : Colors.green,
               ),
             ),
           ],
@@ -753,7 +824,10 @@ class _PeriodComparisonScreenState
               children: periodResults.asMap().entries.map((entry) {
                 final i = entry.key;
                 final r = entry.value;
-                final pColor = _periodColors[i % _periodColors.length];
+                final pColor = _periods.isNotEmpty
+                    ? _periodColors[i % _periodColors.length]
+                    : const Color(0xFF1A237E);
+                final adaptivePColor = _getAdaptivePeriodColor(pColor, isDark);
                 final pct = r.attendancePercent;
                 final change = r.attendanceChange;
                 final dir = r.attendanceDirection;
@@ -762,10 +836,14 @@ class _PeriodComparisonScreenState
                   width: cardWidth,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: pColor.withOpacity(0.03),
+                    color: isDark
+                        ? const Color(0xFF1E293B)
+                        : pColor.withOpacity(0.03),
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color: pColor.withOpacity(0.12),
+                      color: isDark
+                          ? const Color(0xFF334155)
+                          : pColor.withOpacity(0.12),
                       width: 1,
                     ),
                   ),
@@ -780,7 +858,7 @@ class _PeriodComparisonScreenState
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: pColor,
+                              color: adaptivePColor,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -797,7 +875,9 @@ class _PeriodComparisonScreenState
                             '${r.attendedCount} من ${r.totalPossibleAttendances}',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.grey[600],
+                              color: isDark
+                                  ? const Color(0xFFCBD5E1)
+                                  : Colors.grey[600],
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -809,7 +889,7 @@ class _PeriodComparisonScreenState
                         style: TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 24,
-                          color: pColor,
+                          color: adaptivePColor,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -820,7 +900,9 @@ class _PeriodComparisonScreenState
                             height: 8,
                             width: double.infinity,
                             decoration: BoxDecoration(
-                              color: Colors.grey[200],
+                              color: isDark
+                                  ? const Color(0xFF334155)
+                                  : Colors.grey[200],
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),
@@ -830,12 +912,15 @@ class _PeriodComparisonScreenState
                               height: 8,
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
-                                  colors: [pColor, pColor.withOpacity(0.6)],
+                                  colors: [
+                                    adaptivePColor,
+                                    adaptivePColor.withOpacity(0.6),
+                                  ],
                                 ),
                                 borderRadius: BorderRadius.circular(10),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: pColor.withOpacity(0.2),
+                                    color: adaptivePColor.withOpacity(0.2),
                                     blurRadius: 4,
                                     offset: const Offset(0, 2),
                                   ),
@@ -847,7 +932,7 @@ class _PeriodComparisonScreenState
                       ),
                       const SizedBox(height: 12),
                       if (change != null && dir != null)
-                        _buildChangeIndicator(change, dir, pColor)
+                        _buildChangeIndicator(change, dir, adaptivePColor)
                       else
                         const SizedBox(height: 24),
                     ],
@@ -862,9 +947,14 @@ class _PeriodComparisonScreenState
   }
 
   Widget _buildChangeIndicator(double change, String direction, Color pColor) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isUp = direction == 'increase';
     final isSame = direction == 'same';
-    final color = isSame ? Colors.grey : (isUp ? Colors.green : Colors.orange);
+    final color = isSame
+        ? (isDark ? const Color(0xFF94A3B8) : Colors.grey)
+        : (isUp
+            ? (isDark ? const Color(0xFF34D399) : Colors.green)
+            : (isDark ? const Color(0xFFFB923C) : Colors.orange));
     final icon = isSame
         ? Icons.horizontal_rule
         : (isUp ? Icons.trending_up : Icons.trending_down);
@@ -873,7 +963,7 @@ class _PeriodComparisonScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withOpacity(isDark ? 0.2 : 0.1),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -919,10 +1009,13 @@ class _ModernTextButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = isDark ? const Color(0xFF60A5FA) : Theme.of(context).primaryColor;
+
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        foregroundColor: Theme.of(context).primaryColor,
+        foregroundColor: color,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
@@ -955,16 +1048,22 @@ class _ToggleOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = theme.brightness == Brightness.dark;
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? theme.primaryColor : Colors.grey[100],
+          color: isSelected
+              ? (isDark ? const Color(0xFF2563EB) : theme.primaryColor)
+              : (isDark ? const Color(0xFF1E293B) : Colors.grey[100]),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? theme.primaryColor : Colors.grey[300]!,
+            color: isSelected
+                ? (isDark ? const Color(0xFF3B82F6) : theme.primaryColor)
+                : (isDark ? const Color(0xFF334155) : Colors.grey[300]!),
           ),
         ),
         child: Text(
@@ -972,7 +1071,9 @@ class _ToggleOption extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
-            color: isSelected ? Colors.white : Colors.grey[600],
+            color: isSelected
+                ? Colors.white
+                : (isDark ? const Color(0xFFCBD5E1) : Colors.grey[600]),
           ),
         ),
       ),
@@ -995,15 +1096,19 @@ class _DateSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.2)),
+          border: Border.all(
+            color: isDark ? const Color(0xFF334155) : color.withOpacity(0.2),
+          ),
         ),
         child: Row(
           children: [
@@ -1011,7 +1116,7 @@ class _DateSelector extends StatelessWidget {
               '$label: ',
               style: TextStyle(
                 fontSize: 13,
-                color: Colors.grey[700],
+                color: isDark ? const Color(0xFFCBD5E1) : Colors.grey[700],
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -1028,7 +1133,7 @@ class _DateSelector extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ),
-            Icon(Icons.calendar_today, size: 14, color: color.withOpacity(0.6)),
+            Icon(Icons.calendar_today, size: 14, color: color.withOpacity(0.8)),
           ],
         ),
       ),
@@ -1135,15 +1240,22 @@ class _FilterSheetState extends State<_FilterSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final accentColor = isDark ? const Color(0xFF60A5FA) : theme.primaryColor;
     final height = MediaQuery.of(context).size.height * 0.85;
 
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Container(
         height: height,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF151E2E) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          border: isDark
+              ? const Border(
+                  top: BorderSide(color: Color(0xFF334155), width: 1),
+                )
+              : null,
         ),
         child: Column(
           children: [
@@ -1153,7 +1265,7 @@ class _FilterSheetState extends State<_FilterSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey[300],
+                color: isDark ? const Color(0xFF334155) : Colors.grey[300],
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1162,14 +1274,14 @@ class _FilterSheetState extends State<_FilterSheet> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
                 children: [
-                  Icon(Icons.filter_alt, color: theme.primaryColor, size: 20),
+                  Icon(Icons.filter_alt, color: accentColor, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     'اختيار الأشخاص',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
-                      color: theme.primaryColor,
+                      color: accentColor,
                     ),
                   ),
                   const Spacer(),
@@ -1184,6 +1296,9 @@ class _FilterSheetState extends State<_FilterSheet> {
                       );
                       Navigator.pop(context);
                     },
+                    style: TextButton.styleFrom(
+                      foregroundColor: accentColor,
+                    ),
                     child: const Text(
                       'تطبيق',
                       style: TextStyle(fontWeight: FontWeight.bold),
@@ -1192,7 +1307,10 @@ class _FilterSheetState extends State<_FilterSheet> {
                 ],
               ),
             ),
-            const Divider(height: 1),
+            Divider(
+              height: 1,
+              color: isDark ? const Color(0xFF334155) : null,
+            ),
 
             // Filters row
             Padding(
@@ -1207,12 +1325,34 @@ class _FilterSheetState extends State<_FilterSheet> {
                     child: DropdownButtonFormField<int?>(
                       value: _stageId,
                       isDense: true,
-                      decoration: const InputDecoration(
+                      dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                        fontSize: 12.5,
+                      ),
+                      decoration: InputDecoration(
                         labelText: 'المرحلة',
+                        labelStyle: TextStyle(
+                          color: isDark ? const Color(0xFF94A3B8) : null,
+                        ),
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                        contentPadding: const EdgeInsets.symmetric(
                           horizontal: 10,
                           vertical: 6,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                          ),
                         ),
                       ),
                       items: [
@@ -1242,12 +1382,34 @@ class _FilterSheetState extends State<_FilterSheet> {
                     child: DropdownButtonFormField<int?>(
                       value: _areaId,
                       isDense: true,
-                      decoration: const InputDecoration(
+                      dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                        fontSize: 12.5,
+                      ),
+                      decoration: InputDecoration(
                         labelText: 'المنطقة',
+                        labelStyle: TextStyle(
+                          color: isDark ? const Color(0xFF94A3B8) : null,
+                        ),
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                        contentPadding: const EdgeInsets.symmetric(
                           horizontal: 10,
                           vertical: 6,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                          ),
                         ),
                       ),
                       items: [
@@ -1277,12 +1439,34 @@ class _FilterSheetState extends State<_FilterSheet> {
                     child: DropdownButtonFormField<String?>(
                       value: _gender,
                       isDense: true,
-                      decoration: const InputDecoration(
+                      dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                        fontSize: 12.5,
+                      ),
+                      decoration: InputDecoration(
                         labelText: 'النوع',
+                        labelStyle: TextStyle(
+                          color: isDark ? const Color(0xFF94A3B8) : null,
+                        ),
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                        contentPadding: const EdgeInsets.symmetric(
                           horizontal: 10,
                           vertical: 6,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                          ),
                         ),
                       ),
                       items: const [
@@ -1306,13 +1490,37 @@ class _FilterSheetState extends State<_FilterSheet> {
               child: TextField(
                 controller: _searchCtrl,
                 onChanged: (_) => _applyFilter(),
-                decoration: const InputDecoration(
+                style: TextStyle(
+                  color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                ),
+                decoration: InputDecoration(
                   hintText: 'بحث بالاسم أو الكود...',
-                  prefixIcon: Icon(Icons.search, size: 20),
+                  hintStyle: TextStyle(
+                    color: isDark ? const Color(0xFF94A3B8) : Colors.grey,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    size: 20,
+                    color: isDark ? const Color(0xFF94A3B8) : Colors.grey,
+                  ),
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                  contentPadding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                    ),
                   ),
                 ),
               ),
@@ -1325,6 +1533,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                 children: [
                   Checkbox(
                     value: _allSelected,
+                    activeColor: isDark ? const Color(0xFF2563EB) : theme.primaryColor,
                     onChanged: (v) {
                       setState(() {
                         if (v == true) {
@@ -1339,14 +1548,18 @@ class _FilterSheetState extends State<_FilterSheet> {
                   ),
                   Text(
                     'اختيار الكل (${_filtered.length})',
-                    style: const TextStyle(fontSize: 13),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                    ),
                   ),
                   const Spacer(),
                   Text(
                     '${_selected.length} محدد',
                     style: TextStyle(
                       fontSize: 12,
-                      color: theme.primaryColor,
+                      color: accentColor,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -1354,7 +1567,10 @@ class _FilterSheetState extends State<_FilterSheet> {
               ),
             ),
 
-            const Divider(height: 1),
+            Divider(
+              height: 1,
+              color: isDark ? const Color(0xFF334155) : null,
+            ),
 
             // Person list
             Expanded(
@@ -1367,6 +1583,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                     dense: true,
                     leading: Checkbox(
                       value: isChecked,
+                      activeColor: isDark ? const Color(0xFF2563EB) : theme.primaryColor,
                       onChanged: (v) {
                         setState(() {
                           if (v == true) {
@@ -1379,11 +1596,18 @@ class _FilterSheetState extends State<_FilterSheet> {
                     ),
                     title: Text(
                       p.personName ?? 'مجهول',
-                      style: const TextStyle(fontSize: 13),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                      ),
                     ),
                     subtitle: Text(
                       'كود: ${p.personId}',
-                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? const Color(0xFF94A3B8) : Colors.grey[600],
+                      ),
                     ),
                     onTap: () {
                       setState(() {

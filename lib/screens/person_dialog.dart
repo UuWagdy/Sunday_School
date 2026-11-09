@@ -84,20 +84,36 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       ),
       if (_nameSuggestions.isNotEmpty)
         Card(
-          color: Colors.amber.shade50,
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.all(8),
+              Padding(
+                padding: const EdgeInsets.all(12),
                 child: Text(
                   'أسماء مشابهة مسجلة بالفعل — راجع الكود قبل إضافة شخص جديد',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
               ),
               for (final person in _nameSuggestions)
                 ListTile(
                   dense: true,
+                  textColor: Theme.of(context).colorScheme.onSurface,
+                  subtitleTextStyle: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                  iconColor: Theme.of(context).colorScheme.primary,
                   title: Text(person.name),
                   subtitle: Text(
                     'الكود: ${person.id} — ${person.stageName}${person.mobile.isEmpty ? '' : ' — ${person.mobile}'}',
@@ -1134,7 +1150,9 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
       keyboardType: TextInputType.number,
       style: TextStyle(
         fontWeight: FontWeight.bold,
-        color: isEditing ? (isDark ? const Color(0xFFCBD5E1) : Colors.grey.shade700) : (isDark ? const Color(0xFFF8FAFC) : Colors.black87),
+        color: isEditing
+            ? (isDark ? const Color(0xFFCBD5E1) : Colors.grey.shade700)
+            : (isDark ? const Color(0xFFF8FAFC) : Colors.black87),
       ),
       decoration: InputDecoration(
         labelText: 'رقم الكارنيه',
@@ -1143,7 +1161,9 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
             : 'يمكنك ترك الرقم التلقائي أو تغييره قبل الحفظ',
         prefixIcon: const Icon(Icons.qr_code),
         filled: true,
-        fillColor: isEditing ? (isDark ? const Color(0xFF1E293B) : Colors.grey.shade200) : (isDark ? const Color(0xFF1E293B) : Colors.white),
+        fillColor: isEditing
+            ? (isDark ? const Color(0xFF1E293B) : Colors.grey.shade200)
+            : (isDark ? const Color(0xFF1E293B) : Colors.white),
         border: const OutlineInputBorder(),
       ),
       validator: (value) {
@@ -1705,7 +1725,9 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade50,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+            border: Border.all(
+              color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1804,10 +1826,16 @@ class _PersonDialogState extends ConsumerState<PersonDialog> {
                             size: 16,
                             color: Colors.red,
                           ),
-                          backgroundColor: isDark ? const Color(0xFF151E2E) : Colors.white,
+                          backgroundColor: isDark
+                              ? const Color(0xFF151E2E)
+                              : Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
-                            side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                            side: BorderSide(
+                              color: isDark
+                                  ? const Color(0xFF334155)
+                                  : Colors.grey.shade300,
+                            ),
                           ),
                         );
                       }).toList(),

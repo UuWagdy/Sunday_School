@@ -388,12 +388,20 @@ class _ServerConnectionDialogState
   @override
   Widget build(BuildContext context) {
     final signalRState = ref.watch(signalRSyncProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
+    final adaptivePrimary = isDark ? const Color(0xFF60A5FA) : primaryColor;
 
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        backgroundColor: isDark ? const Color(0xFF151E2E) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: isDark
+              ? const BorderSide(color: Color(0xFF334155))
+              : BorderSide.none,
+        ),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
           child: SingleChildScrollView(
@@ -408,12 +416,12 @@ class _ServerConnectionDialogState
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: primaryColor.withValues(alpha: 0.1),
+                        color: adaptivePrimary.withValues(alpha: isDark ? 0.2 : 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
                         Icons.settings_ethernet_rounded,
-                        color: primaryColor,
+                        color: adaptivePrimary,
                         size: 26,
                       ),
                     ),
@@ -427,7 +435,7 @@ class _ServerConnectionDialogState
                             style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w900,
-                              color: primaryColor,
+                              color: adaptivePrimary,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -435,7 +443,7 @@ class _ServerConnectionDialogState
                             'Flutter > Dart Logic > .NET 8 > PostgreSQL > SignalR',
                             style: TextStyle(
                               fontSize: 11.5,
-                              color: Colors.grey.shade600,
+                              color: isDark ? const Color(0xFF94A3B8) : Colors.grey.shade600,
                               fontWeight: FontWeight.w600,
                             ),
                             textDirection: TextDirection.ltr,
@@ -445,16 +453,26 @@ class _ServerConnectionDialogState
                     ),
                     IconButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
+                      icon: Icon(
+                        Icons.close,
+                        color: isDark ? const Color(0xFF94A3B8) : null,
+                      ),
                     ),
                   ],
                 ),
-                const Divider(height: 26),
+                Divider(
+                  height: 26,
+                  color: isDark ? const Color(0xFF334155) : null,
+                ),
 
                 // Mode Selection Cards
-                const Text(
+                Text(
                   'وضع تشغيل قاعدة البيانات:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13.5,
+                    color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Row(
@@ -489,7 +507,9 @@ class _ServerConnectionDialogState
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13.5,
-                    color: _isServerMode ? Colors.black87 : Colors.grey,
+                    color: _isServerMode
+                        ? (isDark ? const Color(0xFFF8FAFC) : Colors.black87)
+                        : (isDark ? const Color(0xFF64748B) : Colors.grey),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -498,9 +518,27 @@ class _ServerConnectionDialogState
                   child: TextField(
                     controller: _urlController,
                     enabled: _isServerMode,
+                    style: TextStyle(
+                      color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                      fontWeight: FontWeight.w600,
+                    ),
                     decoration: InputDecoration(
                       hintText: 'http://192.168.1.100:5050',
                       prefixIcon: const Icon(Icons.link_rounded),
+                      filled: true,
+                      fillColor: isDark ? const Color(0xFF1E293B) : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                        ),
+                      ),
                       suffixIcon: IconButton(
                         tooltip: 'استعادة العنوان الافتراضي',
                         icon: const Icon(Icons.restore_rounded, size: 18),
@@ -524,9 +562,14 @@ class _ServerConnectionDialogState
                     children: [
                       ActionChip(
                         avatar: const Icon(Icons.computer, size: 15),
-                        label: const Text(
+                        backgroundColor: isDark ? const Color(0xFF1E293B) : null,
+                        side: isDark ? const BorderSide(color: Color(0xFF334155)) : null,
+                        label: Text(
                           'نفس الجهاز (127.0.0.1:5050)',
-                          style: TextStyle(fontSize: 11.5),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: isDark ? const Color(0xFFCBD5E1) : null,
+                          ),
                         ),
                         onPressed: () {
                           setState(
@@ -537,9 +580,14 @@ class _ServerConnectionDialogState
                       if (_discoveredUrls['LAN_URL'] != null)
                         ActionChip(
                           avatar: const Icon(Icons.lan_outlined, size: 15),
+                          backgroundColor: isDark ? const Color(0xFF1E293B) : null,
+                          side: isDark ? const BorderSide(color: Color(0xFF334155)) : null,
                           label: Text(
                             'الشبكة المحلية (${_discoveredUrls['LAN_URL']})',
-                            style: const TextStyle(fontSize: 11.5),
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: isDark ? const Color(0xFFCBD5E1) : null,
+                            ),
                           ),
                           onPressed: () {
                             setState(
@@ -560,6 +608,12 @@ class _ServerConnectionDialogState
                     children: [
                       OutlinedButton.icon(
                         onPressed: _isTesting ? null : _testConnection,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: adaptivePrimary,
+                          side: BorderSide(
+                            color: isDark ? const Color(0xFF334155) : adaptivePrimary,
+                          ),
+                        ),
                         icon: _isTesting
                             ? const SizedBox(
                                 width: 16,
@@ -584,8 +638,12 @@ class _ServerConnectionDialogState
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: _healthResult!.ok
-                          ? const Color(0xFFECFDF5)
-                          : const Color(0xFFFEF2F2),
+                          ? (isDark
+                              ? const Color(0xFF064E3B).withValues(alpha: 0.35)
+                              : const Color(0xFFECFDF5))
+                          : (isDark
+                              ? const Color(0xFF7F1D1D).withValues(alpha: 0.35)
+                              : const Color(0xFFFEF2F2)),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: _healthResult!.ok
@@ -600,8 +658,12 @@ class _ServerConnectionDialogState
                               ? Icons.check_circle_rounded
                               : Icons.error_outline_rounded,
                           color: _healthResult!.ok
-                              ? const Color(0xFF059669)
-                              : const Color(0xFFDC2626),
+                              ? (isDark
+                                  ? const Color(0xFF34D399)
+                                  : const Color(0xFF059669))
+                              : (isDark
+                                  ? const Color(0xFFF87171)
+                                  : const Color(0xFFDC2626)),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -614,8 +676,12 @@ class _ServerConnectionDialogState
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                               color: _healthResult!.ok
-                                  ? const Color(0xFF065F46)
-                                  : const Color(0xFF991B1B),
+                                  ? (isDark
+                                      ? const Color(0xFF6EE7B7)
+                                      : const Color(0xFF065F46))
+                                  : (isDark
+                                      ? const Color(0xFFFCA5A5)
+                                      : const Color(0xFF991B1B)),
                             ),
                           ),
                         ),
@@ -630,18 +696,20 @@ class _ServerConnectionDialogState
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.blueGrey.shade50,
+                      color: isDark ? const Color(0xFF1E293B) : Colors.blueGrey.shade50,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blueGrey.shade200),
+                      border: Border.all(
+                        color: isDark ? const Color(0xFF334155) : Colors.blueGrey.shade200,
+                      ),
                     ),
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.cloud_upload_outlined,
-                          color: Color(0xFF1A237E),
+                          color: adaptivePrimary,
                         ),
                         const SizedBox(width: 10),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -650,13 +718,14 @@ class _ServerConnectionDialogState
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 12.5,
+                                  color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
                                 ),
                               ),
                               Text(
                                 'رفع بيانات SQLite الحالية على هذا الجهاز إلى قاعدة بيانات PostgreSQL',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.black54,
+                                  color: isDark ? const Color(0xFF94A3B8) : Colors.black54,
                                 ),
                               ),
                             ],
@@ -667,6 +736,9 @@ class _ServerConnectionDialogState
                           onPressed: _isUploadingDb
                               ? null
                               : _uploadLocalDbToPostgres,
+                          style: TextButton.styleFrom(
+                            foregroundColor: adaptivePrimary,
+                          ),
                           icon: _isUploadingDb
                               ? const SizedBox(
                                   width: 14,
@@ -691,6 +763,9 @@ class _ServerConnectionDialogState
                   children: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
+                      style: TextButton.styleFrom(
+                        foregroundColor: isDark ? const Color(0xFFCBD5E1) : null,
+                      ),
                       child: const Text('إلغاء'),
                     ),
                     const SizedBox(width: 10),
@@ -729,7 +804,10 @@ class _ServerConnectionDialogState
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
+    final adaptivePrimary = isDark ? const Color(0xFF60A5FA) : primaryColor;
+
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
@@ -738,11 +816,13 @@ class _ServerConnectionDialogState
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: selected
-              ? primaryColor.withValues(alpha: 0.08)
-              : Colors.grey.shade50,
+              ? adaptivePrimary.withValues(alpha: isDark ? 0.22 : 0.08)
+              : (isDark ? const Color(0xFF1E293B) : Colors.grey.shade50),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? primaryColor : Colors.grey.shade300,
+            color: selected
+                ? adaptivePrimary
+                : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
             width: selected ? 2 : 1,
           ),
         ),
@@ -754,7 +834,9 @@ class _ServerConnectionDialogState
                 Icon(
                   icon,
                   size: 20,
-                  color: selected ? primaryColor : Colors.grey.shade600,
+                  color: selected
+                      ? adaptivePrimary
+                      : (isDark ? const Color(0xFF94A3B8) : Colors.grey.shade600),
                 ),
                 const Spacer(),
                 Icon(
@@ -762,7 +844,9 @@ class _ServerConnectionDialogState
                       ? Icons.radio_button_checked_rounded
                       : Icons.radio_button_off_rounded,
                   size: 18,
-                  color: selected ? primaryColor : Colors.grey.shade400,
+                  color: selected
+                      ? adaptivePrimary
+                      : (isDark ? const Color(0xFF64748B) : Colors.grey.shade400),
                 ),
               ],
             ),
@@ -772,13 +856,18 @@ class _ServerConnectionDialogState
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 12.5,
-                color: selected ? primaryColor : Colors.black87,
+                color: selected
+                    ? adaptivePrimary
+                    : (isDark ? const Color(0xFFF8FAFC) : Colors.black87),
               ),
             ),
             const SizedBox(height: 4),
             Text(
               subtitle,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? const Color(0xFF94A3B8) : Colors.grey.shade600,
+              ),
             ),
           ],
         ),
@@ -787,6 +876,7 @@ class _ServerConnectionDialogState
   }
 
   Widget _buildSignalRStatusBadge(SignalRConnectionStatus status) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final Color color;
     final String text;
     switch (status) {
@@ -799,7 +889,7 @@ class _ServerConnectionDialogState
         text = 'SignalR: جارٍ الاتصال...';
       case SignalRConnectionStatus.error:
       case SignalRConnectionStatus.disconnected:
-        color = Colors.grey.shade600;
+        color = isDark ? const Color(0xFF94A3B8) : Colors.grey.shade600;
         text = 'SignalR: غير متصل حالياً';
     }
 

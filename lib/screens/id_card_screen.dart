@@ -85,6 +85,23 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
   CardTemplate _backCardTemplate = _defaultBackCardTemplate();
   bool _isDesigningBackSide = false;
   bool _isTemplateLoading = true;
+  bool _isSavingTemplate = false;
+  int _settingsLoadGeneration = 0;
+  String? _settingsLoadError;
+  String? _savedFrontDesign;
+  String? _savedBackDesign;
+  bool _savedPrintBack = false;
+
+  bool get _hasUnsavedDesignerChanges =>
+      _designerDirty ||
+      (_savedFrontDesign != null &&
+          ((_isDesigningBackSide ? _frontCardTemplate : _cardTemplate)
+                      .toJsonString() !=
+                  _savedFrontDesign ||
+              (_isDesigningBackSide ? _cardTemplate : _backCardTemplate)
+                      .toJsonString() !=
+                  _savedBackDesign ||
+              _printBackSide != _savedPrintBack));
   String? _selectedDesignerElementId = 'field:0';
   final Set<String> _selectedDesignerElementIds = {'field:0'};
   final List<CardTemplate> _designerUndoStack = [];
@@ -233,12 +250,26 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
   }
 
   Future<void> _loadSettings({bool preserveDraft = false}) async {
+    try {
+      await _readSettings(preserveDraft: preserveDraft);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _settingsLoadError =
+              'تعذر تحميل إعدادات الكارنيه. تحقق من الاتصال ثم أعد المحاولة.',
+        );
+      }
+    }
+  }
+
+  Future<void> _readSettings({bool preserveDraft = false}) async {
+    final generation = ++_settingsLoadGeneration;
     final db = ref.read(appDatabaseProvider);
     final settingRows = await (db.select(
       db.settings,
     )..where((t) => t.settingKey.like('id_card_%'))).get();
-    if (!mounted) return;
-    if (preserveDraft && _designerDirty) {
+    if (!mounted || generation != _settingsLoadGeneration) return;
+    if (preserveDraft && (_hasUnsavedDesignerChanges || _isSavingTemplate)) {
       setState(() => _hasRemoteTemplate = true);
       return;
     }
@@ -251,20 +282,34 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         activeTemplateJson == null || activeTemplateJson.trim().isEmpty
         ? null
         : CardTemplate.fromJsonString(activeTemplateJson);
+    final hasFrontTemplate =
+        activeTemplate != null && activeTemplate.validate().isEmpty;
     final backTemplateJson = read('id_card_back_template');
     final backTemplate =
         backTemplateJson == null || backTemplateJson.trim().isEmpty
         ? _defaultBackCardTemplate()
         : CardTemplate.fromJsonString(backTemplateJson);
+    final hasBackTemplate =
+        backTemplateJson != null &&
+        backTemplateJson.trim().isNotEmpty &&
+        backTemplate.validate().isEmpty;
 
     final logoBase64 = read('id_card_logo');
     _logoBytes = logoBase64 == null || logoBase64.isEmpty
         ? null
         : base64Decode(logoBase64);
     final backgroundBase64 = read('id_card_background');
-    _backgroundBytes = backgroundBase64 == null || backgroundBase64.isEmpty
-        ? null
-        : base64Decode(backgroundBase64);
+    if (hasFrontTemplate) {
+      _backgroundBytes = activeTemplate.backgroundImageBytes;
+    } else if (backgroundBase64 != null && backgroundBase64.trim().isNotEmpty) {
+      _backgroundBytes = base64Decode(backgroundBase64);
+    } else if (activeTemplate != null &&
+        activeTemplate.backgroundImageBase64 != null &&
+        activeTemplate.backgroundImageBase64!.trim().isNotEmpty) {
+      _backgroundBytes = activeTemplate.backgroundImageBytes;
+    } else {
+      _backgroundBytes = null;
+    }
     final backgroundOpacity = double.tryParse(
       read('id_card_background_opacity') ?? '',
     );
@@ -289,10 +334,17 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         ? null
         : base64Decode(backLogoBase64);
     final backBackgroundBase64 = read('id_card_back_background');
-    _backBackgroundBytes =
-        backBackgroundBase64 == null || backBackgroundBase64.isEmpty
-        ? null
-        : base64Decode(backBackgroundBase64);
+    if (hasBackTemplate) {
+      _backBackgroundBytes = backTemplate.backgroundImageBytes;
+    } else if (backBackgroundBase64 != null &&
+        backBackgroundBase64.trim().isNotEmpty) {
+      _backBackgroundBytes = base64Decode(backBackgroundBase64);
+    } else if (backTemplate.backgroundImageBase64 != null &&
+        backTemplate.backgroundImageBase64!.trim().isNotEmpty) {
+      _backBackgroundBytes = backTemplate.backgroundImageBytes;
+    } else {
+      _backBackgroundBytes = null;
+    }
     final backBackgroundOpacity = double.tryParse(
       read('id_card_back_background_opacity') ?? '',
     );
@@ -338,22 +390,55 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
 
     if (!mounted) return;
     final templateErrors = activeTemplate?.validate() ?? const <String>[];
+    var loadedFrontTemplate = activeTemplate != null && templateErrors.isEmpty
+        ? activeTemplate
+        : _buildTemplateFromSimpleSettings(
+            logoBase64: logoBase64,
+            backgroundBase64: _backgroundBytes != null
+                ? base64Encode(_backgroundBytes!)
+                : null,
+            backgroundOpacity: backgroundOpacity,
+            codeType: savedCodeType ?? _codeType,
+          );
+
+    if (_backgroundBytes == null) {
+      loadedFrontTemplate = loadedFrontTemplate.copyWith(
+        clearBackgroundImage: true,
+      );
+    } else {
+      loadedFrontTemplate = loadedFrontTemplate.copyWith(
+        backgroundImageBase64: base64Encode(_backgroundBytes!),
+      );
+    }
+
+    var loadedBackTemplate = backTemplate.validate().isEmpty
+        ? backTemplate
+        : _defaultBackCardTemplate();
+
+    if (_backBackgroundBytes == null) {
+      loadedBackTemplate = loadedBackTemplate.copyWith(
+        clearBackgroundImage: true,
+      );
+    } else {
+      loadedBackTemplate = loadedBackTemplate.copyWith(
+        backgroundImageBase64: base64Encode(_backBackgroundBytes!),
+      );
+    }
+
     setState(() {
-      _frontCardTemplate = activeTemplate != null && templateErrors.isEmpty
-          ? activeTemplate
-          : _buildTemplateFromSimpleSettings(
-              logoBase64: logoBase64,
-              backgroundBase64: backgroundBase64,
-              backgroundOpacity: backgroundOpacity,
-              codeType: savedCodeType ?? _codeType,
-            );
-      _backCardTemplate = backTemplate.validate().isEmpty
-          ? backTemplate
-          : _defaultBackCardTemplate();
+      if (_isTemplateLoading) {
+        _isDesignerMode = read('id_card_designer_mode') == 'true';
+      }
+      _frontCardTemplate = loadedFrontTemplate;
+      _backCardTemplate = loadedBackTemplate;
       _cardTemplate = _isDesigningBackSide
           ? _backCardTemplate
           : _frontCardTemplate;
       _isTemplateLoading = false;
+      _savedFrontDesign = _frontCardTemplate.toJsonString();
+      _savedBackDesign = _backCardTemplate.toJsonString();
+      _savedPrintBack = _printBackSide;
+      _settingsLoadError = null;
       _hasRemoteTemplate = false;
     });
   }
@@ -609,15 +694,46 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
     }
     if (bytes == null || !mounted) return;
 
-    setState(() => _backgroundBytes = bytes);
-    await _saveSetting('id_card_background', base64Encode(bytes));
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    final base64 = base64Encode(bytes);
+
+    setState(() {
+      _backgroundBytes = bytes;
+      _frontCardTemplate = _frontCardTemplate.copyWith(
+        backgroundImageBase64: base64,
+      );
+      if (!_isDesigningBackSide) {
+        _cardTemplate = _frontCardTemplate;
+      }
+    });
+
+    await _saveSetting('id_card_background', base64);
+    await ref
+        .read(settingsRepositoryProvider)
+        .saveActiveCardTemplate(_frontCardTemplate);
   }
 
   Future<void> _deleteBackground() async {
-    setState(() => _backgroundBytes = null);
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+
+    setState(() {
+      _backgroundBytes = null;
+      _frontCardTemplate = _frontCardTemplate.copyWith(
+        clearBackgroundImage: true,
+      );
+      if (!_isDesigningBackSide) {
+        _cardTemplate = _frontCardTemplate;
+      }
+    });
+
     await ref
         .read(settingsRepositoryProvider)
         .deleteSetting('id_card_background');
+    await ref
+        .read(settingsRepositoryProvider)
+        .saveActiveCardTemplate(_frontCardTemplate);
   }
 
   Future<void> _pickBackLogo() async {
@@ -654,15 +770,46 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
     }
     if (bytes == null || !mounted) return;
 
-    setState(() => _backBackgroundBytes = bytes);
-    await _saveSetting('id_card_back_background', base64Encode(bytes));
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    final base64 = base64Encode(bytes);
+
+    setState(() {
+      _backBackgroundBytes = bytes;
+      _backCardTemplate = _backCardTemplate.copyWith(
+        backgroundImageBase64: base64,
+      );
+      if (_isDesigningBackSide) {
+        _cardTemplate = _backCardTemplate;
+      }
+    });
+
+    await _saveSetting('id_card_back_background', base64);
+    await ref
+        .read(settingsRepositoryProvider)
+        .saveSetting('id_card_back_template', _backCardTemplate.toJsonString());
   }
 
   Future<void> _deleteBackBackground() async {
-    setState(() => _backBackgroundBytes = null);
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+
+    setState(() {
+      _backBackgroundBytes = null;
+      _backCardTemplate = _backCardTemplate.copyWith(
+        clearBackgroundImage: true,
+      );
+      if (_isDesigningBackSide) {
+        _cardTemplate = _backCardTemplate;
+      }
+    });
+
     await ref
         .read(settingsRepositoryProvider)
         .deleteSetting('id_card_back_background');
+    await ref
+        .read(settingsRepositoryProvider)
+        .saveSetting('id_card_back_template', _backCardTemplate.toJsonString());
   }
 
   Future<void> _generateCards() async {
@@ -809,15 +956,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       return;
     }
 
-    await ref
-        .read(settingsRepositoryProvider)
-        .saveActiveCardTemplate(_frontCardTemplate);
-    await ref
-        .read(settingsRepositoryProvider)
-        .saveSetting('id_card_back_template', _backCardTemplate.toJsonString());
-    await _saveSetting('id_card_print_back', _printBackSide.toString());
-    _designerDirty = false;
-    _hasRemoteTemplate = false;
+    if (!await _saveDesignerTemplate(showSuccess: false)) return;
     if (!mounted) return;
     setState(() => _isGenerating = true);
     final progress = await showPrintProgressDialog(
@@ -935,7 +1074,9 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
     final isWide = MediaQuery.of(context).size.width >= 800;
 
     final body = _isDesignerMode
-        ? _buildDesignerWorkspace(isWide: isWide)
+        ? _buildDesignerWorkspace(
+            isWide: MediaQuery.of(context).size.width >= 1200,
+          )
         : isWide
         ? Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -972,6 +1113,16 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         backgroundColor: Colors.transparent,
         body: Column(
           children: [
+            if (_settingsLoadError != null)
+              MaterialBanner(
+                content: Text(_settingsLoadError!),
+                actions: [
+                  TextButton(
+                    onPressed: _loadSettings,
+                    child: const Text('إعادة المحاولة'),
+                  ),
+                ],
+              ),
             if (_hasRemoteTemplate)
               MaterialBanner(
                 content: const Text(
@@ -1011,8 +1162,28 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         ),
       ],
       selected: {_isDesignerMode},
-      onSelectionChanged: (values) =>
-          setState(() => _isDesignerMode = values.first),
+      onSelectionChanged: (values) {
+        setState(() {
+          _isDesignerMode = values.first;
+          if (_isDesignerMode) {
+            _frontCardTemplate = _frontCardTemplate.copyWith(
+              backgroundImageBase64: _backgroundBytes != null
+                  ? base64Encode(_backgroundBytes!)
+                  : null,
+              clearBackgroundImage: _backgroundBytes == null,
+            );
+            _backCardTemplate = _backCardTemplate.copyWith(
+              backgroundImageBase64: _backBackgroundBytes != null
+                  ? base64Encode(_backBackgroundBytes!)
+                  : null,
+              clearBackgroundImage: _backBackgroundBytes == null,
+            );
+            _cardTemplate = _isDesigningBackSide
+                ? _backCardTemplate
+                : _frontCardTemplate;
+          }
+        });
+      },
     );
   }
 
@@ -1293,7 +1464,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
 
   Widget _buildDesignerHeader(List<String> validationErrors) {
     final screenW = MediaQuery.of(context).size.width;
-    final isMobile = screenW < 800;
+    final isMobile = screenW < 1200;
 
     final modeSwitch = SizedBox(
       width: isMobile ? double.infinity : 360,
@@ -1326,7 +1497,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         ),
         IconButton(
           tooltip: 'حفظ القالب',
-          onPressed: _saveDesignerTemplate,
+          onPressed: _isSavingTemplate ? null : _saveDesignerTemplate,
           icon: const Icon(Icons.save_outlined),
         ),
         const SizedBox(width: 8),
@@ -1377,7 +1548,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
 
   Widget _buildDesignerQuickToolbar() {
     final screenW = MediaQuery.of(context).size.width;
-    final isMobile = screenW < 800;
+    final isMobile = screenW < 1200;
 
     final children = [
       IconButton.filledTonal(
@@ -1583,7 +1754,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
   }
 
   Widget _buildDesignerToolsPanel(List<String> validationErrors) {
-    final isWide = MediaQuery.of(context).size.width >= 800;
+    final isWide = MediaQuery.of(context).size.width >= 1200;
     return Card(
       elevation: 3,
       child: ListView(
@@ -1643,8 +1814,8 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<int>(
-          value: previewPerson?.id,
           isExpanded: true,
+          value: previewPerson?.id,
           decoration: const InputDecoration(
             labelText: 'اختر شخصًا',
             isDense: true,
@@ -1896,7 +2067,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
 
   Widget _buildDesignerInspector() {
     final selected = _selectedDesignerElementId;
-    final isWide = MediaQuery.of(context).size.width >= 800;
+    final isWide = MediaQuery.of(context).size.width >= 1200;
     return Card(
       elevation: 3,
       child: ListView(
@@ -1976,6 +2147,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
           ),
         ),
         DropdownButtonFormField<CardCodeType>(
+          isExpanded: true,
           value: barcode.type,
           decoration: const InputDecoration(
             labelText: 'نوع الكود',
@@ -2001,6 +2173,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<CardBarcodeBackgroundMode>(
+          isExpanded: true,
           value: barcode.backgroundMode,
           decoration: const InputDecoration(
             labelText: 'خلفية الكود',
@@ -2108,6 +2281,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
               _updateDesignerField(index, field.copyWith(visible: value)),
         ),
         DropdownButtonFormField<CardLabelMode>(
+          isExpanded: true,
           value: field.labelMode,
           decoration: const InputDecoration(
             labelText: 'عنوان الحقل',
@@ -2203,6 +2377,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
               _updateDesignerImage(index, image.copyWith(visible: value)),
         ),
         DropdownButtonFormField<CardBackgroundFit>(
+          isExpanded: true,
           value: image.fit,
           decoration: const InputDecoration(
             labelText: 'طريقة عرض الصورة',
@@ -2405,7 +2580,9 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
                       ),
                       IconButton(
                         tooltip: 'حفظ القالب',
-                        onPressed: _saveDesignerTemplate,
+                        onPressed: _isSavingTemplate
+                            ? null
+                            : _saveDesignerTemplate,
                         icon: const Icon(Icons.save_outlined),
                       ),
                     ],
@@ -2568,6 +2745,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<CardBackgroundFit>(
+          isExpanded: true,
           value: _cardTemplate.backgroundFit,
           decoration: const InputDecoration(
             labelText: 'طريقة عرض الخلفية',
@@ -2600,6 +2778,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         const Text('الكود', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         DropdownButtonFormField<CardCodeType>(
+          isExpanded: true,
           value: barcode.type,
           decoration: const InputDecoration(
             labelText: 'نوع الكود',
@@ -2625,6 +2804,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<CardBarcodeBackgroundMode>(
+          isExpanded: true,
           value: barcode.backgroundMode,
           decoration: const InputDecoration(
             labelText: 'خلفية الكود',
@@ -2755,6 +2935,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
               _updateDesignerImage(index, image.copyWith(opacity: value / 100)),
         ),
         DropdownButtonFormField<CardBackgroundFit>(
+          isExpanded: true,
           value: image.fit,
           decoration: const InputDecoration(
             labelText: 'طريقة عرض الصورة',
@@ -2830,6 +3011,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       childrenPadding: const EdgeInsets.only(bottom: 12),
       children: [
         DropdownButtonFormField<CardLabelMode>(
+          isExpanded: true,
           value: field.labelMode,
           decoration: const InputDecoration(
             labelText: 'عنوان الحقل',
@@ -4072,21 +4254,78 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         );
       return;
     }
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
     final backgroundImageBase64 = base64Encode(bytes);
-    setState(
-      () => _cardTemplate = _cardTemplate.copyWith(
+
+    setState(() {
+      _cardTemplate = _cardTemplate.copyWith(
         backgroundImageBase64: backgroundImageBase64,
-      ),
-    );
+      );
+      if (_isDesigningBackSide) {
+        _backCardTemplate = _cardTemplate;
+        _backBackgroundBytes = bytes;
+      } else {
+        _frontCardTemplate = _cardTemplate;
+        _backgroundBytes = bytes;
+      }
+      _designerDirty = true;
+    });
+
+    if (_isDesigningBackSide) {
+      await _saveSetting('id_card_back_background', backgroundImageBase64);
+      await ref
+          .read(settingsRepositoryProvider)
+          .saveSetting(
+            'id_card_back_template',
+            _backCardTemplate.toJsonString(),
+          );
+    } else {
+      await _saveSetting('id_card_background', backgroundImageBase64);
+      await ref
+          .read(settingsRepositoryProvider)
+          .saveActiveCardTemplate(_frontCardTemplate);
+    }
   }
 
-  void _deleteDesignerBackground() {
-    setState(
-      () => _cardTemplate = _cardTemplate.copyWith(clearBackgroundImage: true),
-    );
+  Future<void> _deleteDesignerBackground() async {
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+
+    setState(() {
+      _cardTemplate = _cardTemplate.copyWith(clearBackgroundImage: true);
+      if (_isDesigningBackSide) {
+        _backCardTemplate = _cardTemplate;
+        _backBackgroundBytes = null;
+      } else {
+        _frontCardTemplate = _cardTemplate;
+        _backgroundBytes = null;
+      }
+      _designerDirty = true;
+    });
+
+    if (_isDesigningBackSide) {
+      await ref
+          .read(settingsRepositoryProvider)
+          .deleteSetting('id_card_back_background');
+      await ref
+          .read(settingsRepositoryProvider)
+          .saveSetting(
+            'id_card_back_template',
+            _backCardTemplate.toJsonString(),
+          );
+    } else {
+      await ref
+          .read(settingsRepositoryProvider)
+          .deleteSetting('id_card_background');
+      await ref
+          .read(settingsRepositoryProvider)
+          .saveActiveCardTemplate(_frontCardTemplate);
+    }
   }
 
-  Future<void> _saveDesignerTemplate() async {
+  Future<bool> _saveDesignerTemplate({bool showSuccess = true}) async {
+    if (_isSavingTemplate || _isTemplateLoading) return false;
     _syncActiveDesignerSide();
     final front = _frontCardTemplate;
     final back = _backCardTemplate;
@@ -4099,27 +4338,46 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(errors.first), backgroundColor: Colors.red),
       );
-      return;
+      return false;
     }
-    await ref.read(settingsRepositoryProvider).saveActiveCardTemplate(front);
-    await ref
-        .read(settingsRepositoryProvider)
-        .saveSetting('id_card_back_template', back.toJsonString());
-    await _saveSetting('id_card_print_back', printBack.toString());
+    setState(() => _isSavingTemplate = true);
+    ++_settingsLoadGeneration;
+    try {
+      await ref
+          .read(settingsRepositoryProvider)
+          .saveCardDesign(front: front, back: back, printBack: printBack);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تعذر حفظ قالب الكارنيه. أعد المحاولة: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    } finally {
+      if (mounted) setState(() => _isSavingTemplate = false);
+    }
+    if (!mounted) return false;
     _syncActiveDesignerSide();
+    _savedFrontDesign = front.toJsonString();
+    _savedBackDesign = back.toJsonString();
+    _savedPrintBack = printBack;
     if (_frontCardTemplate.toJsonString() == front.toJsonString() &&
         _backCardTemplate.toJsonString() == back.toJsonString() &&
         _printBackSide == printBack) {
       _designerDirty = false;
       _hasRemoteTemplate = false;
     }
-    if (mounted)
+    if (showSuccess)
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('تم حفظ قالب الكارنيه'),
           backgroundColor: Colors.green,
         ),
       );
+    return true;
   }
 
   Future<void> _resetDesignerTemplate() async {
@@ -4148,7 +4406,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
 
   Future<void> _showFixedTextDialog({int? index}) async {
     final existing = index == null ? null : _cardTemplate.fixedTexts[index];
-    final textController = TextEditingController(text: existing?.text ?? '');
+    var draftText = existing?.text ?? '';
     double x = existing?.x ?? 0.10;
     double y = existing?.y ?? 0.10;
     double width = existing?.width ?? 0.50;
@@ -4167,8 +4425,9 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    controller: textController,
+                  TextFormField(
+                    initialValue: draftText,
+                    onChanged: (value) => draftText = value,
                     decoration: InputDecoration(
                       labelText: 'النص',
                       errorText: errorText,
@@ -4219,7 +4478,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
               ),
               FilledButton(
                 onPressed: () {
-                  final text = textController.text.trim();
+                  final text = draftText.trim();
                   if (text.isEmpty) {
                     setDialogState(() => errorText = 'الرجاء إدخال النص');
                     return;
@@ -4243,7 +4502,6 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
         ),
       ),
     );
-    textController.dispose();
 
     if (result == null) return;
     final fixedTexts = [..._cardTemplate.fixedTexts];
@@ -4373,7 +4631,11 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
                         opacity: _backgroundOpacity,
                         child: Image.memory(
                           _backgroundBytes!,
+                          key: ValueKey(
+                            'simple_front_bg_${_backgroundBytes!.length}_${_backgroundBytes.hashCode}',
+                          ),
                           fit: BoxFit.cover,
+                          gaplessPlayback: false,
                         ),
                       ),
               ),
@@ -4501,7 +4763,11 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
                           opacity: _backBackgroundOpacity,
                           child: Image.memory(
                             _backBackgroundBytes!,
+                            key: ValueKey(
+                              'simple_back_bg_${_backBackgroundBytes!.length}_${_backBackgroundBytes.hashCode}',
+                            ),
                             fit: BoxFit.cover,
+                            gaplessPlayback: false,
                           ),
                         ),
                 ),
@@ -4597,6 +4863,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               value: _codeType,
               decoration: const InputDecoration(
                 isDense: true,
@@ -4618,6 +4885,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<CardBarcodeBackgroundMode>(
+              isExpanded: true,
               value: _simpleCodeBackgroundMode,
               decoration: const InputDecoration(
                 labelText: 'خلفية الكود',
@@ -4887,6 +5155,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
     final stagesAsync = ref.watch(stagesRepositoryProvider);
     final stages = stagesAsync.value ?? [];
     return DropdownButtonFormField<int?>(
+      isExpanded: true,
       decoration: const InputDecoration(
         labelText: 'تصفية بالمرحلة',
         isDense: true,
@@ -4910,6 +5179,7 @@ class _IdCardScreenState extends ConsumerState<IdCardScreen> {
     final areasAsync = ref.watch(areasRepositoryProvider);
     final areas = areasAsync.value ?? [];
     return DropdownButtonFormField<int?>(
+      isExpanded: true,
       decoration: const InputDecoration(
         labelText: 'تصفية بالمنطقة',
         isDense: true,

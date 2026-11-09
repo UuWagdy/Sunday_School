@@ -1,9 +1,10 @@
-const CACHE_NAME = 'sunday-school-promo-v2';
+const CACHE_NAME = 'sunday-school-promo-v3';
 const ASSETS = [
   './',
   './index.html',
   './updates.html',
   './manifest.json',
+  './firebase-config.js',
   './detailed_features.md',
   './public/logo.png',
   './public/favicon.ico',

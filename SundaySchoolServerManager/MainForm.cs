@@ -289,7 +289,7 @@ internal sealed class MainForm : Form
         catch (InvalidOperationException) when (IsDisposed || Disposing || !IsHandleCreated) { }
     }
 
-    private void ShowWindow()
+    public void ShowWindow()
     {
         Show();
         WindowState = FormWindowState.Normal;
