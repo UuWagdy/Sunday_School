@@ -107,14 +107,16 @@ Future<PrintProgressController> showPrintProgressDialog(
                 final counter = value.current == null || value.total == null
                     ? null
                     : '${value.current} من ${value.total}';
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+                final primaryColor = Theme.of(context).primaryColor;
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.print_outlined,
                       size: 42,
-                      color: Colors.blue,
+                      color: primaryColor,
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -148,7 +150,7 @@ Future<PrintProgressController> showPrintProgressDialog(
                       'يمكنك متابعة العمل بعد فتح نافذة الطابعة.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Colors.grey.shade600,
+                        color: isDark ? const Color(0xFF94A3B8) : Colors.grey.shade600,
                         fontSize: 12,
                       ),
                     ),

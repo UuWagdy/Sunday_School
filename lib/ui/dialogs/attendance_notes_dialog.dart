@@ -97,6 +97,9 @@ class _AttendanceNotesDialogState extends State<AttendanceNotesDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final containerBg = isDark ? const Color(0xFF1E293B) : Colors.grey.shade50;
+    final containerBorder = isDark ? const Color(0xFF334155) : Colors.grey.shade300;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -173,16 +176,16 @@ class _AttendanceNotesDialogState extends State<AttendanceNotesDialog> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.purple.shade50,
+                          color: isDark ? Colors.purple.shade900.withValues(alpha: 0.3) : Colors.purple.shade50,
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.purple.shade300),
+                          border: Border.all(color: isDark ? Colors.purple.shade400 : Colors.purple.shade300),
                         ),
                         child: Text(
                           'مطلوب كتابة السبب *',
                           style: TextStyle(
                             fontSize: 10.5,
                             fontWeight: FontWeight.bold,
-                            color: Colors.purple.shade900,
+                            color: isDark ? const Color(0xFFE9D5FF) : Colors.purple.shade900,
                           ),
                         ),
                       ),
@@ -233,9 +236,9 @@ class _AttendanceNotesDialogState extends State<AttendanceNotesDialog> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
+                    color: containerBg,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade300),
+                    border: Border.all(color: containerBorder),
                   ),
                   child: Column(
                     children: [
@@ -243,10 +246,10 @@ class _AttendanceNotesDialogState extends State<AttendanceNotesDialog> {
                         value: 'alone',
                         groupValue: _checkoutType,
                         dense: true,
-                        activeColor: Colors.teal.shade700,
+                        activeColor: isDark ? const Color(0xFF2DD4BF) : Colors.teal.shade700,
                         title: Row(
                           children: [
-                            Icon(Icons.directions_walk_rounded, size: 18, color: Colors.teal.shade700),
+                            Icon(Icons.directions_walk_rounded, size: 18, color: isDark ? const Color(0xFF2DD4BF) : Colors.teal.shade700),
                             const SizedBox(width: 8),
                             const Text(
                               'انصراف بمفرده (الافتراضي)',
@@ -260,7 +263,7 @@ class _AttendanceNotesDialogState extends State<AttendanceNotesDialog> {
                             '💡 استبعاد الطالب تلقائياً من كشف وجدول الأتوبيس لهذا اليوم (ينصرف بمفرده)',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.teal.shade900,
+                              color: isDark ? const Color(0xFF2DD4BF) : Colors.teal.shade900,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -273,11 +276,11 @@ class _AttendanceNotesDialogState extends State<AttendanceNotesDialog> {
                         groupValue: _checkoutType,
                         dense: true,
                         activeColor: theme.primaryColor,
-                        title: const Row(
+                        title: Row(
                           children: [
-                            Icon(Icons.directions_bus_rounded, size: 18, color: Colors.indigo),
-                            SizedBox(width: 8),
-                            Text(
+                            Icon(Icons.directions_bus_rounded, size: 18, color: isDark ? const Color(0xFF818CF8) : Colors.indigo),
+                            const SizedBox(width: 8),
+                            const Text(
                               'أتوبيس (انصراف عادي مع الأتوبيس)',
                               style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
                             ),
@@ -290,10 +293,10 @@ class _AttendanceNotesDialogState extends State<AttendanceNotesDialog> {
                         value: 'parent',
                         groupValue: _checkoutType,
                         dense: true,
-                        activeColor: Colors.orange.shade800,
+                        activeColor: isDark ? const Color(0xFFFB923C) : Colors.orange.shade800,
                         title: Row(
                           children: [
-                            Icon(Icons.family_restroom_rounded, size: 18, color: Colors.orange.shade800),
+                            Icon(Icons.family_restroom_rounded, size: 18, color: isDark ? const Color(0xFFFB923C) : Colors.orange.shade800),
                             const SizedBox(width: 8),
                             const Text(
                               'انصراف لولي الأمر (مع الأهل مباشرة)',
@@ -307,7 +310,7 @@ class _AttendanceNotesDialogState extends State<AttendanceNotesDialog> {
                             '💡 استبعاد الطالب تلقائياً من كشف وجدول الأتوبيس لهذا اليوم',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.orange.shade900,
+                              color: isDark ? const Color(0xFFFB923C) : Colors.orange.shade900,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -319,10 +322,10 @@ class _AttendanceNotesDialogState extends State<AttendanceNotesDialog> {
                         value: 'other',
                         groupValue: _checkoutType,
                         dense: true,
-                        activeColor: Colors.purple.shade700,
+                        activeColor: isDark ? const Color(0xFFC084FC) : Colors.purple.shade700,
                         title: Row(
                           children: [
-                            Icon(Icons.alt_route_rounded, size: 18, color: Colors.purple.shade700),
+                            Icon(Icons.alt_route_rounded, size: 18, color: isDark ? const Color(0xFFC084FC) : Colors.purple.shade700),
                             const SizedBox(width: 8),
                             const Text(
                               'انصراف لسبب آخر (استبعاد من الأتوبيس)',
@@ -336,7 +339,7 @@ class _AttendanceNotesDialogState extends State<AttendanceNotesDialog> {
                             '💡 استبعاد الطالب تلقائياً من كشف وجدول الأتوبيس لهذا اليوم (وينقص من الباص)',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.purple.shade900,
+                              color: isDark ? const Color(0xFFC084FC) : Colors.purple.shade900,
                               fontWeight: FontWeight.w500,
                             ),
                           ),

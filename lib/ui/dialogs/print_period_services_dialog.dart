@@ -105,14 +105,33 @@ class _PrintPeriodServicesDialogState
     final DateTime startOfMonth = DateTime(widget.anchorDate.year, widget.anchorDate.month, 1);
     final DateTime endOfMonth = DateTime(widget.anchorDate.year, widget.anchorDate.month + 1, 0);
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).primaryColor;
+
+    final textPrimary = isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A);
+    final textSecondary = isDark ? const Color(0xFFCBD5E1) : const Color(0xFF334155);
+    final textMuted = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final containerBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
+    final containerBorder = isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1);
+    final dividerColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final accentAction = isDark ? const Color(0xFF38BDF8) : primaryColor;
+    final redAction = isDark ? const Color(0xFFF87171) : Colors.red.shade700;
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: AlertDialog(
         title: Row(
           children: [
-            Icon(Icons.print_rounded, color: Theme.of(context).primaryColor),
+            Icon(Icons.print_rounded, color: primaryColor),
             const SizedBox(width: 8),
-            const Text('إعدادات فترة الطباعة والخدمات'),
+            Text(
+              'إعدادات فترة الطباعة والخدمات',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: textPrimary,
+              ),
+            ),
           ],
         ),
         content: SizedBox(
@@ -122,35 +141,71 @@ class _PrintPeriodServicesDialogState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
+                Text(
                   'تحديد فترة التقرير:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 RadioListTile<String>(
-                  title: Text('اليوم الحالي (${DateFormat('yyyy-MM-dd').format(widget.anchorDate)})'),
+                  title: Text(
+                    'اليوم الحالي (${DateFormat('yyyy-MM-dd').format(widget.anchorDate)})',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: _selectedPeriod == 'day' ? FontWeight.bold : FontWeight.normal,
+                      color: _selectedPeriod == 'day' ? textPrimary : textSecondary,
+                    ),
+                  ),
                   value: 'day',
+                  activeColor: primaryColor,
                   groupValue: _selectedPeriod,
                   onChanged: (v) => setState(() => _selectedPeriod = v!),
                   dense: true,
                 ),
                 RadioListTile<String>(
-                  title: Text('هذا الأسبوع (${_getWeekRangeString(startOfWeek, endOfWeek)})'),
+                  title: Text(
+                    'هذا الأسبوع (${_getWeekRangeString(startOfWeek, endOfWeek)})',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: _selectedPeriod == 'week' ? FontWeight.bold : FontWeight.normal,
+                      color: _selectedPeriod == 'week' ? textPrimary : textSecondary,
+                    ),
+                  ),
                   value: 'week',
+                  activeColor: primaryColor,
                   groupValue: _selectedPeriod,
                   onChanged: (v) => setState(() => _selectedPeriod = v!),
                   dense: true,
                 ),
                 RadioListTile<String>(
-                  title: Text('هذا الشهر (${_getMonthRangeString(startOfMonth, endOfMonth)})'),
+                  title: Text(
+                    'هذا الشهر (${_getMonthRangeString(startOfMonth, endOfMonth)})',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: _selectedPeriod == 'month' ? FontWeight.bold : FontWeight.normal,
+                      color: _selectedPeriod == 'month' ? textPrimary : textSecondary,
+                    ),
+                  ),
                   value: 'month',
+                  activeColor: primaryColor,
                   groupValue: _selectedPeriod,
                   onChanged: (v) => setState(() => _selectedPeriod = v!),
                   dense: true,
                 ),
                 RadioListTile<String>(
-                  title: const Text('تاريخ مخصص (البداية والنهاية)'),
+                  title: Text(
+                    'تاريخ مخصص (البداية والنهاية)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: _selectedPeriod == 'custom' ? FontWeight.bold : FontWeight.normal,
+                      color: _selectedPeriod == 'custom' ? textPrimary : textSecondary,
+                    ),
+                  ),
                   value: 'custom',
+                  activeColor: primaryColor,
                   groupValue: _selectedPeriod,
                   onChanged: (v) => setState(() => _selectedPeriod = v!),
                   dense: true,
@@ -173,13 +228,30 @@ class _PrintPeriodServicesDialogState
                             }
                           },
                           child: InputDecorator(
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'من تاريخ',
+                              labelStyle: TextStyle(color: textMuted, fontSize: 12),
                               isDense: true,
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              border: OutlineInputBorder(),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              filled: true,
+                              fillColor: containerBg,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: containerBorder, width: 1.2),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: containerBorder, width: 1.2),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: primaryColor, width: 1.8),
+                              ),
                             ),
-                            child: Text(DateFormat('yyyy-MM-dd').format(_customDateFrom)),
+                            child: Text(
+                              DateFormat('yyyy-MM-dd').format(_customDateFrom),
+                              style: TextStyle(color: textPrimary, fontSize: 13),
+                            ),
                           ),
                         ),
                       ),
@@ -198,13 +270,30 @@ class _PrintPeriodServicesDialogState
                             }
                           },
                           child: InputDecorator(
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'إلى تاريخ',
+                              labelStyle: TextStyle(color: textMuted, fontSize: 12),
                               isDense: true,
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              border: OutlineInputBorder(),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              filled: true,
+                              fillColor: containerBg,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: containerBorder, width: 1.2),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: containerBorder, width: 1.2),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: primaryColor, width: 1.8),
+                              ),
                             ),
-                            child: Text(DateFormat('yyyy-MM-dd').format(_customDateTo)),
+                            child: Text(
+                              DateFormat('yyyy-MM-dd').format(_customDateTo),
+                              style: TextStyle(color: textPrimary, fontSize: 13),
+                            ),
                           ),
                         ),
                       ),
@@ -212,14 +301,18 @@ class _PrintPeriodServicesDialogState
                   ),
                 ],
                 const SizedBox(height: 16),
-                const Divider(),
+                Divider(color: dividerColor),
                 const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'تحديد الخدمات:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: textPrimary,
+                      ),
                     ),
                     Row(
                       children: [
@@ -229,7 +322,14 @@ class _PrintPeriodServicesDialogState
                               _selectedServiceIds = widget.services.map((s) => s.id).toSet();
                             });
                           },
-                          child: const Text('تحديد الكل', style: TextStyle(fontSize: 12)),
+                          child: Text(
+                            'تحديد الكل',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: accentAction,
+                            ),
+                          ),
                         ),
                         TextButton(
                           onPressed: () {
@@ -237,32 +337,68 @@ class _PrintPeriodServicesDialogState
                               _selectedServiceIds.clear();
                             });
                           },
-                          child: const Text('إلغاء الكل', style: TextStyle(fontSize: 12, color: Colors.red)),
+                          child: Text(
+                            'إلغاء الكل',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: redAction,
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Container(
-                  height: 180,
+                  height: 200,
                   decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.white,
+                    border: Border.all(color: containerBorder, width: 1.2),
+                    borderRadius: BorderRadius.circular(12),
+                    color: containerBg,
                   ),
+                  clipBehavior: Clip.antiAlias,
                   child: widget.services.isEmpty
-                      ? const Center(child: Text('لا توجد خدمات متاحة'))
-                      : ListView.builder(
+                      ? Center(
+                          child: Text(
+                            'لا توجد خدمات متاحة',
+                            style: TextStyle(color: textMuted, fontSize: 13),
+                          ),
+                        )
+                      : ListView.separated(
                           shrinkWrap: true,
                           itemCount: widget.services.length,
+                          separatorBuilder: (context, _) => Divider(
+                            height: 1,
+                            thickness: 1,
+                            color: dividerColor.withValues(alpha: 0.5),
+                          ),
                           itemBuilder: (context, idx) {
                             final svc = widget.services[idx];
                             final isChecked = _selectedServiceIds.contains(svc.id);
                             return CheckboxListTile(
-                              title: Text('${svc.name} (${svc.dayName})'),
-                              subtitle: Text(svc.formattedTime),
+                              title: Text(
+                                '${svc.name} (${svc.dayName})',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isChecked ? FontWeight.bold : FontWeight.w600,
+                                  color: textPrimary,
+                                ),
+                              ),
+                              subtitle: Text(
+                                svc.formattedTime,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: textMuted,
+                                ),
+                              ),
                               value: isChecked,
+                              activeColor: primaryColor,
+                              checkColor: Colors.white,
+                              checkboxShape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
                               onChanged: (val) {
                                 setState(() {
                                   if (val == true) {
@@ -285,7 +421,10 @@ class _PrintPeriodServicesDialogState
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
+            child: Text(
+              'إلغاء',
+              style: TextStyle(color: textMuted),
+            ),
           ),
           ElevatedButton(
             onPressed: _selectedServiceIds.isEmpty

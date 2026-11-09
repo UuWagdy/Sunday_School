@@ -302,6 +302,9 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).primaryColor;
+
     final fieldsAsync = ref.watch(fieldsRepositoryProvider);
     return fieldsAsync.maybeWhen(
       data: (fields) {
@@ -324,11 +327,12 @@ class _SortingDialogState extends ConsumerState<SortingDialog> {
                 height: 450,
                 child: Column(
                   children: [
-                    const TabBar(
-                      labelColor: Colors.blue,
-                      unselectedLabelColor: Colors.grey,
+                    TabBar(
+                      labelColor: isDark ? const Color(0xFF38BDF8) : primaryColor,
+                      unselectedLabelColor: isDark ? const Color(0xFF94A3B8) : Colors.grey.shade600,
+                      indicatorColor: isDark ? const Color(0xFF38BDF8) : primaryColor,
                       isScrollable: true,
-                      tabs: [
+                      tabs: const [
                         Tab(text: 'ترتيب المجموعات'),
                         Tab(text: 'اختيار الأعمدة'),
                         Tab(text: 'بيانات رأس التقرير'),
